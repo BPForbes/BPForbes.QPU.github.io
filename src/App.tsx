@@ -1,4 +1,5 @@
-import { ChangeEvent, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { announceGuestReady, isEmbedMode } from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
 import { CustomGatePanel, GatePalette } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
@@ -694,9 +695,14 @@ function App() {
     setMenuOpen(false);
   };
 
+  const embedMode = isEmbedMode();
+
+  useEffect(() => {
+    announceGuestReady();
+  }, []);
 
   return (
-    <main className="app-shell">
+    <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'}>
       <button
         aria-expanded={menuOpen}
         aria-label="Open site navigation"
@@ -733,7 +739,7 @@ function App() {
 
       {menuOpen && <button aria-label="Close menu overlay" className="menu-backdrop" onClick={() => setMenuOpen(false)} type="button" />}
 
-      {activeView !== 'module-tester' && (
+      {!embedMode && activeView !== 'module-tester' && (
         <header className="hero">
           <div>
             <p className="eyebrow">Static React QPU MVP</p>

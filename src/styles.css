@@ -315,3 +315,30 @@ button { font: inherit; }
   .placed-gate.active .gate,
   .placed-gate.active .control-dot { animation: none !important; }
 }
+
+/* Compact chrome when the workbench is a guest inside the portfolio lab window. */
+html.embed-mode,
+html.embed-mode body {
+  min-height: 100%;
+  background: #101827;
+}
+
+html.embed-mode .app-shell {
+  width: 100%;
+  padding: 0.7rem;
+  padding-top: 4.15rem;
+}
+
+html.embed-mode .hamburger-button {
+  top: 0.55rem;
+  left: 0.55rem;
+  width: 2.6rem;
+  height: 2.6rem;
+}
+
+@media (min-width: 780px) {
+  html.embed-mode .app-shell {
+    padding: 0.75rem;
+    padding-top: 4.15rem;
+  }
+}
