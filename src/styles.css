@@ -268,7 +268,7 @@ button { font: inherit; }
 @keyframes collapse { from { transform: scale(1.15) rotateX(50deg); opacity: .4; } to { transform: scale(1) rotateX(0deg); opacity: 1; } }
 
 @media (min-width: 780px) {
-  .app-shell { padding: 2rem; grid-template-columns: 1fr 1fr; }
+  .app-shell { padding: 2rem; }
   .hero, .circuit-panel, .controls, .examples, .results-grid { grid-column: 1 / -1; }
   .hero { grid-template-columns: 1fr auto; align-items: end; padding: 2rem; }
   .palette-panel { grid-column: span 2; }
@@ -481,7 +481,7 @@ body.site-menu-open .app-shell { overflow: hidden; }
 
 .playground-page {
   grid-column: 1 / -1;
-  min-height: 100%;
+  min-height: 100dvh;
   scroll-snap-align: start;
   scroll-snap-stop: always;
   display: grid;
