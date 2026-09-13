@@ -15,14 +15,30 @@
 }
 
 * { box-sizing: border-box; }
-html {
-  scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
 }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at top left, #273b79 0, #101827 34rem); }
+html { scroll-behavior: smooth; }
+body { margin: 0; min-width: 320px; min-height: 100%; background: radial-gradient(circle at top left, #273b79 0, #101827 34rem); }
 button { font: inherit; }
 
-.app-shell { width: min(1180px, 100%); margin: 0 auto; padding: 1rem; display: grid; gap: 1rem; }
+.app-shell {
+  width: min(1180px, 100%);
+  height: 100%;
+  margin: 0 auto;
+  padding: 1rem;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}
 .hero { display: grid; gap: 1rem; padding: 1.25rem; border-radius: 1.5rem; background: linear-gradient(135deg, rgba(96, 165, 250, .2), rgba(168, 85, 247, .18)); border: 1px solid rgba(255,255,255,.16); box-shadow: 0 24px 80px rgba(0,0,0,.25); }
 .hero h1 { margin: .2rem 0; font-size: clamp(2rem, 10vw, 4.8rem); line-height: .95; letter-spacing: -.06em; }
 .hero p { margin: 0; color: #c6d5f6; max-width: 58rem; }
@@ -320,7 +336,8 @@ button { font: inherit; }
 
 .hamburger-button { position: fixed; top: 1rem; left: 1rem; z-index: 40; width: 3rem; height: 3rem; display: grid; place-content: center; gap: .28rem; border: 1px solid rgba(125,211,252,.42); border-radius: .9rem; background: rgba(15,23,42,.92); box-shadow: 0 18px 45px rgba(0,0,0,.28); cursor: pointer; }
 .hamburger-button span { display: block; width: 1.35rem; height: .18rem; border-radius: 999px; background: #e0f2fe; }
-body.site-menu-open { overflow: hidden; }
+body.site-menu-open,
+body.site-menu-open .app-shell { overflow: hidden; }
 .site-menu {
   position: fixed;
   z-index: 50;
@@ -464,7 +481,7 @@ body.site-menu-open { overflow: hidden; }
 
 .playground-page {
   grid-column: 1 / -1;
-  min-height: 100dvh;
+  min-height: 100%;
   scroll-snap-align: start;
   scroll-snap-stop: always;
   display: grid;
@@ -496,7 +513,8 @@ body.site-menu-open { overflow: hidden; }
 .truth-table-wrap tr.possible { background: rgba(34,197,94,.1); }
 
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; scroll-snap-type: y proximity; }
+  html, .app-shell { scroll-behavior: auto; }
+  .app-shell { scroll-snap-type: y proximity; }
   .circuit-particle.traveling { transition: none; }
 }
 

@@ -5,7 +5,14 @@ import { CustomGatePanel, GatePalette } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
 import { OutputPanel } from './components/OutputPanel';
 import { ParticleView } from './components/ParticleView';
-import { isPlaygroundViewId, playgroundPageDomId, type PlaygroundViewId } from './components/PlaygroundScrubber';
+import {
+  adjacentPlaygroundView,
+  canElementScroll,
+  isPlaygroundViewId,
+  playgroundPageDomId,
+  playgroundScrubStep,
+  type PlaygroundViewId,
+} from './components/PlaygroundScrubber';
 import { MAX_PLAY_SPEED, MIN_PLAY_SPEED, playDelayMs } from './components/circuitLayout';
 import { examples } from './data/examples';
 import {
@@ -117,6 +124,7 @@ function App() {
   const [returnValues, setReturnValues] = useState<ReturnValue[]>([]);
   const [activeView, setActiveView] = useState<AppView>(() => readViewParam(window.location.search) ?? 'builder');
   const [menuOpen, setMenuOpen] = useState(false);
+  const stageRef = useRef<HTMLElement>(null);
   const [fileStatus, setFileStatus] = useState('Upload a .qpucir file (or -qpucir.txt on restrictive file pickers), or download one of the bundled AST circuits.');
   const [protocolMode, setProtocolMode] = useState<'canvas' | 'process'>('process');
   const [customGateRegistryVersion, setCustomGateRegistryVersion] = useState(0);
@@ -738,6 +746,11 @@ function App() {
   };
 
   const ignorePageObserverUntil = useRef(0);
+  const activeViewRef = useRef(activeView);
+  const menuOpenRef = useRef(menuOpen);
+  const showViewRef = useRef<(view: AppView, behavior?: ScrollBehavior) => void>(() => undefined);
+  activeViewRef.current = activeView;
+  menuOpenRef.current = menuOpen;
 
   // View switches are UI-only; simulator state persists until resetRuntime or compile.
   // Pages embed URLs keep ?embed=1 and add ?view= so the portfolio lab can deep-link a playground page.
@@ -748,6 +761,7 @@ function App() {
     replaceViewInLocation(window.location, view);
     requestAnimationFrame(() => scrollPlaygroundPage(view, behavior));
   };
+  showViewRef.current = showView;
 
   const embedMode = isEmbedMode();
 
@@ -774,8 +788,10 @@ function App() {
   }, [menuOpen]);
 
   useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
     scrollPlaygroundPage(activeView, 'auto');
-    const pages = Array.from(document.querySelectorAll<HTMLElement>('[data-playground-page]'));
+    const pages = Array.from(stage.querySelectorAll<HTMLElement>('[data-playground-page]'));
     const observer = new IntersectionObserver((entries) => {
       if (Date.now() < ignorePageObserverUntil.current) return;
       const visible = entries
@@ -788,15 +804,61 @@ function App() {
         replaceViewInLocation(window.location, next);
         return next;
       });
-    }, { threshold: [0.35, 0.55, 0.75] });
+    }, { root: stage, rootMargin: '-15% 0px -55% 0px', threshold: [0, 0.25, 0.5] });
     pages.forEach((page) => observer.observe(page));
-    return () => observer.disconnect();
-    // Initial snap only; observer owns later page changes from vertical scrubbing.
+
+    const onWheel = (event: WheelEvent) => {
+      if (menuOpenRef.current) return;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      let node = event.target instanceof HTMLElement ? event.target : null;
+      while (node && node !== stage) {
+        if (canElementScroll(node, event.deltaY, getComputedStyle(node).overflowY)) return;
+        node = node.parentElement;
+      }
+      if (canElementScroll(stage, event.deltaY, getComputedStyle(stage).overflowY)) return;
+      const next = adjacentPlaygroundView(activeViewRef.current, playgroundScrubStep(event.deltaY));
+      if (!next) return;
+      event.preventDefault();
+      showViewRef.current(next);
+    };
+    let touchStart: { x: number; y: number } | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) touchStart = { x: touch.clientX, y: touch.clientY };
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (!touchStart || menuOpenRef.current) return;
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      const dx = touch.clientX - touchStart.x;
+      const dy = touch.clientY - touchStart.y;
+      touchStart = null;
+      if (Math.abs(dy) < 64 || Math.abs(dy) < Math.abs(dx) * 1.15) return;
+      let node = event.target instanceof HTMLElement ? event.target : null;
+      while (node && node !== stage) {
+        if (canElementScroll(node, dy, getComputedStyle(node).overflowY)) return;
+        node = node.parentElement;
+      }
+      if (canElementScroll(stage, dy, getComputedStyle(stage).overflowY)) return;
+      const next = adjacentPlaygroundView(activeViewRef.current, playgroundScrubStep(dy));
+      if (next) showViewRef.current(next);
+    };
+
+    stage.addEventListener('wheel', onWheel, { passive: false });
+    stage.addEventListener('touchstart', onTouchStart, { passive: true });
+    stage.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      observer.disconnect();
+      stage.removeEventListener('wheel', onWheel);
+      stage.removeEventListener('touchstart', onTouchStart);
+      stage.removeEventListener('touchend', onTouchEnd);
+    };
+    // Gesture/observer attach once; active page is updated from snap position.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'}>
+    <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'} ref={stageRef}>
       <button
         aria-expanded={menuOpen}
         aria-label="Open site navigation"

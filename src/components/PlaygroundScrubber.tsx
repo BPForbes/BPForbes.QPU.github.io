@@ -27,3 +27,18 @@ export const adjacentPlaygroundView = (current: PlaygroundViewId, delta: number)
   if (index < 0) return null;
   return PLAYGROUND_VIEWS[index + delta]?.id ?? null;
 };
+
+export const playgroundScrubStep = (deltaY: number): -1 | 1 => (deltaY > 0 ? 1 : -1);
+
+const overflowAllowsScroll = (value: string): boolean => value === 'auto' || value === 'scroll';
+
+export const canElementScroll = (
+  element: Pick<HTMLElement, 'clientHeight' | 'scrollHeight' | 'scrollTop'>,
+  deltaY: number,
+  overflowY = 'auto',
+): boolean => {
+  if (!overflowAllowsScroll(overflowY)) return false;
+  if (element.scrollHeight <= element.clientHeight + 1) return false;
+  if (deltaY > 0) return element.scrollTop + element.clientHeight < element.scrollHeight - 1;
+  return element.scrollTop > 1;
+};
