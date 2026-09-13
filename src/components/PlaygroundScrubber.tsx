@@ -20,49 +20,10 @@ export const PLAYGROUND_VIEW_IDS = PLAYGROUND_VIEWS.map((view) => view.id);
 export const isPlaygroundViewId = (value: unknown): value is PlaygroundViewId =>
   typeof value === 'string' && PLAYGROUND_VIEW_IDS.includes(value as PlaygroundViewId);
 
-type PlaygroundScrubberProps = {
-  activeView: PlaygroundViewId;
-  onSelect: (view: PlaygroundViewId) => void;
+export const playgroundPageDomId = (id: PlaygroundViewId): string => `playground-page-${id}`;
+
+export const adjacentPlaygroundView = (current: PlaygroundViewId, delta: number): PlaygroundViewId | null => {
+  const index = PLAYGROUND_VIEWS.findIndex((view) => view.id === current);
+  if (index < 0) return null;
+  return PLAYGROUND_VIEWS[index + delta]?.id ?? null;
 };
-
-export function PlaygroundScrubber({ activeView, onSelect }: PlaygroundScrubberProps) {
-  const index = Math.max(0, PLAYGROUND_VIEWS.findIndex((view) => view.id === activeView));
-
-  return (
-    <div className="playground-scrubber">
-      <div aria-label="Playground pages" className="playground-scrub-track" role="tablist">
-        {PLAYGROUND_VIEWS.map((view) => (
-          <button
-            aria-selected={view.id === activeView}
-            className={view.id === activeView ? 'active' : ''}
-            key={view.id}
-            onClick={() => onSelect(view.id)}
-            role="tab"
-            type="button"
-          >
-            {view.label}
-          </button>
-        ))}
-      </div>
-      <label className="playground-scrub-slider">
-        <span>Scrub pages</span>
-        <input
-          aria-label="Scrub playground pages"
-          aria-valuemax={PLAYGROUND_VIEWS.length}
-          aria-valuemin={1}
-          aria-valuenow={index + 1}
-          aria-valuetext={PLAYGROUND_VIEWS[index]?.label}
-          max={PLAYGROUND_VIEWS.length - 1}
-          min={0}
-          onChange={(event) => {
-            const next = PLAYGROUND_VIEWS[Number(event.target.value)];
-            if (next) onSelect(next.id);
-          }}
-          step={1}
-          type="range"
-          value={index}
-        />
-      </label>
-    </div>
-  );
-}

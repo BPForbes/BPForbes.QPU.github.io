@@ -15,6 +15,10 @@
 }
 
 * { box-sizing: border-box; }
+html {
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+}
 body { margin: 0; min-width: 320px; min-height: 100vh; background: radial-gradient(circle at top left, #273b79 0, #101827 34rem); }
 button { font: inherit; }
 
@@ -458,34 +462,15 @@ body.site-menu-open { overflow: hidden; }
   .docs-grid article:last-child { grid-column: 1 / -1; }
 }
 
-.playground-scrubber { display: grid; gap: .45rem; }
-.playground-scrub-track {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .45rem;
-  padding-bottom: .15rem;
-}
-.playground-scrub-track button {
-  flex: 0 0 auto;
+.playground-page {
+  grid-column: 1 / -1;
+  min-height: 100dvh;
   scroll-snap-align: start;
-  border: 1px solid rgba(148,163,184,.28);
-  border-radius: 999px;
-  color: #e2e8f0;
-  background: rgba(51,65,85,.78);
-  padding: .45rem .75rem;
-  font-size: .78rem;
-  font-weight: 850;
-  cursor: pointer;
-  white-space: nowrap;
+  scroll-snap-stop: always;
+  display: grid;
+  gap: 1rem;
+  align-content: start;
 }
-.playground-scrub-track button.active,
-.playground-scrub-track button:hover {
-  color: #082f49;
-  background: linear-gradient(135deg, #67e8f9, #38bdf8);
-}
-.playground-scrub-slider { display: grid; gap: .28rem; color: #cbd5e1; font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-.playground-scrub-slider input { width: 100%; accent-color: #67e8f9; cursor: pointer; }
-.site-menu .playground-scrub-track button { width: auto; text-align: center; }
 
 .start-state-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: .65rem; margin-top: 1rem; }
 .start-state-picker label { display: grid; gap: .35rem; color: #cbd5e1; font-size: .82rem; font-weight: 850; }
@@ -511,7 +496,12 @@ body.site-menu-open { overflow: hidden; }
 .truth-table-wrap tr.possible { background: rgba(34,197,94,.1); }
 
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; scroll-snap-type: y proximity; }
   .circuit-particle.traveling { transition: none; }
+}
+
+@media (min-width: 780px) {
+  .playground-page { grid-template-columns: 1fr 1fr; }
 }
 
 /* Compact chrome when the workbench is a guest inside the portfolio lab window. */

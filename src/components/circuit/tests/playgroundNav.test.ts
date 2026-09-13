@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { isPlaygroundViewId, PLAYGROUND_VIEWS } from '../../PlaygroundScrubber';
+import {
+  adjacentPlaygroundView,
+  isPlaygroundViewId,
+  playgroundPageDomId,
+  PLAYGROUND_VIEWS,
+} from '../../PlaygroundScrubber';
 
-describe('playground page scrubber', () => {
-  it('exposes a discrete page list that the hamburger menu can scrub', () => {
+describe('playground pages', () => {
+  it('exposes a discrete page list for hamburger jumps and vertical scrubbing', () => {
     expect(PLAYGROUND_VIEWS.length).toBeGreaterThan(3);
     expect(PLAYGROUND_VIEWS.map((view) => view.id)).toEqual([
       'builder',
@@ -13,12 +18,16 @@ describe('playground page scrubber', () => {
       'files',
       'more',
     ]);
-    PLAYGROUND_VIEWS.forEach((view, index) => {
+    PLAYGROUND_VIEWS.forEach((view) => {
       expect(view.label.length).toBeGreaterThan(0);
       expect(isPlaygroundViewId(view.id)).toBe(true);
-      expect(index).toBeGreaterThanOrEqual(0);
+      expect(playgroundPageDomId(view.id)).toBe(`playground-page-${view.id}`);
     });
     expect(isPlaygroundViewId('builder')).toBe(true);
     expect(isPlaygroundViewId('embed')).toBe(false);
+    expect(adjacentPlaygroundView('builder', 1)).toBe('docs');
+    expect(adjacentPlaygroundView('docs', -1)).toBe('builder');
+    expect(adjacentPlaygroundView('builder', -1)).toBeNull();
+    expect(adjacentPlaygroundView('more', 1)).toBeNull();
   });
 });

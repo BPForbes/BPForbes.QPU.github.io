@@ -1,11 +1,11 @@
-import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { announceGuestReady, isEmbedMode, isHostSetViewMessage, readViewParam, replaceViewInLocation } from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
 import { CustomGatePanel, GatePalette } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
 import { OutputPanel } from './components/OutputPanel';
 import { ParticleView } from './components/ParticleView';
-import { PlaygroundScrubber, type PlaygroundViewId } from './components/PlaygroundScrubber';
+import { isPlaygroundViewId, playgroundPageDomId, type PlaygroundViewId } from './components/PlaygroundScrubber';
 import { MAX_PLAY_SPEED, MIN_PLAY_SPEED, playDelayMs } from './components/circuitLayout';
 import { examples } from './data/examples';
 import {
@@ -81,6 +81,16 @@ const newGate = (
     phase: definition?.supportsPhase ? phase : undefined,
     customGateId: definition?.category === 'custom' ? type : undefined,
   };
+};
+
+const PlaygroundPage = ({ children, id, label }: { children: ReactNode; id: PlaygroundViewId; label: string }) => (
+  <section className="playground-page" data-playground-page={id} id={playgroundPageDomId(id)} aria-label={label}>
+    {children}
+  </section>
+);
+
+const scrollPlaygroundPage = (view: PlaygroundViewId, behavior: ScrollBehavior = 'smooth') => {
+  document.getElementById(playgroundPageDomId(view))?.scrollIntoView({ behavior, block: 'start' });
 };
 
 function App() {
@@ -727,12 +737,16 @@ function App() {
     }
   };
 
+  const ignorePageObserverUntil = useRef(0);
+
   // View switches are UI-only; simulator state persists until resetRuntime or compile.
   // Pages embed URLs keep ?embed=1 and add ?view= so the portfolio lab can deep-link a playground page.
-  const showView = (view: AppView) => {
+  const showView = (view: AppView, behavior: ScrollBehavior = 'smooth') => {
+    ignorePageObserverUntil.current = Date.now() + 800;
     setActiveView(view);
     setMenuOpen(false);
     replaceViewInLocation(window.location, view);
+    requestAnimationFrame(() => scrollPlaygroundPage(view, behavior));
   };
 
   const embedMode = isEmbedMode();
@@ -744,9 +758,11 @@ function App() {
   useEffect(() => {
     const onHostMessage = (event: MessageEvent<unknown>) => {
       if (!isHostSetViewMessage(event.data)) return;
+      ignorePageObserverUntil.current = Date.now() + 800;
       setActiveView(event.data.view);
       setMenuOpen(false);
       replaceViewInLocation(window.location, event.data.view);
+      requestAnimationFrame(() => scrollPlaygroundPage(event.data.view, 'auto'));
     };
     window.addEventListener('message', onHostMessage);
     return () => window.removeEventListener('message', onHostMessage);
@@ -756,6 +772,28 @@ function App() {
     document.body.classList.toggle('site-menu-open', menuOpen);
     return () => document.body.classList.remove('site-menu-open');
   }, [menuOpen]);
+
+  useEffect(() => {
+    scrollPlaygroundPage(activeView, 'auto');
+    const pages = Array.from(document.querySelectorAll<HTMLElement>('[data-playground-page]'));
+    const observer = new IntersectionObserver((entries) => {
+      if (Date.now() < ignorePageObserverUntil.current) return;
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+      const next = visible?.target.getAttribute('data-playground-page');
+      if (!isPlaygroundViewId(next)) return;
+      setActiveView((current) => {
+        if (current === next) return current;
+        replaceViewInLocation(window.location, next);
+        return next;
+      });
+    }, { threshold: [0.35, 0.55, 0.75] });
+    pages.forEach((page) => observer.observe(page));
+    return () => observer.disconnect();
+    // Initial snap only; observer owns later page changes from vertical scrubbing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'}>
@@ -778,7 +816,6 @@ function App() {
             <button onClick={() => setMenuOpen(false)} type="button">×</button>
           </div>
           <div className="site-menu-scroll" tabIndex={0}>
-            <PlaygroundScrubber activeView={activeView} onSelect={showView} />
             <button className={activeView === 'builder' ? 'active' : ''} onClick={() => showView('builder')} type="button">Circuit builder</button>
             <details open>
               <summary>Documentation</summary>
@@ -800,7 +837,8 @@ function App() {
 
       {menuOpen && <button aria-label="Close menu overlay" className="menu-backdrop" onClick={() => setMenuOpen(false)} type="button" />}
 
-      {!embedMode && activeView !== 'module-tester' && (
+      <PlaygroundPage id="builder" label="Circuit builder">
+      {!embedMode && (
         <header className="hero">
           <div>
             <p className="eyebrow">Static React QPU MVP</p>
@@ -814,8 +852,6 @@ function App() {
         </header>
       )}
 
-      {activeView === 'builder' && (
-        <>
           <section className="panel palette-panel" aria-labelledby="palette-title">
             <div className="section-heading">
               <p className="eyebrow">Gate palette</p>
@@ -967,10 +1003,9 @@ function App() {
               <pre>{JSON.stringify(tokenMap, null, 2)}</pre>
             </details>
           </section>
-        </>
-      )}
+      </PlaygroundPage>
 
-      {activeView === 'docs' && (
+      <PlaygroundPage id="docs" label="Wiki / docs">
         <section className="panel docs-panel" aria-labelledby="docs-title">
           <div className="section-heading">
             <p className="eyebrow">Wiki / docs</p>
@@ -1008,9 +1043,9 @@ function App() {
             </article>
           </div>
         </section>
-      )}
+      </PlaygroundPage>
 
-      {activeView === 'qpu-docs' && (
+      <PlaygroundPage id="qpu-docs" label="QPU Documentation">
         <section className="panel docs-panel qpu-doc-panel" aria-labelledby="qpu-docs-title">
           <div className="section-heading">
             <p className="eyebrow">Documentation › QPU Documentation</p>
@@ -1024,9 +1059,36 @@ function App() {
           </div>
           <a className="primary-link" href={`${import.meta.env.BASE_URL}QPU_Circuit_Docs.pdf`} target="_blank" rel="noreferrer">Open PDF in a new tab</a>
         </section>
-      )}
+      </PlaygroundPage>
 
-      {activeView === 'files' && (
+      <PlaygroundPage id="particles" label="Particle visualization">
+        <div className="results-grid standalone-results">
+          <ParticleView
+            activeStep={cursor - 1}
+            gates={renderedGates}
+            measurements={displayMeasurements}
+            particleSnapshots={particleSnapshots}
+            physicalQubitIndices={displayQubitIndices}
+            qubitCount={displayQubitCount}
+            qubitLabels={displayQubitLabels}
+            startStates={controllableParams.map((param) => startStates[param.qubitIndex] ?? '0p')}
+            transitions={particleTransitions}
+          />
+          <OutputPanel
+            log={log}
+            measurements={displayMeasurements}
+            qubitCount={displayQubitCount}
+            qubitLabels={displayQubitLabels}
+            state={displayState}
+          />
+        </div>
+      </PlaygroundPage>
+
+      <PlaygroundPage id="module-tester" label="Circuit correction lab">
+        <ModuleLab />
+      </PlaygroundPage>
+
+      <PlaygroundPage id="files" label="File upload and download">
         <section className="panel files-panel" aria-labelledby="files-title">
           <div className="section-heading">
             <p className="eyebrow">File upload and download</p>
@@ -1053,34 +1115,9 @@ function App() {
           </div>
           <p className="file-status">{fileStatus}</p>
         </section>
-      )}
+      </PlaygroundPage>
 
-      {activeView === 'particles' && (
-        <div className="results-grid standalone-results">
-          <ParticleView
-            activeStep={cursor - 1}
-            gates={renderedGates}
-            measurements={displayMeasurements}
-            particleSnapshots={particleSnapshots}
-            physicalQubitIndices={displayQubitIndices}
-            qubitCount={displayQubitCount}
-            qubitLabels={displayQubitLabels}
-            startStates={controllableParams.map((param) => startStates[param.qubitIndex] ?? '0p')}
-            transitions={particleTransitions}
-          />
-          <OutputPanel
-            log={log}
-            measurements={displayMeasurements}
-            qubitCount={displayQubitCount}
-            qubitLabels={displayQubitLabels}
-            state={displayState}
-          />
-        </div>
-      )}
-
-      {activeView === 'module-tester' && <ModuleLab />}
-
-      {activeView === 'more' && (
+      <PlaygroundPage id="more" label="More">
         <section className="panel docs-panel" aria-labelledby="more-title">
           <div className="section-heading">
             <p className="eyebrow">More</p>
@@ -1092,7 +1129,7 @@ function App() {
             <button onClick={resetSite} type="button">Reset site completely</button>
           </div>
         </section>
-      )}
+      </PlaygroundPage>
     </main>
   );
 }
