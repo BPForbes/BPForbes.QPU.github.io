@@ -150,14 +150,6 @@ button { font: inherit; }
 }
 .circuit-particle.hot:not(.measured) { box-shadow: 0 0 0 2px #dc2626; }
 .circuit-particle.measured { background: #dc2626; border-color: #dc2626; }
-.circuit-particle.traveling {
-  position: relative;
-  align-self: end;
-  justify-self: start;
-  margin: 0 0 .18rem .1rem;
-  z-index: 4;
-  pointer-events: none;
-}
 .circuit-drop-layer {
   position: absolute;
   left: 5.35rem;
@@ -515,7 +507,6 @@ body.site-menu-open .app-shell { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   html, .app-shell { scroll-behavior: auto; }
   .app-shell { scroll-snap-type: y proximity; }
-  .circuit-particle.traveling { transition: none; }
 }
 
 @media (min-width: 780px) {

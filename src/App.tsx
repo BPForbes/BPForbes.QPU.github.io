@@ -934,7 +934,6 @@ function App() {
             measurements={measurements}
             onDropGate={addGate}
             onRemoveGate={removeGate}
-            playing={playing}
             qubitCount={simulationQubitCount}
             selectedGate={selectedGate}
             startStates={startStates}

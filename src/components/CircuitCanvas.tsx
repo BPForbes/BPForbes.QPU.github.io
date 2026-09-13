@@ -17,7 +17,6 @@ type CircuitCanvasProps = {
   selectedGate: GateType | null;
   measurements?: MeasurementMap;
   startStates?: ParticleStartState[];
-  playing?: boolean;
   onDropGate: (gate: GateType, qubit: number) => void;
   onRemoveGate: (gateId: string) => void;
 };
@@ -31,7 +30,6 @@ export function CircuitCanvas({
   selectedGate,
   measurements = {},
   startStates = [],
-  playing = false,
   onDropGate,
   onRemoveGate,
 }: CircuitCanvasProps) {
@@ -136,21 +134,6 @@ export function CircuitCanvas({
               );
             }),
           )}
-
-          {playing && activeGate
-            ? Array.from({ length: qubitCount }, (_, qubit) => {
-                if (!gateTouchesQubit(activeGate, qubit)) return null;
-                const measured = measurements[qubit] !== undefined;
-                return (
-                  <span
-                    aria-hidden="true"
-                    className={`circuit-particle traveling ${measured ? 'measured' : ''}`}
-                    key={`travel-${qubit}`}
-                    style={{ gridColumn: activeGate.step + 2, gridRow: qubit + 1 }}
-                  />
-                );
-              })
-            : null}
         </div>
       </div>
       <p className="canvas-tip">
