@@ -20,7 +20,6 @@ export const HOST_MESSAGE_SOURCE = 'qpu-host';
 export const GUEST_FEATURES = [
   'circuit-diagram',
   'play-sequence',
-  'page-scrub',
   'run-all',
 ] as const;
 

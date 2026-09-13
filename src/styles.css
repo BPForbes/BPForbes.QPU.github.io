@@ -477,6 +477,7 @@ body.site-menu-open .app-shell { overflow: hidden; }
   gap: 1rem;
   align-content: start;
 }
+.playground-page[hidden] { display: none; }
 
 .start-state-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: .65rem; margin-top: 1rem; }
 .start-state-picker label { display: grid; gap: .35rem; color: #cbd5e1; font-size: .82rem; font-weight: 850; }

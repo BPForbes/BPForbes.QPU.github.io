@@ -93,8 +93,24 @@ const newGate = (
   };
 };
 
-const PlaygroundPage = ({ children, id, label }: { children: ReactNode; id: PlaygroundViewId; label: string }) => (
-  <section className="playground-page" data-playground-page={id} id={playgroundPageDomId(id)} aria-label={label}>
+const PlaygroundPage = ({
+  active = true,
+  children,
+  id,
+  label,
+}: {
+  active?: boolean;
+  children: ReactNode;
+  id: PlaygroundViewId;
+  label: string;
+}) => (
+  <section
+    aria-label={label}
+    className="playground-page"
+    data-playground-page={id}
+    hidden={!active}
+    id={playgroundPageDomId(id)}
+  >
     {children}
   </section>
 );
@@ -1080,9 +1096,9 @@ function App() {
         </div>
       </PlaygroundPage>}
 
-      {activeView === 'module-tester' && <PlaygroundPage id="module-tester" label="Circuit correction lab">
+      <PlaygroundPage active={activeView === 'module-tester'} id="module-tester" label="Circuit correction lab">
         <ModuleLab />
-      </PlaygroundPage>}
+      </PlaygroundPage>
 
       {activeView === 'files' && <PlaygroundPage id="files" label="File upload and download">
         <section className="panel files-panel" aria-labelledby="files-title">

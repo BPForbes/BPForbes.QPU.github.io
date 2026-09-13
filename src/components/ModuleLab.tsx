@@ -1019,7 +1019,7 @@ export const ModuleLab = () => {
 
           <div className="module-tester-actions">
             <button disabled={!truthTable} onClick={() => runManualTest(false)} type="button">Test circuit</button>
-            <button disabled={!truthTable} onClick={() => runManualTest(true)} type="button">Test automatically</button>
+            <button disabled={!truthTable} onClick={() => runManualTest(true)} type="button">Test &amp; correct automatically</button>
           </div>
 
           <p className="file-status">{displayStatus}</p>

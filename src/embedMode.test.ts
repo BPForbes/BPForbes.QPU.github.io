@@ -102,7 +102,8 @@ describe('embedMode', () => {
     expect(payload.source).toBe(EMBED_MESSAGE_SOURCE);
     expect(payload.views).toEqual(PLAYGROUND_VIEWS);
     expect(payload.features).toEqual(GUEST_FEATURES);
-    expect(payload.features).toEqual(expect.arrayContaining(['circuit-diagram', 'play-sequence', 'page-scrub']));
+    expect(payload.features).toEqual(expect.arrayContaining(['circuit-diagram', 'play-sequence', 'run-all']));
+    expect(payload.features).not.toContain('page-scrub');
   });
 
   it('accepts setView commands from the portfolio host', () => {
