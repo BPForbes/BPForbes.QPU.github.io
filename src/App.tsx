@@ -772,27 +772,29 @@ function App() {
       </button>
 
       <nav className={`site-menu ${menuOpen ? 'open' : ''}`} aria-label="Site sections">
-        <div className="menu-heading">
-          <strong>QPU Playground</strong>
-          <button onClick={() => setMenuOpen(false)} type="button">×</button>
-        </div>
-        <div className="site-menu-scroll" tabIndex={0}>
-          <PlaygroundScrubber activeView={activeView} onSelect={showView} />
-          <button className={activeView === 'builder' ? 'active' : ''} onClick={() => showView('builder')} type="button">Circuit builder</button>
-          <details open>
-            <summary>Documentation</summary>
-            <button className={activeView === 'docs' ? 'active' : ''} onClick={() => showView('docs')} type="button">Wiki / docs</button>
-            <button className={activeView === 'qpu-docs' ? 'active' : ''} onClick={() => showView('qpu-docs')} type="button">QPU Documentation</button>
-          </details>
-          <button className={activeView === 'particles' ? 'active' : ''} onClick={() => showView('particles')} type="button">Particle visualization</button>
-          <button className={activeView === 'module-tester' ? 'active' : ''} onClick={() => showView('module-tester')} type="button">Circuit correction lab</button>
-          <details open>
-            <summary>File upload and download</summary>
-            <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Upload files</button>
-            <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Download files</button>
-          </details>
-          <button className={activeView === 'more' ? 'active' : ''} onClick={() => showView('more')} type="button">More</button>
-          <button className="danger" onClick={resetSite} type="button">Reset site</button>
+        <div className="site-menu-panel">
+          <div className="menu-heading">
+            <strong>QPU Playground</strong>
+            <button onClick={() => setMenuOpen(false)} type="button">×</button>
+          </div>
+          <div className="site-menu-scroll" tabIndex={0}>
+            <PlaygroundScrubber activeView={activeView} onSelect={showView} />
+            <button className={activeView === 'builder' ? 'active' : ''} onClick={() => showView('builder')} type="button">Circuit builder</button>
+            <details open>
+              <summary>Documentation</summary>
+              <button className={activeView === 'docs' ? 'active' : ''} onClick={() => showView('docs')} type="button">Wiki / docs</button>
+              <button className={activeView === 'qpu-docs' ? 'active' : ''} onClick={() => showView('qpu-docs')} type="button">QPU Documentation</button>
+            </details>
+            <button className={activeView === 'particles' ? 'active' : ''} onClick={() => showView('particles')} type="button">Particle visualization</button>
+            <button className={activeView === 'module-tester' ? 'active' : ''} onClick={() => showView('module-tester')} type="button">Circuit correction lab</button>
+            <details open>
+              <summary>File upload and download</summary>
+              <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Upload files</button>
+              <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Download files</button>
+            </details>
+            <button className={activeView === 'more' ? 'active' : ''} onClick={() => showView('more')} type="button">More</button>
+            <button className="danger" onClick={resetSite} type="button">Reset site</button>
+          </div>
         </div>
       </nav>
 
