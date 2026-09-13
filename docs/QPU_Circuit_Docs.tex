@@ -32,8 +32,8 @@
 \hypersetup{
   pdftitle={QPU Static Circuit Compiler: Complete Protocol and Gate Reference},
   pdfauthor={Bailey Forbes},
-  pdfsubject={QPU protocol syntax, AST behavior, quantum gates, mathematics, and truth tables},
-  pdfkeywords={QPU, quantum circuit, protocol, AST, truth table}
+  pdfsubject={QPU protocol syntax, quantum gates, mathematics, and truth tables},
+  pdfkeywords={QPU, quantum circuit, protocol, system syntax, truth table}
 }
 
 \pagestyle{fancy}
@@ -88,7 +88,7 @@
 \newcommand{\bra}[1]{\langle #1\rvert}
 \newcommand{\status}[1]{\textsf{\small #1}}
 \newcommand{\implemented}{\textcolor{QpuGreen}{\status{lowered/executed}}}
-\newcommand{\parsedonly}{\textcolor{QpuAmber}{\status{parsed only}}}
+\newcommand{\acceptedonly}{\textcolor{QpuAmber}{\status{accepted, not executed}}}
 \newcommand{\internal}{\textcolor{QpuCyan}{\status{compiler-internal}}}
 
 \newcommand{\GateSegment}[1]{%
@@ -171,8 +171,8 @@
 \vspace{0.35in}
 \begin{minipage}{0.82\textwidth}
 \small\color{QpuNavy}
-This guide is derived from the current TypeScript AST parser, gate registry,
-compiler, simulator, and truth-table implementation. It distinguishes syntax
+This guide describes the current QPU language, gate set, compiler, simulator,
+and truth-table system. It distinguishes syntax
 that produces executable circuit gates from compatibility syntax that is only
 recorded in the compiler log.
 \end{minipage}
@@ -190,7 +190,7 @@ of circuit gates:
 \[
 \text{protocol source}\longrightarrow
 \text{logical lines}\longrightarrow
-\text{AST commands}\longrightarrow
+\text{QPU instructions}\longrightarrow
 \text{scoped tokens}\longrightarrow
 \text{gates}\longrightarrow
 \text{state-vector simulation}.
@@ -204,16 +204,16 @@ see the same ordered gate list even when the source contains nested processes.
 \toprule
 Status & Meaning\\
 \midrule
-\implemented & The AST accepts the command and the compiler emits behavior
+\implemented & The QPU language accepts the instruction and the compiler emits behavior
 that the simulator executes.\\
-\parsedonly & The AST accepts the command and preserves it in parsed output or
+\acceptedonly & The QPU language accepts the instruction and preserves it in compiler output or
 the compiler log, but no visual/simulator operation is emitted yet.\\
 \internal & The compiler may emit the operation itself, but protocol source
 cannot name it directly. \code{RESET} is the important example.\\
 \bottomrule
 \end{tabularx}
 
-\subsection{Current AST command inventory}
+\subsection{QPU instruction inventory}
 
 \begin{longtable}{>{\ttfamily}p{0.24\textwidth}p{0.18\textwidth}p{0.48\textwidth}}
 \toprule
@@ -228,16 +228,82 @@ SET, CREATETOKEN & \implemented & Initialize/alias tokens and reserve wires.\\
 RUNCHILD, CALL & \implemented & Expand a catalog/library child process.\\
 RETURNVALS, ACCEPTVALS & \implemented & Bind child and process outputs.\\
 MAIN-PROCESS, INCREASECYCLE & \implemented & Mark a process and flush cycle workspace.\\
-FREE, DELETETOKEN, DECLARECHILD & \parsedonly & Lifetime/declaration hints; currently logged.\\
-JOIN, SPLIT & \parsedonly & Register-memory compatibility syntax.\\
-COMPILEPROCESS, MASTERVAL & \parsedonly & Process-control compatibility syntax.\\
-\code{SAVE_STATE}, \code{LOAD_STATE} & \parsedonly & Checkpoint compatibility syntax.\\
+FREE, DELETETOKEN, DECLARECHILD & \acceptedonly & Lifetime/declaration hints; currently logged.\\
+JOIN, SPLIT & \acceptedonly & Register-memory compatibility syntax.\\
+COMPILEPROCESS, MASTERVAL & \acceptedonly & Process-control compatibility syntax.\\
+\code{SAVE_STATE}, \code{LOAD_STATE} & \acceptedonly & Checkpoint compatibility syntax.\\
 \bottomrule
 \end{longtable}
 
 \textbf{Not source syntax:} \code{RESET} exists in the gate registry, but it is
-not in the parser's supported-operation list. Write \code{SET wire 0p};
+not a supported source instruction. Write \code{SET wire 0p};
 the compiler schedules internal \code{RESET} gates for zeroed workspace.
+
+\section{First circuit: from source to result}
+
+The shortest useful learning path is to prepare one qubit, transform it,
+measure it, and declare it as an output:
+\begin{lstlisting}
+MAIN-PROCESS FirstCircuit
+CREATETOKEN -I Q
+SET Q 0p
+H -I Q -O Q
+MEASURE -I Q
+RETURNVALS Q
+\end{lstlisting}
+
+\subsection{Read the program line by line}
+
+\begin{enumerate}
+  \item \code{MAIN-PROCESS FirstCircuit} gives the protocol a name.
+  \item \code{CREATETOKEN -I Q} reserves a logical wire named Q.
+  \item \code{SET Q 0p} prepares Q in the basis state $\ket0$.
+  \item \code{H -I Q -O Q} applies Hadamard to that same wire, producing
+  $\ket+=(\ket0+\ket1)/\sqrt2$.
+  \item \code{MEASURE -I Q} samples 0 or 1 and collapses the state.
+  \item \code{RETURNVALS Q} declares Q as the first public result.
+\end{enumerate}
+
+\begin{center}
+\begin{tikzpicture}[scale=.95]
+  \draw[thick] (0,0)--(8,0);
+  \node[left] at (0,0) {$\ket0$ Q};
+  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.7cm,minimum height=.6cm,font=\bfseries] at (2,0) {H};
+  \node[above] at (3.6,0) {$\ket+$};
+  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.7cm,minimum height=.6cm,font=\bfseries] at (5.2,0) {M};
+  \draw[-{Latex[length=2.5mm]},QpuRed,thick] (5.6,0)--(7.7,0);
+  \node[above] at (7,0) {0 or 1};
+\end{tikzpicture}
+\end{center}
+
+\subsection{What one run means}
+
+One execution gives one random-looking sample. For this circuit, theory predicts
+equal probability for 0 and 1. Getting 0 once does not mean H failed, and
+getting 1 once does not prove a bias. Repeat the circuit to compare observed
+frequencies with the predicted distribution.
+
+\subsection{Adding user-controlled input}
+
+Move a wire into PARAMS when callers or truth-table rows should choose its
+start state:
+\begin{lstlisting}
+PARAMS: Input:state
+
+MAIN-PROCESS Inverter
+X -I Input -O Input
+MEASURE -I Input
+RETURNVALS Input
+\end{lstlisting}
+The matching deterministic truth table is:
+\begin{center}
+\begin{tabular}{c|c}\toprule Input & Output\\\midrule
+\code{0p}&\code{1p}\\
+\code{1p}&\code{0p}\\\bottomrule
+\end{tabular}
+\end{center}
+The rest of this manual explains every symbol in these examples before moving
+to multi-qubit gates, child processes, and full truth-table files.
 
 \section{Lexical and file syntax}
 
@@ -257,79 +323,401 @@ CCNOT -I A B \
 The continuation backslash must be the final character; spaces after it prevent
 continuation. Blank logical lines are discarded.
 
-\subsection{Comments}
+\subsection{Hash comments}
 
 \begin{lstlisting}
 # Whole-line or trailing hash comment
 H -I Q:0 -O Q:0  # prepare |+>
+\end{lstlisting}
+A hash starts a comment that continues through the logical line. Comments are
+for explanations and do not become instructions. Because continuation joining
+happens first, a hash on a continued logical line can hide text that appeared
+on a later physical line. Prefer comments after a complete instruction.
 
+\subsection{Block comments}
+
+\begin{lstlisting}
 /* A block comment may span logical lines. */
 PHASE=pi/2 -I Q:0 -O Q:0
 \end{lstlisting}
 
-Continuation joining happens before comments are removed. Hash comments run to
-the end of a logical line. C-style block comments use \code{/*} and \code{*/}.
+Text from \code{/*} through \code{*/} is ignored. A block may occupy one line
+or continue across several lines. Block comments are useful for temporarily
+annotating a region, but they should not be nested. Keep delimiters visually
+obvious so an omitted closing marker does not hide the remainder of a file.
 
-\subsection{Protocol header}
+\subsection{\code{PARAMS:}: the process input declaration}
 
 \begin{lstlisting}
 PARAMS: A:state B:state Theta:float Count:int
-
-MAIN-PROCESS Example
 \end{lstlisting}
 
 \code{PARAMS:} is recognized only when it is the first non-comment logical
 line. Each whitespace-separated entry containing a colon becomes
-\code{name:type}. The parser does not restrict the type string:
+\code{name:type}. Declaration order is interface order: RUNCHILD inputs and
+truth-table input columns map from left to right.
+
+Long declarations can use continuation:
+\begin{lstlisting}
+PARAMS: A0:state A1:state B0:state B1:state \
+        Cin:state Width:int
+\end{lstlisting}
+
+The system retains the type text:
 \begin{itemize}
   \item \code{state} entries become user-facing circuit inputs and truth-table
-  input columns;
+  input columns. Each participating state parameter resolves to a qubit wire.
   \item \code{int} and \code{float} entries are retained but excluded from
-  user-facing qubit controls;
-  \item other type names are retained as written.
+  user-facing qubit controls and truth-table state inputs. They describe
+  numeric process metadata rather than prepared qubits.
+  \item other type names are retained as written. Because they are not one of
+  the recognized numeric exclusions, they may be exposed like stateful
+  parameters; prefer \code{state}, \code{int}, or \code{float} for predictable
+  behavior.
 \end{itemize}
-The first \code{MAIN-PROCESS name} supplies the process name. If none exists,
-the AST uses \code{InlineProcess}.
 
-\subsection{Token references, cycles, and constants}
+PARAMS has a colon after the keyword; \code{MAIN-PROCESS} does not. An empty or
+misplaced PARAMS line is not a substitute for a valid first-line declaration.
+The process's MAIN-PROCESS instruction is described in the composition chapter.
 
-\begin{tabularx}{\textwidth}{>{\ttfamily}l X}
-\toprule
-\normalfont\bfseries Form & \bfseries Meaning\\
-\midrule
-Q & Bare symbolic token.\\
-\$Q & Parameter/alias spelling; the leading dollar is removed during address
-resolution.\\
-Q:3 & Cycle/bit suffix; everything from the first colon is removed for the
-current visual wire mapping. Thus \code{Q:0} and \code{Q:7} map to \code{Q}.\\
-0p & Computational basis state $\ket{0}=[1,0]^T$.\\
-1p & Computational basis state $\ket{1}=[0,1]^T$.\\
-sp & Equal superposition $\ket{+}=(\ket{0}+\ket{1})/\sqrt2$.\\
-0p\_dimN, 1p\_dimN, sp\_dimN & Also recognized as constants for an integer
-\code{N}; the current compiler uses the same one-qubit initialization behavior.\\
-\bottomrule
-\end{tabularx}
+\subsection{Protocol file forms}
 
-Constants are case-insensitive and shared by canonical constant name. Numeric
-workspace names passed to a child are scoped to the parent workspace; other
-child-local names are scoped per invocation.
+The normal authoring format is plain UTF-8 QPU text saved as
+\code{ProcessName.qpucir}. A \code{.qpucir.txt} download is also plain source
+and is useful where browsers or editors insist on a text extension. Uploading
+plain text derives the display name from MAIN-PROCESS.
 
-\subsection{Flags and argument boundaries}
-
-Gate rows use \code{-I} and \code{-O}:
-\begin{lstlisting}
-GATE -I input1 input2 -O output
+The loader can also accept a JSON export envelope:
+\begin{lstlisting}[language={}]
+{
+  "format": "qpucir",
+  "version": 1,
+  "name": "First circuit",
+  "source": "MAIN-PROCESS FirstCircuit\nRETURNVALS Q"
+}
 \end{lstlisting}
-Each list ends at the next token beginning with a hyphen. Flags are
-case-insensitive. Positional \code{args} still contain every token after the
-opcode, including flags. The AST also records \code{-$R} as
-\code{noParameterSubstitution}; the current compiler does not act on that flag.
+The source string is the authoritative language text. Export envelopes may
+also contain compiled qubit count, gates, token map, and export timestamp
+metadata, but compilation from source determines current behavior.
+
+\section{Names and token references}
+
+A \emph{token} is the QPU language's name for a logical storage location. For
+the circuits in this guide, a token normally identifies one qubit wire.
+Instructions refer to tokens instead of physical machine addresses. During
+compilation, the system resolves each live token to an integer qubit index.
+This indirection makes protocols readable and lets child processes have private
+workspace without colliding with their parents.
+
+\subsection{Token names}
+
+A bare token is written as a whitespace-delimited name:
+\begin{lstlisting}
+Q
+Control
+CarryOut
+scratch_2
+0
+\end{lstlisting}
+Names are case-sensitive even though instruction names are not:
+\code{Carry} and \code{carry} are distinct tokens. A name cannot contain
+whitespace because whitespace separates language elements. Avoid names that
+begin with a hyphen: inside a flag list, any hyphen-prefixed token is treated
+as the beginning of another flag.
+
+Tokens are allocated lazily. Mentioning a token in a gate, a state-setting
+instruction, or \code{CREATETOKEN} gives it a wire when compilation needs one.
+Consequently, source order affects the internal numeric wire index, but not the
+meaning of a consistently named circuit.
+
+\subsection{Direct references}
+
+A direct reference is simply the token's name:
+\begin{lstlisting}
+SET Q 0p
+H -I Q -O Q
+MEASURE -I Q
+RETURNVALS Q
+\end{lstlisting}
+Every occurrence resolves to the same token within that process invocation.
+For a one-qubit gate, repeat the name after both \code{-I} and \code{-O}.
+This does not copy the state. It says that Q is the instruction's incoming
+wire and that the same Q wire is mutated in place.
+
+\subsection{Parameter references with a dollar sign}
+
+A leading dollar sign is the explicit parameter/reference spelling:
+\begin{lstlisting}
+PARAMS: Input:state
+MAIN-PROCESS DollarReference
+SET Local $Input
+H -I $Input -O $Input
+RETURNVALS Local
+\end{lstlisting}
+Address resolution removes the leading \code{$}. Thus \code{Input} and
+\code{$Input} ultimately refer to the same declared parameter. The dollar
+form is especially useful inside reusable child protocols because it visually
+separates caller-supplied values from child-local workspace.
+
+\code{SET Local \$Input} creates an alias: Local resolves to the same underlying
+wire as Input. It does \emph{not} clone an unknown quantum state. Quantum states
+cannot generally be copied because of the no-cloning theorem; aliasing avoids
+claiming that a physical copy occurred.
+
+\subsection{Cycle-qualified references with \code{:}}
+
+A token may carry a suffix after a colon:
+\begin{lstlisting}
+Q:0
+Q:1
+Carry:next
+\end{lstlisting}
+The current system strips the colon and everything after it when mapping source
+references to visual qubit wires. Therefore all three examples above whose
+base is Q---\code{Q:0}, \code{Q:1}, and bare \code{Q}---identify the same
+logical wire. The suffix is protocol notation for a stage, cycle, or bit
+version; it does not create a second qubit.
+
+\begin{lstlisting}
+SET Q:0 0p
+H -I Q:0 -O Q:1
+MEASURE -I Q:2
+\end{lstlisting}
+This example applies H to one wire and then measures that same wire. The
+changing suffix communicates progression to a human reader, while
+\code{INCREASECYCLE} provides the actual compiler cycle boundary.
+
+\textbf{Practical rule:} if two values must exist simultaneously, give them
+different base names. Do not expect \code{Q:0} and \code{Q:1} to hold two
+independent states.
+
+\subsection{Aliases created by \code{SET}}
+
+When the second operand of SET is not a built-in state constant, SET creates a
+name alias:
+\begin{lstlisting}
+SET Working Input
+SET Output Working
+X -I Output -O Output
+\end{lstlisting}
+After resolution, Working, Output, and Input name one wire. Mutating any alias
+mutates that wire for every alias. This behavior is useful for readable names
+and process binding, but it is not assignment in the classical
+``copy a value into a new variable'' sense.
+
+Aliases are resolved within a process frame. PARAMS and parent/child bindings
+take precedence over ordinary child-local scoping, ensuring that an operation
+on a bound parameter affects the caller's intended wire.
+
+\subsection{Numeric workspace references}
+
+Bare numeric names such as \code{0}, \code{1}, and \code{2} are valid token
+names and are common in reusable arithmetic children:
+\begin{lstlisting}
+SET 0:0 $A
+SET 1:0 $B
+SET 2:0 $Cin
+\end{lstlisting}
+When a child process uses a numeric workspace name, the compiler places it in
+the parent invocation's workspace namespace. This lets nested adders reuse the
+same compact source names without globally identifying every child invocation's
+scratch wires.
+
+Numeric token names are not number literals. \code{2} names a wire; it does not
+mean the integer two or the basis state $\ket{2}$.
+
+\subsection{Process scope and child-local references}
+
+Each process invocation receives a unique scope. A local name such as
+\code{Scratch} in two separate child calls therefore denotes two separately
+resolved local references unless output or parameter binding deliberately joins
+them. Conceptually, compilation turns:
+\begin{lstlisting}
+RUNCHILD Worker -I A -O First
+RUNCHILD Worker -I B -O Second
+\end{lstlisting}
+into two independent Worker frames. This is similar to local variables in two
+function calls. PARAMS map caller references into the frame, and RETURNVALS map
+selected frame references back out.
+
+\section{Built-in state constants}
+
+State constants describe how a wire begins. They are not ordinary token names,
+even though they participate in address resolution. Constants are
+case-insensitive and may be written with a leading dollar sign. The three
+supported base constants are \code{0p}, \code{1p}, and \code{sp}; the letter
+\code{p} distinguishes protocol state notation from ordinary numbers.
+
+\subsection{\code{0p}: the zero basis state}
+
+\code{0p} denotes
+\[
+\ket0=\begin{bmatrix}1\\0\end{bmatrix}.
+\]
+\begin{lstlisting}
+SET Output 0p
+\end{lstlisting}
+For workspace, this schedules zero preparation. The compiler batches pending
+zero preparations into internal RESET operations immediately before the next
+real gate, at an \code{INCREASECYCLE}, or at process end. RESET is deliberately
+not source syntax; \code{SET Output 0p} is the public way to request zero.
+
+Zero is the usual target initialization for reversible AND, OR, and XOR:
+with $t=0$, the mutation $t\leftarrow t\oplus f(x)$ leaves $t=f(x)$.
+
+\subsection{\code{1p}: the one basis state}
+
+\code{1p} denotes
+\[
+\ket1=\begin{bmatrix}0\\1\end{bmatrix}.
+\]
+\begin{lstlisting}
+SET Flag 1p
+\end{lstlisting}
+The compiler realizes one preparation by applying X to a zero-initialized
+wire. A target beginning in one is useful when the desired reversible result is
+the complement of a Boolean predicate. For example,
+$1\oplus(A\land B)=\neg(A\land B)$, which is NAND.
+
+\subsection{\code{sp}: equal superposition}
+
+\code{sp} denotes the plus state
+\[
+\ket+=\frac{\ket0+\ket1}{\sqrt2}
+=\frac1{\sqrt2}\begin{bmatrix}1\\1\end{bmatrix}.
+\]
+\begin{lstlisting}
+SET Probe sp
+\end{lstlisting}
+The compiler realizes this preparation with a Hadamard gate. If immediately
+measured, the result is 0 or 1 with equal probability. It is not merely a hidden
+classical random bit: both amplitudes coexist and can interfere after later
+phase and Hadamard operations.
+
+In an expected truth-table \emph{output} cell, \code{sp} has a different
+testing role: it means either measured bit is acceptable. Context therefore
+matters---protocol SET initializes a plus state, while expected output metadata
+uses \code{sp} as a don't-care marker.
+
+\subsection{Dimension-suffixed constants}
+
+The language also recognizes:
+\begin{lstlisting}
+0p_dim2
+1p_dim8
+sp_dim4
+\end{lstlisting}
+The suffix must be \code{_dim} followed by one or more decimal digits. These
+forms preserve compatibility with protocols that annotate a state constant's
+intended dimension. In the current simulator they still perform the same
+single-wire preparation as their unsuffixed forms; the dimension number does
+not allocate a multi-qubit register or change vector size.
+
+\subsection{Constants and state parameters}
+
+For an ordinary local token, SET emits preparation behavior. For a PARAMS entry
+typed \code{state}, SET supplies a default instead:
+\begin{lstlisting}
+PARAMS: Input:state
+MAIN-PROCESS DefaultInput
+SET Input 0p
+X -I Input -O Input
+RETURNVALS Input
+\end{lstlisting}
+The UI or truth-table runner may replace the default start state for Input.
+This distinction is what allows one compiled protocol to be tested over every
+binary input row instead of hard-wiring its parameter to zero.
+
+\section{Instruction flags and argument boundaries}
+
+\subsection{\code{-I}: input and control references}
+
+\code{-I} begins the instruction's input list:
+\begin{lstlisting}
+H     -I Target       -O Target
+CNOT -I Control      -O Target
+CCNOT -I A B          -O Target
+\end{lstlisting}
+Its interpretation depends on the gate. For a one-qubit gate, the input names
+the same wire that the output mutates. For CNOT/CZ/CY it names one control. For
+CCNOT and the two-input derived logic gates it names two controls. Input order
+does not matter to symmetric predicates such as AND or XOR, but it remains part
+of the written instruction and should be kept consistent for readability.
+
+\subsection{\code{-O}: output and target references}
+
+\code{-O} begins the output list. For most gates its first token is the target
+wire whose amplitudes are changed:
+\begin{lstlisting}
+X -I Q -O Q
+AND -I A B -O Result
+\end{lstlisting}
+\code{-O} does not mean ``allocate a fresh classical output.'' The target may
+already contain a quantum state, and reversible logic XORs its result into that
+existing state. SWAP is exceptional: it requires two outputs matching its two
+inputs. MEASURE takes no output flag because the measurement map stores its
+classical result.
+
+\subsection{Where a flag list ends}
+
+An \code{-I} or \code{-O} list continues until the next token beginning with a
+hyphen or the end of the line:
+\begin{lstlisting}
+CCNOT -I A B -O Carry -$R
+\end{lstlisting}
+Here A and B belong to \code{-I}, Carry belongs to \code{-O}, and
+\code{-$R} starts a separate flag. This rule is why token names should not
+begin with a hyphen.
+
+Flags are case-insensitive, so \code{-i} and \code{-o} work, but uppercase is
+the documented style. Supplying flags in an unusual order may still parse, but
+\code{-I} followed by \code{-O} is the clearest and matches generated source.
+
+\subsection{No-parameter-substitution marker}
 
 \begin{lstlisting}
 PHASE=pi/4 -I Q -O Q -$R
 \end{lstlisting}
+The language recognizes this marker and preserves it on the instruction record
+as a request not to substitute parameters. The current compiler does not yet
+change address resolution or gate execution because of the marker. It is
+therefore compatibility syntax, not a reliable way to freeze a reference.
+Write explicit token and parameter bindings instead.
 
-\subsection{Gate arity}
+\subsection{Positional arguments}
+
+Not every instruction uses flags. SET, MAIN-PROCESS, RETURNVALS, ACCEPTVALS,
+and several compatibility instructions consume positional words:
+\begin{lstlisting}
+SET Target 0p
+MAIN-PROCESS Example
+RETURNVALS Carry Sum
+\end{lstlisting}
+The command name is the first word and positional arguments follow in order.
+RETURNVALS order is part of the process interface. For non-gate compatibility
+instructions, extra words may be retained even when no execution behavior is
+defined; accepted text should not be mistaken for an implemented effect.
+
+\section{Gate instruction grammar and arity}
+
+\subsection{General gate shape}
+
+\begin{lstlisting}
+GATE -I input_or_controls -O target
+\end{lstlisting}
+The uppercase word selects a gate. \code{-I} lists the incoming wire for a
+one-qubit operation or the controls for a controlled operation. \code{-O}
+names the wire that is mutated. Except for SWAP, gate instructions do not
+create a separate output wire automatically.
+
+\begin{lstlisting}
+H -I Q -O Q
+CNOT -I Control -O Target
+\end{lstlisting}
+In the first row, Q is listed twice because the state flows through H on one
+wire. In the second, Control is preserved and Target is conditionally changed.
+
+\subsection{Why arity matters}
 
 \begin{center}
 \begin{tabular}{lll}
@@ -349,46 +737,394 @@ All counts are exact except \code{MEASURE}. For ordinary single-qubit gates,
 name the same wire in \code{-I} and \code{-O}. The output is the mutated target;
 for controlled gates, \code{-I} contains controls.
 
-\section{Quantum state mathematics}
+\subsection{Validation and common mistakes}
 
-One qubit is a normalized complex vector:
+Arity is part of the language contract. A CNOT with two inputs is not silently
+converted into CCNOT, and a CCNOT with one input is not converted into CNOT.
+The compiler reports whether an instruction has too few or too many inputs or
+outputs.
+
+\begin{lstlisting}
+# Wrong: H needs one output.
+H -I Q
+
+# Wrong: CNOT needs exactly one control.
+CNOT -I A B -O Target
+
+# Right:
+CCNOT -I A B -O Target
+\end{lstlisting}
+
+The target is removed from the compiler's control list if the same resolved
+wire appears on both sides. This is necessary for the normal one-qubit form.
+For controlled gates, do not also list the target as an input; doing so either
+violates arity or obscures the intended control relationship.
+
+\section{Mathematical foundations}
+
+This chapter assumes no prior quantum mechanics. The essential ideas are
+numbers, vectors, probability, and transformations. Quantum notation can look
+unfamiliar, but each symbol has a concrete computational meaning.
+
+\subsection{Real numbers and complex numbers}
+
+The real numbers include familiar values such as $-2$, $0$, $1/3$, and
+$\sqrt2$. A real number can be placed on a one-dimensional number line.
+Quantum amplitudes require a second numerical direction, represented by the
+\emph{imaginary unit}
+\[
+i=\sqrt{-1},\qquad i^2=-1.
+\]
+There is no real number whose square is $-1$, so $i$ extends the number system.
+A complex number has the form
+\[
+z=a+bi,
+\]
+where $a$ is the real part and $b$ is the imaginary part. Examples are
+$3+2i$, $-i$, and $1$ (which is $1+0i$).
+
+Complex arithmetic follows ordinary algebra together with $i^2=-1$:
+\[
+(a+bi)+(c+di)=(a+c)+(b+d)i,
+\]
+\[
+(a+bi)(c+di)=(ac-bd)+(ad+bc)i.
+\]
+For example,
+\[
+(1+i)^2=1+2i+i^2=2i.
+\]
+
+\subsection{The complex plane, magnitude, and conjugate}
+
+A complex number is a point or arrow in a plane: horizontal coordinate $a$,
+vertical coordinate $b$. Its magnitude is the arrow length,
+\[
+|z|=\sqrt{a^2+b^2}.
+\]
+The complex conjugate reflects the arrow across the real axis:
+\[
+z^*=a-bi.
+\]
+Multiplying by the conjugate gives a nonnegative real number:
+\[
+z^*z=(a-bi)(a+bi)=a^2+b^2=|z|^2.
+\]
+Quantum measurement probabilities use $|z|^2$, not $z$ itself. This guarantees
+real, nonnegative probabilities even though amplitudes may be complex.
+
+\subsection{Angles, radians, sine, and cosine}
+
+An arrow in the complex plane may be described by its length $r$ and angle
+$\theta$:
+\[
+a=r\cos\theta,\qquad b=r\sin\theta.
+\]
+Quantum formulas normally measure angles in radians. One full turn is $2\pi$
+radians, a half turn is $\pi$, and a quarter turn is $\pi/2$. Conversion is
+\[
+\theta_{\rm radians}=\theta_{\rm degrees}\frac{\pi}{180}.
+\]
+This is why \code{PHASE=90d} and \code{PHASE=pi/2} describe the same angle.
+
+\subsection{Euler's formula and Euler's identity}
+
+Euler's formula connects complex numbers to rotations:
+\[
+e^{i\theta}=\cos\theta+i\sin\theta.
+\]
+The value $e^{i\theta}$ always has magnitude one. As $\theta$ changes, it moves
+around the unit circle in the complex plane. Important cases are
+\[
+e^{i0}=1,\quad e^{i\pi/2}=i,\quad e^{i\pi}=-1,\quad
+e^{i2\pi}=1.
+\]
+Setting $\theta=\pi$ gives Euler's identity,
+\[
+e^{i\pi}+1=0.
+\]
+In a phase gate, multiplying an amplitude by $e^{i\theta}$ rotates that
+amplitude without changing its magnitude. Its immediate measurement
+probability is unchanged, but its relationship to other amplitudes changes.
+Later gates can convert that relative phase into different probabilities.
+
+\subsection{Vectors and basis vectors}
+
+A column vector is an ordered list of numbers. The two basis vectors used for
+one qubit are
+\[
+\ket0=\begin{bmatrix}1\\0\end{bmatrix},\qquad
+\ket1=\begin{bmatrix}0\\1\end{bmatrix}.
+\]
+The vertical bars and angle bracket form Dirac's \emph{ket} notation.
+\code{0p} prepares $\ket0$ and \code{1p} prepares $\ket1$.
+Any one-qubit pure state is a complex linear combination:
 \[
 \ket{\psi}=\alpha\ket0+\beta\ket1
-=\begin{bmatrix}\alpha\\\beta\end{bmatrix},
-\qquad |\alpha|^2+|\beta|^2=1.
+=\begin{bmatrix}\alpha\\\beta\end{bmatrix}.
 \]
-A gate $U$ acts linearly: $\ket{\psi'}=U\ket{\psi}$. A valid closed-system
-gate is unitary, $U^\dagger U=I$, so normalization is preserved.
+The complex numbers $\alpha$ and $\beta$ are \emph{probability amplitudes}.
+They are not probabilities themselves.
 
-For $n$ qubits, basis states are tensor products and the state has $2^n$
+\subsection{Normalization and the Born rule}
+
+A valid state is normalized:
+\[
+|\alpha|^2+|\beta|^2=1.
+\]
+The Born rule turns amplitudes into measurement probabilities:
+\[
+P(0)=|\alpha|^2,\qquad P(1)=|\beta|^2.
+\]
+For the plus state,
+\[
+\ket+=\frac{\ket0+\ket1}{\sqrt2},
+\]
+both amplitudes are $1/\sqrt2$. Squaring their magnitudes gives
+$P(0)=P(1)=1/2$. The factor $1/\sqrt2$ is therefore required; writing
+$\ket0+\ket1$ without normalization would produce total probability two.
+
+\subsection{Matrices as gates}
+
+A matrix is a rectangular array of numbers. A one-qubit gate is represented by
+a $2\times2$ complex matrix. Matrix-vector multiplication computes the new
 amplitudes:
 \[
-\ket{\Psi}=\sum_{x=0}^{2^n-1} a_x\ket{x},\qquad
-\sum_x |a_x|^2=1,\qquad
-\ket{AB}=\ket A\otimes\ket B.
+\begin{bmatrix}a&b\\c&d\end{bmatrix}
+\begin{bmatrix}\alpha\\\beta\end{bmatrix}
+=
+\begin{bmatrix}a\alpha+b\beta\\c\alpha+d\beta\end{bmatrix}.
 \]
-The simulator stores this state vector directly. A controlled operation applies
-its target matrix only to basis components whose controls satisfy its predicate.
+For example, the X gate exchanges the two amplitudes:
+\[
+\begin{bmatrix}0&1\\1&0\end{bmatrix}
+\begin{bmatrix}\alpha\\\beta\end{bmatrix}
+=\begin{bmatrix}\beta\\\alpha\end{bmatrix}.
+\]
+Applying gates in source order means multiplying by matrices in the same
+temporal order: if U acts first and V second, then
+\[
+\ket{\psi_{\rm final}}=V(U\ket{\psi_{\rm initial}})=VU\ket{\psi_{\rm initial}}.
+\]
 
-\subsection{Measurement}
+\subsection{Unitarity and reversibility}
 
-For a measured qubit $q$,
+Closed-system quantum gates must preserve total probability. Their matrices are
+\emph{unitary}:
+\[
+U^\dagger U=I.
+\]
+Here $U^\dagger$ means transpose the matrix and complex-conjugate every entry;
+$I$ is the identity matrix. Unitarity guarantees an inverse,
+$U^{-1}=U^\dagger$. Quantum gates therefore cannot normally erase information.
+Classical functions such as AND are embedded reversibly by preserving inputs
+and XORing the result into a target:
+\[
+\ket{a,b,t}\mapsto\ket{a,b,t\oplus(a\land b)}.
+\]
+Measurement and reset are exceptions because they interact with classical
+outcomes or preparation rather than acting as closed unitary gates.
+
+\section{Qubits, phase, and the Bloch sphere}
+
+\subsection{A qubit is not just an unknown bit}
+
+A classical bit is exactly 0 or 1. A qubit may be in any normalized
+superposition $\alpha\ket0+\beta\ket1$. This does not mean that the qubit
+secretly chose a classical value before measurement. Relative amplitudes can
+interfere, producing effects no ordinary random bit can reproduce.
+
+\subsection{Global phase and relative phase}
+
+Multiplying an entire state by a unit complex number does not change physical
+predictions:
+\[
+\ket{\psi}\quad\text{and}\quad e^{i\gamma}\ket{\psi}
+\]
+have the same measurement probabilities and are considered equivalent up to a
+\emph{global phase}. Relative phase is different. The states
+\[
+\ket+=\frac{\ket0+\ket1}{\sqrt2},\qquad
+\ket-=\frac{\ket0-\ket1}{\sqrt2}
+\]
+give equal 0/1 probabilities if measured immediately, yet H sends
+$\ket+\mapsto\ket0$ and $\ket-\mapsto\ket1$. Their relative sign is observable
+through interference.
+
+\subsection{Bloch-sphere coordinates}
+
+After removing an unobservable global phase, every pure one-qubit state can be
+written with two real angles:
+\[
+\ket{\psi}=
+\cos\left(\frac{\theta}{2}\right)\ket0+
+e^{i\phi}\sin\left(\frac{\theta}{2}\right)\ket1,
+\]
+where $0\leq\theta\leq\pi$ and $0\leq\phi<2\pi$. These angles define a point on
+the unit Bloch sphere:
+\[
+x=\sin\theta\cos\phi,\qquad
+y=\sin\theta\sin\phi,\qquad
+z=\cos\theta.
+\]
+
+\begin{center}
+\begin{tikzpicture}[scale=2.05]
+  \shade[ball color=QpuBlue!10,opacity=.32] (0,0) circle (1);
+  \draw[QpuLine] (0,0) ellipse (1 and .32);
+  \draw[QpuLine,dashed] (0,.98) arc (90:270:.32 and .98);
+  \draw[QpuLine] (0,-.98) arc (-90:90:.32 and .98);
+  \draw[-{Latex[length=2mm]},thick] (0,0)--(0,1.28) node[above] {$z,\ \ket0$};
+  \draw[-{Latex[length=2mm]},thick] (0,0)--(0,-1.28) node[below] {$-z,\ \ket1$};
+  \draw[-{Latex[length=2mm]},thick] (0,0)--(1.25,-.25) node[right] {$x,\ \ket+$};
+  \draw[-{Latex[length=2mm]},thick] (0,0)--(-1.05,-.45) node[left] {$y,\ \ket{+i}$};
+  \draw[-{Latex[length=2.5mm]},very thick,QpuRed] (0,0)--(.62,.72)
+    node[above right] {$\ket{\psi}$};
+  \draw[QpuRed] (0,.42) arc (90:49:.42) node[midway,above] {\small$\theta$};
+  \fill[QpuRed] (.62,.72) circle (.035);
+\end{tikzpicture}
+\end{center}
+
+The north pole is $\ket0$ and the south pole is $\ket1$. The equator contains
+equal-magnitude superpositions. $\ket+$ points along $+x$,
+$\ket-=(\ket0-\ket1)/\sqrt2$ along $-x$,
+and $\ket{+i}=(\ket0+i\ket1)/\sqrt2$ along $+y$.
+
+\subsection{How gates move a Bloch vector}
+
+Ignoring global phase, many one-qubit gates are rotations:
+\begin{itemize}
+  \item X rotates the sphere by $\pi$ around the x-axis, exchanging north and
+  south.
+  \item Y rotates by $\pi$ around the y-axis.
+  \item Z rotates by $\pi$ around the z-axis, changing relative phase.
+  \item S and T rotate around z by $\pi/2$ and $\pi/4$.
+  \item PHASE rotates around z by its supplied angle $\theta$.
+  \item H rotates the coordinate description so the z basis and x basis are
+  exchanged: $\ket0\leftrightarrow\ket+$ and
+  $\ket1\leftrightarrow\ket-$.
+\end{itemize}
+The sphere is a teaching model for one pure qubit. It cannot display the full
+state of entangled multi-qubit systems as one ordinary three-dimensional arrow.
+
+\section{Multiple qubits and entanglement}
+
+\subsection{Tensor products}
+
+Two classical bits have four possibilities; two qubits have four basis vectors:
+\[
+\ket{00},\ \ket{01},\ \ket{10},\ \ket{11}.
+\]
+Independent systems combine with the tensor product $\otimes$. If
+$\ket A=[a_0,a_1]^T$ and $\ket B=[b_0,b_1]^T$, then
+\[
+\ket A\otimes\ket B=
+\begin{bmatrix}
+a_0b_0\\a_0b_1\\a_1b_0\\a_1b_1
+\end{bmatrix}.
+\]
+For $n$ qubits, the simulator stores $2^n$ amplitudes:
+\[
+\ket{\Psi}=\sum_{x=0}^{2^n-1}a_x\ket{x},\qquad
+\sum_x|a_x|^2=1.
+\]
+This exponential growth is why state-vector simulation becomes expensive as
+qubit count increases.
+
+\subsection{Entanglement}
+
+Some multi-qubit states cannot be factored into independent one-qubit states.
+The Bell state
+\[
+\ket{\Phi^+}=\frac{\ket{00}+\ket{11}}{\sqrt2}
+\]
+is entangled. Each qubit measured alone is equally likely to be 0 or 1, but
+their outcomes are perfectly correlated. It can be prepared from $\ket{00}$:
+\begin{lstlisting}
+H -I A -O A
+CNOT -I A -O B
+\end{lstlisting}
+The first gate creates a superposition; the controlled gate correlates B with
+A. Entanglement is not a classical alias. It is a property of the joint
+amplitude vector.
+
+\subsection{Controlled operations}
+
+A controlled gate applies a target operation only on basis components where
+its control condition is true. CNOT applies X when its control is one. If the
+control is in superposition, linearity applies the operation to one branch and
+not the other, which can create entanglement:
+\[
+\frac{\ket0+\ket1}{\sqrt2}\otimes\ket0
+\xrightarrow{\mathrm{CNOT}}
+\frac{\ket{00}+\ket{11}}{\sqrt2}.
+\]
+CCNOT requires both controls to be one. The system's OR and XOR derived gates
+use ``any active'' and ``odd parity'' predicates respectively.
+
+\section{Measurement, probability, and truth tables}
+
+\subsection{Projective measurement}
+
+For a measured qubit $q$ in a multi-qubit state,
 \[
 P(q=1)=\sum_{x:\,x_q=1}|a_x|^2,\qquad
 P(q=0)=1-P(q=1).
 \]
-After sampling $b\in\{0,1\}$, incompatible amplitudes are set to zero and the
-remaining branch is renormalized by $1/\sqrt{P(q=b)}$. Measurement is therefore
-not a unitary matrix operation.
+The simulator samples one outcome. Amplitudes incompatible with that outcome
+become zero; compatible amplitudes are divided by the square root of the kept
+probability so the state is normalized again. Measurement is destructive in
+the sense that the pre-measurement superposition is generally unavailable
+after collapse.
 
-\subsection{Truth tables versus amplitudes}
+\subsection{Single runs and repeated runs}
 
-A classical truth table describes deterministic basis-state behavior. It
-cannot show relative phase or interference. Consequently, the tables below
-compare basis mappings, while matrices and state equations describe the full
-quantum action. In companion \code{.qpuio} tables, cells are \code{0p},
-\code{1p}, or \code{sp}; an expected output \code{sp} is treated as
-``don't care'' during measured-output comparison.
+One simulation run produces one measurement sample. To estimate a probability,
+run the same preparation and circuit many times. If a plus state is measured
+1 approximately 500 times in 1000 shots, the observed frequency $500/1000$
+estimates the theoretical probability $1/2$. More shots reduce ordinary
+sampling noise but never reveal a complex amplitude directly.
+
+\subsection{Truth tables versus quantum amplitudes}
+
+A classical truth table specifies output bits for listed input bits. It is a
+good contract for arithmetic and reversible Boolean circuits operating on
+computational-basis states. It cannot fully describe phase, interference,
+entanglement, or a probability distribution.
+
+The QPU truth-table runner prepares each input row, executes the circuit,
+measures declared RETURNVALS, and compares those measured bits. In companion
+\code{.qpuio} tables, cells are \code{0p}, \code{1p}, or \code{sp}. On an
+expected output, \code{sp} means ``either measured bit is acceptable.'' Use
+state equations and repeated experiments in addition to tables when a circuit's
+purpose is genuinely quantum.
+
+\subsection{A complete interference example}
+
+Starting in zero, two Hadamards restore zero:
+\[
+\ket0\xrightarrow{H}\ket+
+\xrightarrow{H}\ket0.
+\]
+Inserting Z changes the relative phase and changes the final answer:
+\[
+\ket0\xrightarrow{H}\ket+
+\xrightarrow{Z}\ket-
+\xrightarrow{H}\ket1.
+\]
+\begin{lstlisting}
+MAIN-PROCESS Interference
+CREATETOKEN -I Q
+SET Q 0p
+H -I Q -O Q
+Z -I Q -O Q
+H -I Q -O Q
+MEASURE -I Q
+RETURNVALS Q
+\end{lstlisting}
+The middle Z does not change an immediate 0/1 probability, yet interference at
+the final H makes its effect deterministic. This is the central reason the
+system documents matrices and phase as well as truth tables.
 
 \section{Single-qubit primitive gates}
 
@@ -399,6 +1135,10 @@ X=\begin{bmatrix}0&1\\1&0\end{bmatrix},\quad
 X\ket0=\ket1,\quad X\ket1=\ket0,\quad
 X(\alpha\ket0+\beta\ket1)=\beta\ket0+\alpha\ket1.
 \]
+X is the quantum bit flip. On the Bloch sphere it is a half-turn around the
+x-axis. It exchanges the north and south poles and is self-inverse:
+$X^2=I$. Unlike a classical NOT implementation, X remains meaningful on a
+superposition because it exchanges amplitudes linearly without measuring.
 \begin{lstlisting}
 X -I Q:0 -O Q:0
 \end{lstlisting}
@@ -415,7 +1155,10 @@ Y=\begin{bmatrix}0&-i\\i&0\end{bmatrix},\quad
 Y\ket0=i\ket1,\quad Y\ket1=-i\ket0.
 \]
 It flips the basis value like X but adds phases that become observable through
-later interference.
+later interference. Geometrically it is a half-turn around the y-axis and is
+self-inverse, $Y^2=I$. The factors $i$ and $-i$ are global phases for either
+basis state by itself, but on components of a larger superposition they may
+become relative phases.
 \begin{lstlisting}
 Y -I Q -O Q
 \end{lstlisting}
@@ -433,6 +1176,9 @@ Z\ket0=\ket0,\quad Z\ket1=-\ket1.
 \]
 Z does not change a computational-basis measurement, but it changes relative
 phase. For example, $Z\ket+=\ket-=(\ket0-\ket1)/\sqrt2$.
+On the Bloch sphere it is a half-turn around z. It is self-inverse and is the
+simplest example showing why quantum state cannot be reduced to a table of
+immediate measurement probabilities.
 \begin{lstlisting}
 Z -I Q -O Q
 \end{lstlisting}
@@ -448,6 +1194,11 @@ Z -I Q -O Q
 H=\frac1{\sqrt2}\begin{bmatrix}1&1\\1&-1\end{bmatrix},\quad
 H\ket0=\ket+,\quad H\ket1=\ket-.
 \]
+Hadamard changes between the computational z basis and the plus/minus x basis.
+It creates equal magnitudes from a basis state, but the sign of the second
+amplitude depends on the input. It is also self-inverse: applying H twice
+returns the original state. H is commonly used before controlled gates to
+create entanglement and after phase gates to reveal interference.
 \begin{lstlisting}
 SET Q 0p
 H -I Q -O Q
@@ -467,6 +1218,9 @@ interference.
 S=P(\pi/2)=\begin{bmatrix}1&0\\0&i\end{bmatrix},\qquad
 S\ket1=i\ket1,\qquad S^2=Z.
 \]
+S is a quarter-turn around the Bloch sphere's z-axis. It changes $\ket+$ into
+$(\ket0+i\ket1)/\sqrt2$ while leaving basis measurement probabilities
+unchanged. Its inverse is $S^\dagger=P(-\pi/2)$, not S itself.
 \begin{lstlisting}
 S -I Q -O Q
 \end{lstlisting}
@@ -482,6 +1236,11 @@ S -I Q -O Q
 T=P(\pi/4)=\begin{bmatrix}1&0\\0&e^{i\pi/4}\end{bmatrix},\qquad
 T^2=S,\qquad T^4=Z.
 \]
+T is an eighth-turn around z. Together with gates such as H and CNOT, it is an
+important non-Clifford resource for expressing general quantum computations.
+Its inverse is $T^\dagger=P(-\pi/4)$; the current \code{BT} spelling does not
+synthesize that inverse, so use \code{BPHASE=pi/4} when the negative phase is
+required.
 \begin{lstlisting}
 T -I Q -O Q
 \end{lstlisting}
@@ -498,6 +1257,11 @@ P(\theta)=\begin{bmatrix}1&0\\0&e^{i\theta}\end{bmatrix},\qquad
 \alpha\ket0+\beta\ket1\mapsto
 \alpha\ket0+\beta e^{i\theta}\ket1.
 \]
+PHASE is the general form behind S, T, and Z. It preserves
+$|\alpha|^2$ and $|\beta|^2$ because $|e^{i\theta}|=1$, yet rotates the
+relative phase by $\theta$. On the Bloch sphere this is a z-axis rotation up to
+global phase. A later H or another basis-changing gate is normally needed to
+turn that phase difference into changed computational-basis probabilities.
 The angle is embedded in the opcode:
 \begin{lstlisting}
 PHASE=1.5708 -I Q -O Q     # radians
@@ -522,16 +1286,20 @@ denominator. A zero denominator and malformed angle raise an error.
 
 \subsection{Backward-prefix syntax}
 
-The AST recognizes a leading \code{B} before a parseable primitive gate name,
+The QPU language recognizes a leading \code{B} before a supported primitive gate name,
 for example \code{BX}, \code{BH}, \code{BCNOT}, or \code{BSWAP}, and sets
 \code{reverse=true}. (Compiler-internal \code{RESET} remains unavailable in
 source.) Only \code{BPHASE=angle} currently changes emitted behavior: the
 compiler negates the phase angle. For every other gate the flag is metadata
-only. Emitting the ordinary gate still gives the mathematical inverse for the
-self-inverse gates $X,Y,Z,H,\mathrm{CNOT},\mathrm{CCNOT},\mathrm{CZ},
-\mathrm{CY},\mathrm{SWAP}$. In contrast, \code{BS} and \code{BT} do not
-synthesize $S^\dagger$ or $T^\dagger$. Do not rely on B-prefixed forms for
-inverse execution unless the gate is self-inverse or is \code{BPHASE}.
+only. Emitting the ordinary gate still gives the mathematical inverse for these
+self-inverse gates:
+\[
+X,\ Y,\ Z,\ H,\ \mathrm{CNOT},\ \mathrm{CCNOT},\
+\mathrm{CZ},\ \mathrm{CY},\ \mathrm{SWAP}.
+\]
+In contrast, \code{BS} and \code{BT} do not synthesize $S^\dagger$ or
+$T^\dagger$. Do not rely on B-prefixed forms for inverse execution unless the
+gate is self-inverse or is \code{BPHASE}.
 
 \section{Controlled and two-qubit primitive gates}
 
@@ -540,6 +1308,11 @@ inverse execution unless the gate is self-inverse or is \code{BPHASE}.
 \[
 \ket{c,t}\longmapsto\ket{c,t\oplus c}.
 \]
+CNOT leaves the control unchanged. When the control is zero, the target is
+unchanged; when the control is one, X acts on the target. Because the map is a
+permutation of basis states, it is reversible and self-inverse. A
+superposition control can entangle the wires, so ``classical XOR'' describes
+only its basis-state action.
 \begin{lstlisting}
 CNOT -I Control -O Target
 \end{lstlisting}
@@ -555,6 +1328,10 @@ CNOT is a reversible embedding of XOR because it preserves the control.
 \[
 \ket{a,b,t}\longmapsto\ket{a,b,t\oplus(a\land b)}.
 \]
+CCNOT, also called Toffoli, applies X only when both controls are one. It is a
+reversible universal building block for classical computation embedded in a
+quantum circuit. The target's previous value matters: zero computes AND, while
+one computes NAND. The gate is self-inverse.
 \begin{lstlisting}
 CCNOT -I A B -O Target
 \end{lstlisting}
@@ -574,6 +1351,10 @@ With a target initialized to zero, Toffoli computes classical AND reversibly.
 \mathrm{CZ}\ket{c,t}=(-1)^{ct}\ket{c,t},\qquad
 \mathrm{CZ}=\operatorname{diag}(1,1,1,-1).
 \]
+CZ adds a minus sign only to the $\ket{11}$ amplitude. No computational-basis
+bit changes, but superpositions can acquire observable relative phase. CZ is
+symmetric between its two wires, even though QPU syntax writes one as the
+input control and one as the output target. It is self-inverse.
 \begin{lstlisting}
 CZ -I Control -O Target
 \end{lstlisting}
@@ -592,6 +1373,9 @@ The classical columns are unchanged; the quantum phase is the operation.
 \ket{1,0}\mapsto i\ket{1,1},\quad
 \ket{1,1}\mapsto-i\ket{1,0}.
 \]
+CY applies the Pauli Y rotation to the target only when the control is one. Its
+basis-bit pattern resembles CNOT, but the $\pm i$ factors distinguish their
+behavior on superpositions. Since $Y^2=I$, CY is self-inverse.
 \begin{lstlisting}
 CY -I Control -O Target
 \end{lstlisting}
@@ -607,6 +1391,10 @@ CY -I Control -O Target
 \[
 \mathrm{SWAP}\ket{a,b}=\ket{b,a}.
 \]
+SWAP exchanges the complete quantum states of two wires, including amplitudes
+and any correlations with the rest of the register. It does not copy either
+state. Three CNOTs can decompose SWAP, but the QPU system provides it as one
+primitive instruction. Applying SWAP twice restores the original ordering.
 \begin{lstlisting}
 SWAP -I A B -O A B
 \end{lstlisting}
@@ -620,7 +1408,7 @@ the same order, as the inputs.
 
 \section{Derived logical gates}
 
-Derived gates are direct AST operations implemented as reversible target
+Derived gates are QPU instructions implemented as reversible target
 mutations. Inputs are preserved. If target $t$ starts in zero, AND/OR/XOR
 write the familiar classical function. If it does not, the true behavior is
 the XOR embedding shown below.
@@ -630,6 +1418,10 @@ the XOR embedding shown below.
 \[
 t'\;=\;t\oplus1.
 \]
+NOT is the derived logical spelling of a bit flip. In the current simulator it
+uses the same X matrix on the output target. The required input establishes the
+one-input instruction shape, but a distinct input is not copied into the
+output; use the same token on both sides.
 \begin{lstlisting}
 NOT -I Target -O Target
 \end{lstlisting}
@@ -644,6 +1436,10 @@ for input and output; a distinct input token is not copied.
 \[
 t'=t\oplus(a\land b).
 \]
+AND flips the target exactly on the basis components where both controls are
+one. This is Toffoli-style behavior. It remains linear on superpositions and
+may entangle the target with its controls. Calling it AND is convenient only
+when the target is deliberately initialized.
 \begin{lstlisting}
 SET Out 0p
 AND -I A B -O Out
@@ -659,6 +1455,10 @@ AND -I A B -O Out
 \[
 t'=t\oplus(a\land b)\oplus1.
 \]
+NAND first performs the all-controls-active mutation and then inverts the
+target. With target zero it produces the familiar NAND column. With target one
+it instead produces AND, illustrating why reversible target state must always
+be included in the full mathematical definition.
 \begin{lstlisting}
 SET Out 0p
 NAND -I A B -O Out
@@ -674,6 +1474,10 @@ NAND -I A B -O Out
 \[
 t'=t\oplus(a\lor b).
 \]
+OR uses an ``any control is one'' predicate. If either or both controls are
+active, the target is flipped. This direct derived operation is equivalent on
+basis states to combining XOR and AND through
+$a\lor b=a\oplus b\oplus(a\land b)$.
 \begin{lstlisting}
 SET Out 0p
 OR -I A B -O Out
@@ -690,6 +1494,9 @@ For bits, $a\lor b=a\oplus b\oplus(a\land b)$.
 \[
 t'=t\oplus a\oplus b.
 \]
+XOR flips the target when an odd number of controls is one. With two inputs,
+this is the ordinary exclusive-or predicate. The parity definition explains
+why the 11 row does not flip: two active controls have even parity.
 \begin{lstlisting}
 SET Out 0p
 XOR -I A B -O Out
@@ -737,6 +1544,12 @@ makes the target an alias of that source. A \code{state} parameter's constant
 SET is treated as a runtime default, allowing the UI or truth-table runner to
 supply its actual start state.
 
+\textbf{Syntax:} exactly one target and one value are meaningful. SET has no
+\code{-I} or \code{-O} flags. It does not perform classical assignment at each
+simulation step; it establishes compilation-time preparation or reference
+identity. See the dedicated constants and aliases chapters before using SET on
+unknown quantum data.
+
 \subsection{\code{CREATETOKEN} --- reserve wires (\implemented)}
 
 \begin{lstlisting}
@@ -745,15 +1558,35 @@ CREATETOKEN -I Sum Carry Workspace
 Every \code{-I} token immediately claims a stable wire index. No \code{-O} is
 used. This is useful for declared outputs before their first gate.
 
-\subsection{\code{DELETETOKEN} and \code{FREE} --- lifetime hints (\parsedonly)}
+\code{CREATETOKEN} does not initialize amplitudes by itself. Pair new workspace
+with SET before relying on its value. Listing outputs early also makes process
+structure easier to review:
+\begin{lstlisting}
+CREATETOKEN -I Sum Carry
+SET Sum 0p
+SET Carry 0p
+\end{lstlisting}
+
+\subsection{\code{DELETETOKEN} --- token lifetime marker (\acceptedonly)}
 
 \begin{lstlisting}
 DELETETOKEN -I Workspace
+\end{lstlisting}
+This says that the named token is no longer needed by the protocol. The current
+compiler records the instruction but does not remove, reset, or reuse its wire.
+It is unsafe to assume that deletion destroys sensitive state or makes a qubit
+available. Unused symbolic holes may disappear during final layout compaction,
+which is a separate implementation optimization.
+
+\subsection{\code{FREE} --- releasable-memory marker (\acceptedonly)}
+
+\begin{lstlisting}
 FREE -I ScratchA ScratchB
 \end{lstlisting}
-Both commands are accepted and logged. They do not currently remove, reset, or
-reuse a wire; later compaction removes symbolic registers that never participate
-in an emitted gate or exposed parameter.
+FREE marks one or more input references as releasable. Like DELETETOKEN, it is
+currently a compatibility/lifetime hint: no physical reset, deallocation, or
+wire reuse occurs. Use SET with \code{0p} when the intended behavior is actual
+zero preparation for subsequent computation.
 
 \subsection{\code{INCREASECYCLE} --- cycle boundary (\implemented)}
 
@@ -764,17 +1597,39 @@ The compiler flushes pending zero-initializations into an internal batched
 \code{RESET}, increments the cycle counter, and prepares workspace for following
 operations. Cycle suffixes on tokens do not create separate visual wires.
 
-\subsection{\code{JOIN} and \code{SPLIT} (\parsedonly)}
+Cycles organize protocol stages. They are not wall-clock timing guarantees and
+do not cause gates to execute concurrently. The final circuit is still an
+ordered gate sequence. Their practical implemented effect today is the
+workspace-zero boundary.
+
+\subsection{\code{JOIN} --- composite-register marker (\acceptedonly)}
 
 \begin{lstlisting}
 JOIN -I A B -O AB
+\end{lstlisting}
+JOIN expresses the intent to view smaller registers as one composite register.
+For independent inputs, the mathematical construction is
+\[
+\ket{AB}=\ket A\otimes\ket B.
+\]
+Tensor product increases dimension multiplicatively: two one-qubit vectors of
+length two produce one two-qubit vector of length four. The current compiler
+logs JOIN but emits no tensor-product allocation, alias, or visible gate.
+Because JOIN is not a gate instruction, its input/output count is not currently
+validated.
+
+\subsection{\code{SPLIT} --- component-register marker (\acceptedonly)}
+
+\begin{lstlisting}
 SPLIT AB A 2
 \end{lstlisting}
-The intended mathematical model for a clean join is
-$\ket{AB}=\ket A\otimes\ket B$. A split into independent pure states is only
-possible when the composite state factors. The current compiler merely logs
-these rows: no tensor-product allocation, extraction, gate, or alias is emitted.
-Because these are non-gate commands, the parser does not enforce their arity.
+SPLIT expresses the reverse organizational intent: identify a component of a
+larger register. A general entangled state cannot be factored into independent
+pure states, so ``splitting'' is not equivalent to slicing an ordinary array.
+For example, $(\ket{00}+\ket{11})/\sqrt2$ has no separate pure state for A.
+The current compiler logs the positional arguments but performs no extraction,
+measurement, or aliasing. Code requiring an implemented result should instead
+operate directly on named wires and RETURNVALS.
 
 \section{Process composition and return values}
 
@@ -784,29 +1639,52 @@ Because these are non-gate commands, the parser does not enforce their arity.
 MAIN-PROCESS FullAdder
 \end{lstlisting}
 This marks the process body and supplies its catalog/library name. Compilation
-already begins from the parsed process, so the row itself emits no gate.
+already begins from the named process, so the row itself emits no gate.
+The name is the first positional word after \code{MAIN-PROCESS}; avoid spaces
+inside it. This name connects a protocol to catalog entries, child calls,
+downloads, and companion truth-table metadata. If no marker exists, the system
+uses \code{InlineProcess}, but named processes are strongly recommended.
 
-\subsection{\code{DECLARECHILD} (\parsedonly)}
+\subsection{\code{DECLARECHILD} (\acceptedonly)}
 
 \begin{lstlisting}
 DECLARECHILD SingleBitFullAdder
 \end{lstlisting}
 The declaration is logged. It does not load inline source. Child bodies must
 exist in the external \code{librarySources} catalog when called.
+DECLARECHILD is therefore documentation/compatibility syntax rather than an
+import statement. A successful declaration does not guarantee that a later
+call can resolve. The process catalog supplied to compilation remains the
+source of truth.
 
-\subsection{\code{RUNCHILD} and \code{CALL} (\implemented)}
+\subsection{\code{RUNCHILD} --- expand a child process (\implemented)}
 
 \begin{lstlisting}
 RUNCHILD SingleBitFullAdder \
   -I A B Cin \
   -O Carry Sum
+\end{lstlisting}
+The first positional argument is the child process name. Inputs bind by the
+child's PARAMS order: A maps to the first parameter, B to the second, and Cin
+to the third in this example. Outputs bind by the child's RETURNVALS order.
+Before expansion, each bound parent output is zero-prepared once. Child-local
+names receive a unique scope.
 
+RUNCHILD is compile-time composition, not a dynamic subroutine call in a
+running quantum machine. The child body is recursively expanded into the
+parent's flat gate sequence. This allows the renderer and simulator to inspect
+every resulting gate.
+
+\subsection{\code{CALL} --- alternate child invocation (\implemented)}
+
+\begin{lstlisting}
 CALL SingleBitFullAdder -I A B Cin -O Carry Sum
 \end{lstlisting}
-The two commands currently have the same expansion behavior. The first
-positional argument is the child process name. Inputs bind by PARAMS order;
-outputs bind by the child's RETURNVALS order. Before expansion, each bound
-parent output is zero-prepared once. Child-local names receive a unique scope.
+CALL currently follows the same child lookup, parameter binding, output
+preparation, and expansion path as RUNCHILD. RUNCHILD is used by the bundled
+multi-bit protocols and makes compile-time expansion explicit; CALL is retained
+as an equivalent system spelling. Both fail when the named child is absent from
+the supplied process library.
 
 \subsection{\code{RETURNVALS} (\implemented)}
 
@@ -818,6 +1696,10 @@ child output binding, truth-table output columns, and the UI's preferred
 logical width. Do not use \code{-I} or \code{-O} here: flags would be retained
 as positional return tokens.
 
+RETURNVALS does not measure automatically. Add MEASURE instructions when
+classical outcomes are required. Returning an unmeasured wire preserves it as
+part of the projected quantum output shown by the system.
+
 \subsection{\code{ACCEPTVALS} (\implemented)}
 
 \begin{lstlisting}
@@ -827,6 +1709,11 @@ ACCEPTVALS LocalCarry LocalSum
 Each positional local token aliases the corresponding value from the most
 recent child return list. Direct \code{-O} binding on RUNCHILD/CALL is clearer
 when output names are known.
+
+Ordering is again essential: the first ACCEPTVALS name receives the first
+returned reference, and so on. The instruction refers to the most recently
+completed child expansion in compiler state; inserting another child call
+changes which return list is accepted.
 
 \subsection{Nested full-adder example}
 
@@ -872,30 +1759,59 @@ $A$&$B$&$C_{\rm in}$&$C_{\rm out}$&Sum\\\midrule
 
 \section{Accepted compatibility commands}
 
-The following rows are valid AST commands but currently produce log entries
-only. Their arguments are retained as whitespace-separated strings and their
-arity is not validated.
+These instructions are part of the accepted QPU language, but their present
+effect is to preserve arguments and add a compiler-log entry. Their acceptance
+must not be confused with simulator behavior.
 
-\begin{longtable}{>{\ttfamily}p{0.22\textwidth}p{0.36\textwidth}p{0.32\textwidth}}
-\toprule
-\normalfont\bfseries Command & \bfseries Example & \bfseries Current effect\\
-\midrule
-\endhead
-COMPILEPROCESS & \code{COMPILEPROCESS Child} & Logs process-control text; does
-not load or compile a child. Use RUNCHILD/CALL with library source.\\
-MASTERVAL & \code{MASTERVAL Result} & Logs a final/master-value marker; does
-not alter RETURNVALS.\\
-\code{SAVE_STATE} & \code{SAVE_STATE checkpointA} & Logs a checkpoint request; no
-state snapshot is created.\\
-\code{LOAD_STATE} & \code{LOAD_STATE checkpointA} & Logs a restore request; no state
-is changed.\\
-\bottomrule
-\end{longtable}
+\subsection{\code{COMPILEPROCESS} (\acceptedonly)}
+
+\begin{lstlisting}
+COMPILEPROCESS ChildName
+\end{lstlisting}
+COMPILEPROCESS records a request associated with another process. It does not
+currently locate, compile, or insert that process. Use RUNCHILD or CALL with a
+process available in the compilation library when actual child gates are
+required. Arguments are positional and no arity is enforced.
+
+\subsection{\code{MASTERVAL} (\acceptedonly)}
+
+\begin{lstlisting}
+MASTERVAL Result
+\end{lstlisting}
+MASTERVAL records the intent that a reference is a final or authoritative
+value. It does not change the process interface, measurement behavior, token
+mapping, or RETURNVALS. Use RETURNVALS to expose outputs that the current
+system will actually project and associate with truth-table columns.
+
+\subsection{Save-state checkpoint instruction (\acceptedonly)}
+
+\begin{lstlisting}
+SAVE_STATE checkpointA
+\end{lstlisting}
+\code{SAVE_STATE} records a named checkpoint request. The simulator does not currently
+copy the state vector into a checkpoint store. In particular, later gates and
+measurements proceed exactly as if this line were absent. A log entry is not
+evidence that a recoverable snapshot exists.
+
+\subsection{Load-state checkpoint instruction (\acceptedonly)}
+
+\begin{lstlisting}
+LOAD_STATE checkpointA
+\end{lstlisting}
+\code{LOAD_STATE} records a restore request but does not replace the active state
+vector. It neither validates that a matching \code{SAVE_STATE} appeared nor rewinds
+measurements. Protocols whose correctness depends on restoration must wait for
+runtime support rather than relying on accepted syntax.
 
 \section{Truth-table companion syntax}
 
-Truth tables are metadata paired to a process; they are not \code{.qpucir} AST
-commands. A text \code{.qpuio} file may use spaces or commas:
+Truth tables are metadata paired to a process; they are not \code{.qpucir}
+commands. A protocol describes \emph{how} a circuit works; its companion
+\code{.qpuio} describes selected input/output expectations.
+
+\subsection{Text \code{.qpuio} structure}
+
+A text table may use spaces or commas:
 
 \begin{lstlisting}
 MAIN-PROCESS: HalfAdder
@@ -908,20 +1824,92 @@ OUTPUTS: Carry Sum
 3 1p 1p 1p 0p
 \end{lstlisting}
 
-\begin{itemize}
-  \item \code{MAIN-PROCESS: name} and a column row beginning with \texttt{\#}
-  are required.
-  \item Explicit \code{INPUTS:} and \code{OUTPUTS:} remove ambiguity. Without
-  them, the parser can use matching PARAMS/RETURNVALS from the protocol.
-  \item Data rows begin at index 0 and must be sequential.
-  \item Every row must match the header width and every cell must be
-  \code{0p}, \code{1p}, or \code{sp}.
-  \item Comma-separated headers and rows are also accepted.
-  \item Partial tables may list fewer than $2^n$ distinct input patterns, but
-  not zero rows, duplicates, or more than $2^n$ rows.
-\end{itemize}
+\subsection{\code{MAIN-PROCESS:} table header}
 
-The JSON envelope form is:
+The colon is required in the table format:
+\begin{lstlisting}
+MAIN-PROCESS: HalfAdder
+\end{lstlisting}
+This name associates metadata with its protocol. Notice the deliberate syntax
+difference: protocol source writes \code{MAIN-PROCESS HalfAdder}, while the
+truth-table header writes \code{MAIN-PROCESS: HalfAdder}.
+
+\subsection{\code{INPUTS:} and \code{OUTPUTS:} column groups}
+
+\begin{lstlisting}
+INPUTS: A B
+OUTPUTS: Carry Sum
+\end{lstlisting}
+These lines divide the columns into values supplied before simulation and
+values checked after simulation. Their order must match the later column header.
+INPUTS should correspond to state-typed PARAMS; OUTPUTS should correspond to
+RETURNVALS. OUTPUTS must contain at least one name.
+
+Explicit groups remove ambiguity. If they are absent, the loader can derive the
+split only when a matching protocol is available and the combined PARAMS and
+RETURNVALS widths match the table header.
+
+\subsection{Column header row}
+
+\begin{lstlisting}
+# A B Carry Sum
+\end{lstlisting}
+The first nonmetadata row beginning with a hash and whitespace or comma is the
+ordered column header. Here A and B are inputs, followed by Carry and Sum
+outputs. Unlike an ordinary protocol hash comment, this row has structural
+meaning inside a \code{.qpuio} file.
+
+\subsection{Indexed data rows}
+
+\begin{lstlisting}
+0 0p 0p 0p 0p
+1 0p 1p 0p 1p
+\end{lstlisting}
+The first cell is a decimal row index. Indices begin at zero and increase by
+one without gaps. Remaining cells align left-to-right with the column header.
+Every row must have exactly the expected width, and every state cell must be
+\code{0p}, \code{1p}, or \code{sp}.
+
+For $n$ binary input columns, a complete table contains $2^n$ rows. The usual
+ordering interprets input columns most-significant first: for two inputs the
+sequence is 00, 01, 10, 11. The loader checks sequential row indices, while
+semantic validation also rejects duplicate input patterns.
+
+\subsection{CSV spelling}
+
+Commas may replace whitespace consistently:
+\begin{lstlisting}
+MAIN-PROCESS: HalfAdder
+INPUTS: A,B
+OUTPUTS: Carry,Sum
+#,A,B,Carry,Sum
+0,0p,0p,0p,0p
+\end{lstlisting}
+Spaces around commas are trimmed. Do not mix extra prose into a data row;
+trailing hash comments are allowed only where the table loader can strip them
+after the data content.
+
+\subsection{Partial truth tables}
+
+A partial table lists selected cases rather than all $2^n$ combinations. It
+must contain at least one row, no duplicate input pattern, and no more than
+$2^n$ rows. Partial tables are useful for state-machine transitions or focused
+regressions, but passing one proves behavior only for the listed cases.
+
+\begin{center}
+\begin{tabular}{c|c|c}\toprule
+Input count $n$ & Complete row count $2^n$ & Example\\\midrule
+0&1&constant-output process\\
+1&2&0, 1\\
+2&4&00, 01, 10, 11\\
+3&8&000 through 111\\
+4&16&0000 through 1111\\\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{JSON \code{.qpuio} envelope}
+
+The equivalent machine-oriented JSON form is:
 \begin{lstlisting}[language={}]
 {
   "format": "qpuio",
@@ -938,10 +1926,36 @@ The JSON envelope form is:
 }
 \end{lstlisting}
 
-The table runner initializes PARAMS by column order, executes the circuit,
-measures RETURNVALS, and compares those bits only. An expected output
-\code{sp} accepts either measured bit; an input \code{sp} initializes an equal
-superposition before execution.
+The \code{format} value must be \code{qpuio} and \code{version} must be 1.
+Column names must be nonempty strings, outputColumns must not be empty, and
+every nested row array must have exactly
+\[
+\text{inputColumns.length}+\text{outputColumns.length}
+\]
+valid cells.
+
+\subsection{How a table test runs}
+
+For each listed row, the runner:
+\begin{enumerate}
+  \item maps input cells to state PARAMS by column name and order;
+  \item creates the circuit's start-state vector;
+  \item executes every compiled gate, including child expansions;
+  \item measures the declared RETURNVALS;
+  \item compares only those measured outputs with expected output cells.
+\end{enumerate}
+An expected output \code{sp} accepts either measured bit. An input \code{sp}
+initializes an equal plus-state superposition. Because one probabilistic sample
+cannot establish a full distribution, tables are strongest for deterministic
+basis-state behavior.
+
+\subsection{Protected bundled tables}
+
+The bundled SingleBitFullAdder, TwoBitFullAdder, FourBitFullAdder, and PhaseDemo
+tables are canonical site assets. Do not rewrite them to make an experiment
+pass. Create a new uploaded or corrected process/table pair when testing
+different expectations. This keeps examples reproducible and prevents a
+protocol correction from silently changing its specification.
 
 \section{Complete worked protocol}
 
@@ -1001,7 +2015,7 @@ CompileResult {
 }
 \end{lstlisting}
 
-Each parsed command records \code{op}, original \code{raw} text,
+Each accepted instruction entry records \code{op}, original \code{raw} text,
 \code{inputs}, \code{outputs}, positional \code{args}, optional normalized
 radian \code{phase}, \code{reverse}, and \code{noParameterSubstitution}.
 Each emitted gate records \code{id}, \code{type}, ordered \code{step},
@@ -1017,7 +2031,7 @@ count, then physical simulator width.
 \begin{enumerate}
   \item Unknown opcodes fail with \code{Unknown command}. \code{RESET} is not a
   source opcode.
-  \item Every AST gate except MEASURE requires \code{-I} and \code{-O}, then
+  \item Every QPU gate except MEASURE requires \code{-I} and \code{-O}, then
   exact registry arity is checked.
   \item PHASE requires a valid nonzero-denominator angle after \code{=}.
   \item SWAP requires two matching input/output wires.
@@ -1028,14 +2042,14 @@ count, then physical simulator width.
   \item Use the same input/output token for single-qubit gates.
   \item Initialize derived-gate targets deliberately; their operation is XOR
   into the existing target, not destructive assignment.
-  \item Treat parsed-only commands as compatibility annotations until their
+  \item Treat accepted-but-not-executed instructions as compatibility annotations until their
   runtime lowering is implemented.
 \end{enumerate}
 
 \section{Quick-reference grammar}
 
 This is a practical description of the accepted surface language rather than a
-separate parser generator grammar:
+separate formal language specification:
 \begin{lstlisting}[language={}]
 protocol     := [params-line] logical-line*
 params-line  := "PARAMS:" (name ":" type)*
@@ -1064,9 +2078,63 @@ angle        := rational
              | [sign] [integer ["*"]] "pi" ["/" integer]
 \end{lstlisting}
 
-\textbf{Parser detail:} \code{PHASE= pi/2} is joined into one opcode/value pair,
+\textbf{Syntax detail:} \code{PHASE= pi/2} is joined into one opcode/value pair,
 but \code{PHASE = pi/2} is not. Operations and flags are case-insensitive;
 names, types, and positional values are otherwise retained.
+
+\section{Glossary}
+
+\begin{longtable}{>{\bfseries}p{0.19\textwidth}p{0.72\textwidth}}
+\toprule
+Term & Meaning\\
+\midrule
+\endhead
+Amplitude & A complex coefficient of a basis state. Its squared magnitude
+contributes to measurement probability.\\
+Basis state & A state used as a coordinate direction. The computational basis
+for one qubit is $\ket0,\ket1$.\\
+Bloch sphere & A geometric representation of pure one-qubit states after
+ignoring global phase. North/south are $\ket0/\ket1$; longitude represents
+relative phase.\\
+Child process & A separately named protocol expanded into a parent through
+RUNCHILD or CALL.\\
+Control & A wire whose basis condition decides whether a controlled operation
+acts on its target. The control itself is preserved by the standard controlled
+gates.\\
+Entanglement & A joint multi-qubit state that cannot be written as a tensor
+product of independent qubit states.\\
+Gate & A state transformation. Closed-system quantum gates are unitary;
+measurement and reset have different semantics.\\
+Global phase & A unit complex multiplier applied to the whole state. It does
+not change physical measurement predictions.\\
+Ket & Dirac notation $\ket{\psi}$ for a state column vector.\\
+Measurement & Conversion of quantum amplitudes into a sampled classical result,
+with state collapse and renormalization.\\
+Phase & The angular part of a complex amplitude. Relative phase controls
+interference even when immediate basis probabilities are unchanged.\\
+Process & A named QPU protocol body with ordered PARAMS and RETURNVALS.\\
+Protocol & Plain-text QPU instructions describing preparation, gates,
+composition, measurement, and returned references.\\
+Qubit & A normalized two-component complex state
+$\alpha\ket0+\beta\ket1$, not merely an unknown classical bit.\\
+Register & One or more logical wires considered together. Current JOIN/SPLIT
+syntax is accepted but does not yet lower to register operations.\\
+Relative phase & The phase difference between amplitudes. Unlike global phase,
+it can change later interference and measurement probabilities.\\
+Superposition & A coherent linear combination of basis states. \code{sp}
+prepares the equal plus superposition.\\
+Target & The wire whose amplitudes a gate mutates; normally the first
+\code{-O} reference.\\
+Tensor product & The operation $\otimes$ that combines state spaces. Two
+one-qubit vectors produce a four-amplitude two-qubit vector.\\
+Token & A source-level logical name resolved to a qubit wire or alias during
+compilation.\\
+Truth table & Listed input/output expectations for measured RETURNVALS. It
+describes basis behavior but not arbitrary phase or entanglement.\\
+Unitary & A matrix satisfying $U^\dagger U=I$, preserving normalization and
+having a reversible inverse.\\
+\bottomrule
+\end{longtable}
 
 \section{Operation checklist}
 
@@ -1096,7 +2164,7 @@ comments,\textbackslash & Lexical syntax & .qpuio & Truth-table syntax\\
 
 \vfill
 \begin{center}
-\textcolor{CodeComment}{\small End of complete AST and circuit reference}
+\textcolor{CodeComment}{\small End of the complete QPU system reference}
 \end{center}
 
 \end{document}
