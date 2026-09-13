@@ -4,6 +4,8 @@ import {
   circuitColumnCount,
   gateSpanQubits,
   glyphKindFor,
+  MAX_SLOT_REM,
+  MIN_SLOT_REM,
   needsConnector,
   playDelayMs,
   startStateKet,
@@ -24,6 +26,7 @@ describe('circuit layout helpers', () => {
     expect(circuitColumnCount(2, 1)).toBe(6);
     expect(circuitColumnCount(8, 7)).toBe(10);
     expect(circuitColumnCount(12, 20)).toBe(23);
+    expect(MAX_SLOT_REM).toBeGreaterThan(MIN_SLOT_REM);
   });
 
   it('maps start states to textbook kets', () => {

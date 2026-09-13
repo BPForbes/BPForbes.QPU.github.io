@@ -2,6 +2,7 @@ import type { CircuitGate, ParticleStartState } from '../simulator/types';
 
 export const MIN_CIRCUIT_COLUMNS = 6;
 export const MIN_SLOT_REM = 1.7;
+export const MAX_SLOT_REM = 2.7;
 export const PLAY_DELAY_BASE_MS = 800;
 export const MIN_PLAY_SPEED = 0.25;
 export const MAX_PLAY_SPEED = 3;

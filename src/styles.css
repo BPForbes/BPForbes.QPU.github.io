@@ -67,9 +67,10 @@ button { font: inherit; }
 .circuit-board {
   --row-h: 3.45rem;
   display: grid;
-  grid-template-columns: 4.8rem repeat(var(--columns), minmax(var(--slot-min, 1.7rem), 1fr));
+  grid-template-columns: 4.8rem repeat(var(--columns), minmax(var(--slot-min, 1.7rem), var(--slot-max, 2.7rem)));
   grid-template-rows: repeat(var(--qubits), var(--row-h));
   position: relative;
+  justify-content: start;
   min-width: 100%;
   width: max(100%, calc(4.8rem + (var(--columns) * var(--slot-min, 1.7rem))));
   background: #fff;
@@ -78,14 +79,24 @@ button { font: inherit; }
   border-radius: 1rem;
   padding: .55rem .7rem .7rem;
 }
+.circuit-wire-layer {
+  position: absolute;
+  left: 5.35rem;
+  right: .7rem;
+  top: .55rem;
+  bottom: .7rem;
+  display: grid;
+  grid-template-rows: repeat(var(--qubits), var(--row-h));
+  pointer-events: none;
+  z-index: 0;
+}
 .circuit-wire {
   align-self: center;
   height: 2px;
   background: #111;
-  pointer-events: none;
-  z-index: 0;
 }
 .circuit-connector {
+  position: relative;
   justify-self: center;
   width: 2px;
   background: #111;
@@ -94,6 +105,7 @@ button { font: inherit; }
 }
 .circuit-connector.active { background: #dc2626; }
 .circuit-label-cell {
+  position: relative;
   display: grid;
   grid-template-columns: auto auto auto;
   align-items: center;
@@ -121,14 +133,27 @@ button { font: inherit; }
   z-index: 4;
   pointer-events: none;
 }
-.circuit-drop {
+.circuit-drop-layer {
+  position: absolute;
+  left: 5.35rem;
+  right: .7rem;
+  top: .55rem;
+  bottom: .7rem;
+  display: grid;
+  grid-template-rows: repeat(var(--qubits), var(--row-h));
   z-index: 2;
-  cursor: copy;
-  border-radius: .4rem;
 }
-.circuit-drop.ready { box-shadow: inset 0 0 0 1px #94a3b8; }
-.circuit-drop:focus-visible { outline: 2px solid #dc2626; outline-offset: 2px; }
+.circuit-drop {
+  cursor: copy;
+  border-radius: .2rem;
+}
+.circuit-drop-layer.ready .circuit-drop:hover,
+.circuit-drop-layer.ready .circuit-drop:focus-visible {
+  background: rgba(220, 38, 38, .06);
+}
+.circuit-drop:focus-visible { outline: 2px solid #dc2626; outline-offset: -2px; }
 .circuit-slot {
+  position: relative;
   display: grid;
   place-items: center;
   z-index: 3;

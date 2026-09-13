@@ -4,6 +4,7 @@ import { CircuitGlyph } from './circuit/CircuitGlyph';
 import {
   circuitColumnCount,
   gateSpanQubits,
+  MAX_SLOT_REM,
   MIN_SLOT_REM,
   needsConnector,
   startStateKet,
@@ -62,11 +63,14 @@ export function CircuitCanvas({
             ['--columns' as string]: columns,
             ['--qubits' as string]: qubitCount,
             ['--slot-min' as string]: `${MIN_SLOT_REM}rem`,
+            ['--slot-max' as string]: `${MAX_SLOT_REM}rem`,
           }}
         >
-          {Array.from({ length: qubitCount }, (_, qubit) => (
-            <span className="circuit-wire" key={`wire-${qubit}`} style={{ gridColumn: '2 / -1', gridRow: qubit + 1 }} />
-          ))}
+          <div aria-hidden="true" className="circuit-wire-layer">
+            {Array.from({ length: qubitCount }, (_, qubit) => (
+              <span className="circuit-wire" key={`wire-${qubit}`} />
+            ))}
+          </div>
 
           {sorted.filter(needsConnector).map((gate) => {
             const { min, max } = gateSpanQubits(gate);
@@ -94,21 +98,22 @@ export function CircuitCanvas({
             );
           })}
 
-          {Array.from({ length: qubitCount }, (_, qubit) => (
-            <div
-              className={`circuit-drop ${selectedGate ? 'ready' : ''}`}
-              key={`drop-${qubit}`}
-              onClick={() => placeSelectedGate(qubit)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => handleDrop(event, qubit)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') placeSelectedGate(qubit);
-              }}
-              role="button"
-              style={{ gridColumn: '2 / -1', gridRow: qubit + 1 }}
-              tabIndex={0}
-            />
-          ))}
+          <div className={`circuit-drop-layer ${selectedGate ? 'ready' : ''}`}>
+            {Array.from({ length: qubitCount }, (_, qubit) => (
+              <div
+                className="circuit-drop"
+                key={`drop-${qubit}`}
+                onClick={() => placeSelectedGate(qubit)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => handleDrop(event, qubit)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') placeSelectedGate(qubit);
+                }}
+                role="button"
+                tabIndex={0}
+              />
+            ))}
+          </div>
 
           {sorted.map((gate) =>
             Array.from({ length: qubitCount }, (_, qubit) => {
