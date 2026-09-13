@@ -1,16 +1,19 @@
 import { ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
-import { announceGuestReady, isEmbedMode, isHostSetViewMessage, readViewParam, replaceViewInLocation } from './embedMode';
+import {
+  announceGuestReady,
+  isEmbedMode,
+  isHostSetViewMessage,
+  pushViewInLocation,
+  readViewLocation,
+  replaceViewInLocation,
+} from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
 import { CustomGatePanel, GatePalette } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
 import { OutputPanel } from './components/OutputPanel';
 import { ParticleView } from './components/ParticleView';
 import {
-  adjacentPlaygroundView,
-  canElementScroll,
-  isPlaygroundViewId,
   playgroundPageDomId,
-  playgroundScrubStep,
   type PlaygroundViewId,
 } from './components/PlaygroundScrubber';
 import { MAX_PLAY_SPEED, MIN_PLAY_SPEED, playDelayMs } from './components/circuitLayout';
@@ -90,14 +93,30 @@ const newGate = (
   };
 };
 
-const PlaygroundPage = ({ children, id, label }: { children: ReactNode; id: PlaygroundViewId; label: string }) => (
-  <section className="playground-page" data-playground-page={id} id={playgroundPageDomId(id)} aria-label={label}>
+const PlaygroundPage = ({
+  active = true,
+  children,
+  id,
+  label,
+}: {
+  active?: boolean;
+  children: ReactNode;
+  id: PlaygroundViewId;
+  label: string;
+}) => (
+  <section
+    aria-label={label}
+    className="playground-page"
+    data-playground-page={id}
+    hidden={!active}
+    id={playgroundPageDomId(id)}
+  >
     {children}
   </section>
 );
 
-const scrollPlaygroundPage = (view: PlaygroundViewId, behavior: ScrollBehavior = 'smooth') => {
-  document.getElementById(playgroundPageDomId(view))?.scrollIntoView({ behavior, block: 'start' });
+const scrollRouteTop = () => {
+  document.querySelector<HTMLElement>('.app-shell')?.scrollTo({ top: 0, behavior: 'auto' });
 };
 
 function App() {
@@ -122,9 +141,8 @@ function App() {
   const [tokenMap, setTokenMap] = useState<Record<string, number>>({});
   const [processParams, setProcessParams] = useState<ProcessParam[]>([]);
   const [returnValues, setReturnValues] = useState<ReturnValue[]>([]);
-  const [activeView, setActiveView] = useState<AppView>(() => readViewParam(window.location.search) ?? 'builder');
+  const [activeView, setActiveView] = useState<AppView>(() => readViewLocation(window.location) ?? 'builder');
   const [menuOpen, setMenuOpen] = useState(false);
-  const stageRef = useRef<HTMLElement>(null);
   const [fileStatus, setFileStatus] = useState('Upload a .qpucir file (or -qpucir.txt on restrictive file pickers), or download one of the bundled AST circuits.');
   const [protocolMode, setProtocolMode] = useState<'canvas' | 'process'>('process');
   const [customGateRegistryVersion, setCustomGateRegistryVersion] = useState(0);
@@ -745,23 +763,13 @@ function App() {
     }
   };
 
-  const ignorePageObserverUntil = useRef(0);
-  const activeViewRef = useRef(activeView);
-  const menuOpenRef = useRef(menuOpen);
-  const showViewRef = useRef<(view: AppView, behavior?: ScrollBehavior) => void>(() => undefined);
-  activeViewRef.current = activeView;
-  menuOpenRef.current = menuOpen;
-
-  // View switches are UI-only; simulator state persists until resetRuntime or compile.
-  // Pages embed URLs keep ?embed=1 and add ?view= so the portfolio lab can deep-link a playground page.
-  const showView = (view: AppView, behavior: ScrollBehavior = 'smooth') => {
-    ignorePageObserverUntil.current = Date.now() + 800;
+  // Hash routes work on direct GitHub Pages loads without server-side rewrites.
+  const showView = (view: AppView) => {
     setActiveView(view);
     setMenuOpen(false);
-    replaceViewInLocation(window.location, view);
-    requestAnimationFrame(() => scrollPlaygroundPage(view, behavior));
+    pushViewInLocation(window.location, view);
+    scrollRouteTop();
   };
-  showViewRef.current = showView;
 
   const embedMode = isEmbedMode();
 
@@ -773,11 +781,9 @@ function App() {
     const onHostMessage = (event: MessageEvent<unknown>) => {
       if (!isHostSetViewMessage(event.data)) return;
       const view = event.data.view;
-      ignorePageObserverUntil.current = Date.now() + 800;
       setActiveView(view);
       setMenuOpen(false);
       replaceViewInLocation(window.location, view);
-      requestAnimationFrame(() => scrollPlaygroundPage(view, 'auto'));
     };
     window.addEventListener('message', onHostMessage);
     return () => window.removeEventListener('message', onHostMessage);
@@ -789,77 +795,21 @@ function App() {
   }, [menuOpen]);
 
   useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    scrollPlaygroundPage(activeView, 'auto');
-    const pages = Array.from(stage.querySelectorAll<HTMLElement>('[data-playground-page]'));
-    const observer = new IntersectionObserver((entries) => {
-      if (Date.now() < ignorePageObserverUntil.current) return;
-      const visible = entries
-        .filter((entry) => entry.isIntersecting)
-        .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
-      const next = visible?.target.getAttribute('data-playground-page');
-      if (!isPlaygroundViewId(next)) return;
-      setActiveView((current) => {
-        if (current === next) return current;
-        replaceViewInLocation(window.location, next);
-        return next;
-      });
-    }, { root: stage, rootMargin: '-15% 0px -55% 0px', threshold: [0, 0.25, 0.5] });
-    pages.forEach((page) => observer.observe(page));
-
-    const onWheel = (event: WheelEvent) => {
-      if (menuOpenRef.current) return;
-      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-      let node = event.target instanceof HTMLElement ? event.target : null;
-      while (node && node !== stage) {
-        if (canElementScroll(node, event.deltaY, getComputedStyle(node).overflowY)) return;
-        node = node.parentElement;
-      }
-      if (canElementScroll(stage, event.deltaY, getComputedStyle(stage).overflowY)) return;
-      const next = adjacentPlaygroundView(activeViewRef.current, playgroundScrubStep(event.deltaY));
-      if (!next) return;
-      event.preventDefault();
-      showViewRef.current(next);
+    const onRouteChange = () => {
+      setActiveView(readViewLocation(window.location) ?? 'builder');
+      setMenuOpen(false);
+      scrollRouteTop();
     };
-    let touchStart: { x: number; y: number } | null = null;
-    const onTouchStart = (event: TouchEvent) => {
-      const touch = event.touches[0];
-      if (touch) touchStart = { x: touch.clientX, y: touch.clientY };
-    };
-    const onTouchEnd = (event: TouchEvent) => {
-      if (!touchStart || menuOpenRef.current) return;
-      const touch = event.changedTouches[0];
-      if (!touch) return;
-      const dx = touch.clientX - touchStart.x;
-      const dy = touch.clientY - touchStart.y;
-      touchStart = null;
-      if (Math.abs(dy) < 64 || Math.abs(dy) < Math.abs(dx) * 1.15) return;
-      let node = event.target instanceof HTMLElement ? event.target : null;
-      while (node && node !== stage) {
-        if (canElementScroll(node, dy, getComputedStyle(node).overflowY)) return;
-        node = node.parentElement;
-      }
-      if (canElementScroll(stage, dy, getComputedStyle(stage).overflowY)) return;
-      const next = adjacentPlaygroundView(activeViewRef.current, playgroundScrubStep(dy));
-      if (next) showViewRef.current(next);
-    };
-
-    stage.addEventListener('wheel', onWheel, { passive: false });
-    stage.addEventListener('touchstart', onTouchStart, { passive: true });
-    stage.addEventListener('touchend', onTouchEnd, { passive: true });
+    window.addEventListener('hashchange', onRouteChange);
+    window.addEventListener('popstate', onRouteChange);
     return () => {
-      observer.disconnect();
-      stage.removeEventListener('wheel', onWheel);
-      stage.removeEventListener('touchstart', onTouchStart);
-      stage.removeEventListener('touchend', onTouchEnd);
+      window.removeEventListener('hashchange', onRouteChange);
+      window.removeEventListener('popstate', onRouteChange);
     };
-    // Gesture/observer attach once; active page is updated from snap position.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'} ref={stageRef}>
+    <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'}>
       <button
         aria-expanded={menuOpen}
         aria-label="Open site navigation"
@@ -900,7 +850,7 @@ function App() {
 
       {menuOpen && <button aria-label="Close menu overlay" className="menu-backdrop" onClick={() => setMenuOpen(false)} type="button" />}
 
-      <PlaygroundPage id="builder" label="Circuit builder">
+      {activeView === 'builder' && <PlaygroundPage id="builder" label="Circuit builder">
       {!embedMode && (
         <header className="hero">
           <div>
@@ -1065,9 +1015,9 @@ function App() {
               <pre>{JSON.stringify(tokenMap, null, 2)}</pre>
             </details>
           </section>
-      </PlaygroundPage>
+      </PlaygroundPage>}
 
-      <PlaygroundPage id="docs" label="Wiki / docs">
+      {activeView === 'docs' && <PlaygroundPage id="docs" label="Wiki / docs">
         <section className="panel docs-panel" aria-labelledby="docs-title">
           <div className="section-heading">
             <p className="eyebrow">Wiki / docs</p>
@@ -1105,9 +1055,9 @@ function App() {
             </article>
           </div>
         </section>
-      </PlaygroundPage>
+      </PlaygroundPage>}
 
-      <PlaygroundPage id="qpu-docs" label="QPU Documentation">
+      {activeView === 'qpu-docs' && <PlaygroundPage id="qpu-docs" label="QPU Documentation">
         <section className="panel docs-panel qpu-doc-panel" aria-labelledby="qpu-docs-title">
           <div className="section-heading">
             <p className="eyebrow">Documentation › QPU Documentation</p>
@@ -1121,9 +1071,9 @@ function App() {
           </div>
           <a className="primary-link" href={`${import.meta.env.BASE_URL}QPU_Circuit_Docs.pdf`} target="_blank" rel="noreferrer">Open PDF in a new tab</a>
         </section>
-      </PlaygroundPage>
+      </PlaygroundPage>}
 
-      <PlaygroundPage id="particles" label="Particle visualization">
+      {activeView === 'particles' && <PlaygroundPage id="particles" label="Particle visualization">
         <div className="results-grid standalone-results">
           <ParticleView
             activeStep={cursor - 1}
@@ -1144,13 +1094,13 @@ function App() {
             state={displayState}
           />
         </div>
-      </PlaygroundPage>
+      </PlaygroundPage>}
 
-      <PlaygroundPage id="module-tester" label="Circuit correction lab">
+      <PlaygroundPage active={activeView === 'module-tester'} id="module-tester" label="Circuit correction lab">
         <ModuleLab />
       </PlaygroundPage>
 
-      <PlaygroundPage id="files" label="File upload and download">
+      {activeView === 'files' && <PlaygroundPage id="files" label="File upload and download">
         <section className="panel files-panel" aria-labelledby="files-title">
           <div className="section-heading">
             <p className="eyebrow">File upload and download</p>
@@ -1177,9 +1127,9 @@ function App() {
           </div>
           <p className="file-status">{fileStatus}</p>
         </section>
-      </PlaygroundPage>
+      </PlaygroundPage>}
 
-      <PlaygroundPage id="more" label="More">
+      {activeView === 'more' && <PlaygroundPage id="more" label="More">
         <section className="panel docs-panel" aria-labelledby="more-title">
           <div className="section-heading">
             <p className="eyebrow">More</p>
@@ -1191,7 +1141,7 @@ function App() {
             <button onClick={resetSite} type="button">Reset site completely</button>
           </div>
         </section>
-      </PlaygroundPage>
+      </PlaygroundPage>}
     </main>
   );
 }

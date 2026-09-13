@@ -10,7 +10,9 @@ import {
   guestReadyPayload,
   isHostSetViewMessage,
   readEmbedFlag,
+  readViewLocation,
   readViewParam,
+  pushViewInLocation,
   replaceViewInLocation,
   writeViewParam,
 } from './embedMode';
@@ -73,15 +75,26 @@ describe('embedMode', () => {
     expect(writeViewParam('?embed=true&view=builder', 'files')).toBe('?embed=true&view=files');
   });
 
-  it('replaces only the view query on the GitHub Pages guest path', () => {
+  it('uses GitHub Pages-safe hash routes without dropping embed mode', () => {
     const replaceState = vi.fn();
     const href = replaceViewInLocation(
       { href: 'https://bpforbes.github.io/BPForbes.QPU.github.io/?embed=1', search: '?embed=1' },
       'qpu-docs',
       { replaceState },
     );
-    expect(href).toBe('/BPForbes.QPU.github.io/?embed=1&view=qpu-docs');
+    expect(href).toBe('/BPForbes.QPU.github.io/?embed=1#/qpu-docs');
     expect(replaceState).toHaveBeenCalledWith(null, '', href);
+
+    const pushState = vi.fn();
+    const pushedHref = pushViewInLocation(
+      { href: 'https://bpforbes.github.io/BPForbes.QPU.github.io/?view=docs', search: '?view=docs' },
+      'module-tester',
+      { pushState },
+    );
+    expect(pushedHref).toBe('/BPForbes.QPU.github.io/#/correction-lab');
+    expect(pushState).toHaveBeenCalledWith(null, '', pushedHref);
+    expect(readViewLocation({ hash: '#/correction-lab', search: '' })).toBe('module-tester');
+    expect(readViewLocation({ hash: '', search: '?view=particles' })).toBe('particles');
   });
 
   it('advertises playground pages and lab features to the portfolio host', () => {
@@ -89,7 +102,8 @@ describe('embedMode', () => {
     expect(payload.source).toBe(EMBED_MESSAGE_SOURCE);
     expect(payload.views).toEqual(PLAYGROUND_VIEWS);
     expect(payload.features).toEqual(GUEST_FEATURES);
-    expect(payload.features).toEqual(expect.arrayContaining(['circuit-diagram', 'play-sequence', 'page-scrub']));
+    expect(payload.features).toEqual(expect.arrayContaining(['circuit-diagram', 'play-sequence', 'run-all']));
+    expect(payload.features).not.toContain('page-scrub');
   });
 
   it('accepts setView commands from the portfolio host', () => {

@@ -6,7 +6,13 @@
  * Cross-origin frames also trip the framed-window check, so a forgotten
  * query string still gets the compact chrome.
  */
-import { isPlaygroundViewId, PLAYGROUND_VIEWS, type PlaygroundViewId } from './components/PlaygroundScrubber';
+import {
+  isPlaygroundViewId,
+  playgroundViewRoute,
+  PLAYGROUND_VIEWS,
+  readPlaygroundViewRoute,
+  type PlaygroundViewId,
+} from './components/PlaygroundScrubber';
 
 export const EMBED_MESSAGE_SOURCE = 'qpu-guest';
 export const HOST_MESSAGE_SOURCE = 'qpu-host';
@@ -14,7 +20,6 @@ export const HOST_MESSAGE_SOURCE = 'qpu-host';
 export const GUEST_FEATURES = [
   'circuit-diagram',
   'play-sequence',
-  'page-scrub',
   'run-all',
 ] as const;
 
@@ -48,6 +53,9 @@ export const readViewParam = (search: string): PlaygroundViewId | null => {
   return isPlaygroundViewId(value) ? value : null;
 };
 
+export const readViewLocation = (location: Pick<Location, 'hash' | 'search'>): PlaygroundViewId | null =>
+  readPlaygroundViewRoute(location.hash) ?? readViewParam(location.search);
+
 export const writeViewParam = (search: string, view: PlaygroundViewId): string => {
   const params = searchParams(search);
   params.set('view', view);
@@ -61,9 +69,29 @@ export const replaceViewInLocation = (
   historyApi: Pick<History, 'replaceState'> = history,
 ): string => {
   const next = new URL(loc.href);
-  next.search = writeViewParam(loc.search, view);
+  const params = searchParams(loc.search);
+  params.delete('view');
+  params.delete('page');
+  next.search = params.toString();
+  next.hash = playgroundViewRoute(view);
   const href = `${next.pathname}${next.search}${next.hash}`;
   historyApi.replaceState(null, '', href);
+  return href;
+};
+
+export const pushViewInLocation = (
+  loc: Pick<Location, 'href' | 'search'>,
+  view: PlaygroundViewId,
+  historyApi: Pick<History, 'pushState'> = history,
+): string => {
+  const next = new URL(loc.href);
+  const params = searchParams(loc.search);
+  params.delete('view');
+  params.delete('page');
+  next.search = params.toString();
+  next.hash = playgroundViewRoute(view);
+  const href = `${next.pathname}${next.search}${next.hash}`;
+  historyApi.pushState(null, '', href);
   return href;
 };
 

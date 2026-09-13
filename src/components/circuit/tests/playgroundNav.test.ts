@@ -5,7 +5,9 @@ import {
   isPlaygroundViewId,
   playgroundPageDomId,
   playgroundScrubStep,
+  playgroundViewRoute,
   PLAYGROUND_VIEWS,
+  readPlaygroundViewRoute,
 } from '../../PlaygroundScrubber';
 
 describe('playground pages', () => {
@@ -31,6 +33,9 @@ describe('playground pages', () => {
     expect(adjacentPlaygroundView('docs', -1)).toBe('builder');
     expect(adjacentPlaygroundView('builder', -1)).toBeNull();
     expect(adjacentPlaygroundView('more', 1)).toBeNull();
+    expect(playgroundViewRoute('module-tester')).toBe('#/correction-lab');
+    expect(readPlaygroundViewRoute('#/correction-lab')).toBe('module-tester');
+    expect(readPlaygroundViewRoute('#/not-a-page')).toBeNull();
   });
 
   it('treats vertical wheel or finger movement as a page step only when the lane cannot scroll further', () => {
