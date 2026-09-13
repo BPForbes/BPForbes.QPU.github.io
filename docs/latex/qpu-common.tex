@@ -1,5 +1,10 @@
 \documentclass[10pt,letterpaper]{article}
 
+% Stable output supports docs:check even when translation uses a temporary directory.
+\ifdefined\pdftrailerid
+  \pdftrailerid{}
+\fi
+
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern}
