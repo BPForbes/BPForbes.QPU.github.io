@@ -5,7 +5,7 @@ import { CustomGatePanel, GatePalette } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
 import { OutputPanel } from './components/OutputPanel';
 import { ParticleView } from './components/ParticleView';
-import { PLAYGROUND_VIEWS, PlaygroundScrubber, type PlaygroundViewId } from './components/PlaygroundScrubber';
+import { PlaygroundScrubber, type PlaygroundViewId } from './components/PlaygroundScrubber';
 import { MAX_PLAY_SPEED, MIN_PLAY_SPEED, playDelayMs } from './components/circuitLayout';
 import { examples } from './data/examples';
 import {
@@ -752,6 +752,11 @@ function App() {
     return () => window.removeEventListener('message', onHostMessage);
   }, []);
 
+  useEffect(() => {
+    document.body.classList.toggle('site-menu-open', menuOpen);
+    return () => document.body.classList.remove('site-menu-open');
+  }, [menuOpen]);
+
   return (
     <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'}>
       <button
@@ -771,20 +776,27 @@ function App() {
           <strong>QPU Playground</strong>
           <button onClick={() => setMenuOpen(false)} type="button">×</button>
         </div>
-        <PlaygroundScrubber activeView={activeView} onSelect={showView} variant="menu" />
-        {PLAYGROUND_VIEWS.map((view) => (
-          <button className={activeView === view.id ? 'active' : ''} key={view.id} onClick={() => showView(view.id)} type="button">
-            {view.label}
-          </button>
-        ))}
-        <button className="danger" onClick={resetSite} type="button">Reset site</button>
+        <div className="site-menu-scroll" tabIndex={0}>
+          <PlaygroundScrubber activeView={activeView} onSelect={showView} />
+          <button className={activeView === 'builder' ? 'active' : ''} onClick={() => showView('builder')} type="button">Circuit builder</button>
+          <details open>
+            <summary>Documentation</summary>
+            <button className={activeView === 'docs' ? 'active' : ''} onClick={() => showView('docs')} type="button">Wiki / docs</button>
+            <button className={activeView === 'qpu-docs' ? 'active' : ''} onClick={() => showView('qpu-docs')} type="button">QPU Documentation</button>
+          </details>
+          <button className={activeView === 'particles' ? 'active' : ''} onClick={() => showView('particles')} type="button">Particle visualization</button>
+          <button className={activeView === 'module-tester' ? 'active' : ''} onClick={() => showView('module-tester')} type="button">Circuit correction lab</button>
+          <details open>
+            <summary>File upload and download</summary>
+            <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Upload files</button>
+            <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Download files</button>
+          </details>
+          <button className={activeView === 'more' ? 'active' : ''} onClick={() => showView('more')} type="button">More</button>
+          <button className="danger" onClick={resetSite} type="button">Reset site</button>
+        </div>
       </nav>
 
       {menuOpen && <button aria-label="Close menu overlay" className="menu-backdrop" onClick={() => setMenuOpen(false)} type="button" />}
-
-      <div className="playground-scrub-bar">
-        <PlaygroundScrubber activeView={activeView} onSelect={showView} variant="bar" />
-      </div>
 
       {!embedMode && activeView !== 'module-tester' && (
         <header className="hero">

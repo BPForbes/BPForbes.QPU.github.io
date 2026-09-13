@@ -23,14 +23,13 @@ export const isPlaygroundViewId = (value: unknown): value is PlaygroundViewId =>
 type PlaygroundScrubberProps = {
   activeView: PlaygroundViewId;
   onSelect: (view: PlaygroundViewId) => void;
-  variant?: 'bar' | 'menu';
 };
 
-export function PlaygroundScrubber({ activeView, onSelect, variant = 'bar' }: PlaygroundScrubberProps) {
+export function PlaygroundScrubber({ activeView, onSelect }: PlaygroundScrubberProps) {
   const index = Math.max(0, PLAYGROUND_VIEWS.findIndex((view) => view.id === activeView));
 
   return (
-    <div className={`playground-scrubber playground-scrubber-${variant}`}>
+    <div className="playground-scrubber">
       <div aria-label="Playground pages" className="playground-scrub-track" role="tablist">
         {PLAYGROUND_VIEWS.map((view) => (
           <button

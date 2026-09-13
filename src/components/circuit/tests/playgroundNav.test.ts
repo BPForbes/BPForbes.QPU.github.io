@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isPlaygroundViewId, PLAYGROUND_VIEWS } from '../../PlaygroundScrubber';
 
 describe('playground page scrubber', () => {
-  it('exposes a discrete page list that a range slider can scrub', () => {
+  it('exposes a discrete page list that the hamburger menu can scrub', () => {
     expect(PLAYGROUND_VIEWS.length).toBeGreaterThan(3);
     expect(PLAYGROUND_VIEWS.map((view) => view.id)).toEqual([
       'builder',
