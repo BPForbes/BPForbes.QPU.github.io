@@ -1,10 +1,12 @@
-import { ChangeEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { announceGuestReady, isEmbedMode } from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
 import { CustomGatePanel, GatePalette } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
 import { OutputPanel } from './components/OutputPanel';
 import { ParticleView } from './components/ParticleView';
+import { PLAYGROUND_VIEWS, PlaygroundScrubber, type PlaygroundViewId } from './components/PlaygroundScrubber';
+import { MAX_PLAY_SPEED, MIN_PLAY_SPEED, playDelayMs } from './components/circuitLayout';
 import { examples } from './data/examples';
 import {
   isProtectedQpuioProcess,
@@ -49,7 +51,7 @@ import './styles.css';
 
 const QUBIT_COUNT = 3;
 
-type AppView = 'builder' | 'docs' | 'qpu-docs' | 'files' | 'particles' | 'module-tester' | 'more';
+type AppView = PlaygroundViewId;
 
 const initialProtocolSource = protocolExamples[0].source;
 
@@ -91,6 +93,8 @@ function App() {
   const [measurements, setMeasurements] = useState<MeasurementMap>({});
   const [log, setLog] = useState<string[]>(['Initialized |000⟩.']);
   const [cursor, setCursor] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [playSpeed, setPlaySpeed] = useState(1);
   const [selectedGate, setSelectedGate] = useState<GateType | null>('H');
   const [targetQubit, setTargetQubit] = useState(0);
   const [controlQubit, setControlQubit] = useState(1);
@@ -275,6 +279,7 @@ function App() {
       : nextStartStates.slice(0, nextSimulationQubitCount).map((value) => value ?? '0p').join(' ');
     setLog([reason ?? `Initialized ${initDesc}.`]);
     setCursor(0);
+    setPlaying(false);
     setParticleSnapshots([]);
     setParticleTransitions([]);
   };
@@ -313,7 +318,9 @@ function App() {
   // cursor to orderedGates.length. `step` applies one gate and increments cursor,
   // so the two modes interleave freely — stepping after a full run is a no-op
   // because cursor >= orderedGates.length guards the gate lookup.
+  // Play Sequence walks the same step path on a timer; Run all skips animation.
   const run = () => {
+    setPlaying(false);
     const result = runCircuit(
       simulationQubitCount,
       orderedGates,
@@ -347,6 +354,36 @@ function App() {
     setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'))]);
     setCursor((current) => current + 1);
   };
+
+  const stepRef = useRef(step);
+  stepRef.current = step;
+
+  const playSequence = () => {
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (orderedGates.length === 0) {
+      setLog((current) => [...current, 'Add gates before playing the sequence.']);
+      return;
+    }
+    if (cursor >= orderedGates.length) {
+      resetRuntime(simulationQubitCount, 'Replay from the start of the circuit.');
+    }
+    setPlaying(true);
+  };
+
+  useEffect(() => {
+    if (!playing) return;
+    if (cursor >= orderedGates.length) {
+      setPlaying(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      stepRef.current();
+    }, cursor === 0 ? 0 : playDelayMs(playSpeed));
+    return () => window.clearTimeout(timer);
+  }, [playing, playSpeed, cursor, orderedGates.length]);
 
   // resetCircuit is a convenience alias; it does not change qubit count or start states.
   const resetCircuit = () => resetRuntime();
@@ -720,24 +757,20 @@ function App() {
           <strong>QPU Playground</strong>
           <button onClick={() => setMenuOpen(false)} type="button">×</button>
         </div>
-        <button className={activeView === 'builder' ? 'active' : ''} onClick={() => showView('builder')} type="button">Circuit builder</button>
-        <details open>
-          <summary>Documentation</summary>
-          <button className={activeView === 'docs' ? 'active' : ''} onClick={() => showView('docs')} type="button">Wiki / docs</button>
-          <button className={activeView === 'qpu-docs' ? 'active' : ''} onClick={() => showView('qpu-docs')} type="button">QPU Documentation</button>
-        </details>
-        <button className={activeView === 'particles' ? 'active' : ''} onClick={() => showView('particles')} type="button">Particle visualization</button>
-        <button className={activeView === 'module-tester' ? 'active' : ''} onClick={() => showView('module-tester')} type="button">Circuit correction lab</button>
-        <details open>
-          <summary>File upload and download</summary>
-          <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Upload files</button>
-          <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Download files</button>
-        </details>
-        <button className={activeView === 'more' ? 'active' : ''} onClick={() => showView('more')} type="button">More</button>
+        <PlaygroundScrubber activeView={activeView} onSelect={showView} variant="menu" />
+        {PLAYGROUND_VIEWS.map((view) => (
+          <button className={activeView === view.id ? 'active' : ''} key={view.id} onClick={() => showView(view.id)} type="button">
+            {view.label}
+          </button>
+        ))}
         <button className="danger" onClick={resetSite} type="button">Reset site</button>
       </nav>
 
       {menuOpen && <button aria-label="Close menu overlay" className="menu-backdrop" onClick={() => setMenuOpen(false)} type="button" />}
+
+      <div className="playground-scrub-bar">
+        <PlaygroundScrubber activeView={activeView} onSelect={showView} variant="bar" />
+      </div>
 
       {!embedMode && activeView !== 'module-tester' && (
         <header className="hero">
@@ -772,11 +805,13 @@ function App() {
           <CircuitCanvas
             activeStep={cursor - 1}
             gates={renderedGates}
+            measurements={measurements}
             onDropGate={addGate}
             onRemoveGate={removeGate}
-            qubitColors={Array.from({ length: simulationQubitCount }, (_, qubit) => `hsl(${(qubit * 137.508) % 360} 88% 62%)`)}
+            playing={playing}
             qubitCount={simulationQubitCount}
             selectedGate={selectedGate}
+            startStates={startStates}
           />
 
           <section className="panel workbench-panel" aria-labelledby="workbench-title">
@@ -838,12 +873,27 @@ function App() {
           </section>
 
           <section className="controls panel" aria-label="Run controls">
+            <button aria-pressed={playing} className={playing ? 'playing' : ''} onClick={playSequence} type="button">
+              {playing ? 'Pause sequence' : 'Play Sequence'}
+            </button>
             <button onClick={run} type="button">Run all</button>
-            <button disabled={cursor >= orderedGates.length} onClick={step} type="button">Step gate</button>
+            <button disabled={playing || cursor >= orderedGates.length} onClick={step} type="button">Step gate</button>
             <button onClick={resetCircuit} type="button">Reset state</button>
             <button onClick={measure} type="button">Measure all</button>
             <button onClick={clearCircuit} type="button">Clear circuit</button>
             <button onClick={resetSite} type="button">Reset site</button>
+            <label className="speed-control">
+              Speed {playSpeed.toFixed(2).replace(/\.00$/, '')}x
+              <input
+                aria-label="Play sequence speed"
+                max={MAX_PLAY_SPEED}
+                min={MIN_PLAY_SPEED}
+                onChange={(event) => setPlaySpeed(Number(event.target.value))}
+                step={0.25}
+                type="range"
+                value={playSpeed}
+              />
+            </label>
           </section>
 
           <section className="examples panel" aria-labelledby="examples-title">
@@ -901,7 +951,7 @@ function App() {
           <div className="docs-grid">
             <article>
               <h3>How circuits are built</h3>
-              <p>Use the circuit builder to drag a gate onto a qubit wire, or select a gate, target, and controls from the workbench. Gates are queued as ordered circuit steps and can be run all at once or stepped one at a time.</p>
+              <p>Use the circuit builder to drag a gate onto a qubit wire, or select a gate, target, and controls from the workbench. Play Sequence advances one gate at a time at the speed meter, including Measure (M) gates. Run all skips to the finished state.</p>
               <ul>
                 <li><strong>Targets</strong> are the qubit registers modified by a gate.</li>
                 <li><strong>Controls</strong> must be distinct from the target and determine when controlled gates fire.</li>
