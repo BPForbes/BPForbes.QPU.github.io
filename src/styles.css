@@ -27,13 +27,12 @@ button { font: inherit; }
   width: min(1180px, 100%);
   height: 100%;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 5rem 1rem 1rem;
   display: grid;
   align-content: start;
   gap: 1rem;
   overflow-x: hidden;
   overflow-y: auto;
-  scroll-snap-type: y mandatory;
   scroll-behavior: smooth;
   overscroll-behavior-y: contain;
   touch-action: pan-y;
@@ -260,7 +259,7 @@ button { font: inherit; }
 @keyframes collapse { from { transform: scale(1.15) rotateX(50deg); opacity: .4; } to { transform: scale(1) rotateX(0deg); opacity: 1; } }
 
 @media (min-width: 780px) {
-  .app-shell { padding: 2rem; }
+  .app-shell { padding: 5rem 2rem 2rem; }
   .hero, .circuit-panel, .controls, .examples, .results-grid { grid-column: 1 / -1; }
   .hero { grid-template-columns: 1fr auto; align-items: end; padding: 2rem; }
   .palette-panel { grid-column: span 2; }
@@ -473,9 +472,7 @@ body.site-menu-open .app-shell { overflow: hidden; }
 
 .playground-page {
   grid-column: 1 / -1;
-  min-height: 100dvh;
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
+  min-height: calc(100dvh - 6rem);
   display: grid;
   gap: 1rem;
   align-content: start;
@@ -506,7 +503,6 @@ body.site-menu-open .app-shell { overflow: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
   html, .app-shell { scroll-behavior: auto; }
-  .app-shell { scroll-snap-type: y proximity; }
 }
 
 @media (min-width: 780px) {
@@ -522,7 +518,7 @@ html.embed-mode body {
 
 html.embed-mode .app-shell {
   width: 100%;
-  padding: 0.7rem;
+  padding: 4rem 0.7rem 0.7rem;
 }
 
 html.embed-mode .hamburger-button {
@@ -539,6 +535,6 @@ html.embed-mode .controls {
 
 @media (min-width: 780px) {
   html.embed-mode .app-shell {
-    padding: 0.75rem;
+    padding: 4rem 0.75rem 0.75rem;
   }
 }

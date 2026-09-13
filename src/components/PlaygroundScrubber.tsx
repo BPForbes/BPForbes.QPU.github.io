@@ -20,6 +20,26 @@ export const PLAYGROUND_VIEW_IDS = PLAYGROUND_VIEWS.map((view) => view.id);
 export const isPlaygroundViewId = (value: unknown): value is PlaygroundViewId =>
   typeof value === 'string' && PLAYGROUND_VIEW_IDS.includes(value as PlaygroundViewId);
 
+export const PLAYGROUND_VIEW_ROUTES: Record<PlaygroundViewId, string> = {
+  builder: 'builder',
+  docs: 'docs',
+  'qpu-docs': 'qpu-docs',
+  particles: 'particles',
+  'module-tester': 'correction-lab',
+  files: 'files',
+  more: 'more',
+};
+
+export const playgroundViewRoute = (view: PlaygroundViewId): string =>
+  `#/${PLAYGROUND_VIEW_ROUTES[view]}`;
+
+export const readPlaygroundViewRoute = (hash: string): PlaygroundViewId | null => {
+  const route = hash.replace(/^#\/?/, '').replace(/\/+$/, '');
+  const match = Object.entries(PLAYGROUND_VIEW_ROUTES)
+    .find(([, candidate]) => candidate === route)?.[0];
+  return isPlaygroundViewId(match) ? match : null;
+};
+
 export const playgroundPageDomId = (id: PlaygroundViewId): string => `playground-page-${id}`;
 
 export const adjacentPlaygroundView = (current: PlaygroundViewId, delta: number): PlaygroundViewId | null => {
