@@ -41,6 +41,7 @@ import {
 } from './data/formats';
 import { createInitialState, measureAll, measureQubit, projectStateOntoQubits, resolveStateQubitCount, runCircuit, stepCircuitGate } from './simulator/engine';
 import {
+  analyzeQpuProtocol,
   compileQpuProtocol,
   extractMainProcessName,
   getProtocolParameterEntries,
@@ -60,6 +61,34 @@ import { Complex } from './simulator/complex';
 import './styles.css';
 
 const QUBIT_COUNT = 3;
+
+const QPU_DOCUMENTS = [
+  {
+    fileName: 'QPU_Getting_Started.pdf',
+    title: 'Getting Started',
+    description: 'Website walkthrough and programming basics.',
+  },
+  {
+    fileName: 'QPU_Theory_Guide.pdf',
+    title: 'Classical and Quantum Theory',
+    description: 'Bits, complex amplitudes, Bloch spheres, and gate mathematics.',
+  },
+  {
+    fileName: 'QPU_Language_Reference.pdf',
+    title: 'Language Reference',
+    description: 'Complete protocol, gate, process, and truth-table syntax.',
+  },
+  {
+    fileName: 'QPU_Examples_and_Troubleshooting.pdf',
+    title: 'Examples and Troubleshooting',
+    description: 'Runnable examples, diagnostics, and Correction Lab guidance.',
+  },
+  {
+    fileName: 'QPU_Circuit_Docs.pdf',
+    title: 'Documentation Suite Index',
+    description: 'A short map of all QPU guides.',
+  },
+] as const;
 
 type AppView = PlaygroundViewId;
 
@@ -137,13 +166,14 @@ function App() {
   const [secondControlQubit, setSecondControlQubit] = useState(2);
   const [phaseDegrees, setPhaseDegrees] = useState(90);
   const [protocolSource, setProtocolSource] = useState(protocolExamples[0].source);
+  const [selectedQpuDocument, setSelectedQpuDocument] = useState(QPU_DOCUMENTS[0]);
   const [compileSummary, setCompileSummary] = useState('Paste or load a QPU protocol, then compile it into visual gates.');
   const [tokenMap, setTokenMap] = useState<Record<string, number>>({});
   const [processParams, setProcessParams] = useState<ProcessParam[]>([]);
   const [returnValues, setReturnValues] = useState<ReturnValue[]>([]);
   const [activeView, setActiveView] = useState<AppView>(() => readViewLocation(window.location) ?? 'builder');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [fileStatus, setFileStatus] = useState('Upload a .qpucir file (or -qpucir.txt on restrictive file pickers), or download one of the bundled AST circuits.');
+  const [fileStatus, setFileStatus] = useState('Upload a .qpucir file (or -qpucir.txt on restrictive file pickers), or download one of the bundled QPU circuits.');
   const [protocolMode, setProtocolMode] = useState<'canvas' | 'process'>('process');
   const [customGateRegistryVersion, setCustomGateRegistryVersion] = useState(0);
   const [particleSnapshots, setParticleSnapshots] = useState<ParticleSnapshot[]>([]);
@@ -153,6 +183,10 @@ function App() {
   const selectedGateDefinition = selectedGate ? getGateDefinition(selectedGate) : undefined;
 
   const orderedGates = useMemo(() => gates.slice().sort((a, b) => a.step - b.step), [gates]);
+  const protocolDiagnosticReport = useMemo(
+    () => analyzeQpuProtocol(protocolSource, protocolLibrary),
+    [protocolSource],
+  );
   // RESET lowering stays in orderedGates for simulation but is hidden on the canvas timeline.
   const renderedGates = useMemo(() => visibleCircuitGates(orderedGates), [orderedGates]);
   // Token labels decorate canvas wires but never change simulator qubit indices.
@@ -524,7 +558,7 @@ function App() {
       setStartStates(nextStartStates);
       resetRuntime(
         nextSimulationQubitCount,
-        `Added process parameter ${addedParam?.name ?? `Q${currentParamCount}`}; compile AST to bind it into the circuit.`,
+        `Added process parameter ${addedParam?.name ?? `Q${currentParamCount}`}; compile the protocol to bind it into the circuit.`,
         nextStartStates,
         nextParams,
       );
@@ -563,7 +597,7 @@ function App() {
       if (returnValues.length === 0) setQubitCount(Math.max(1, nextParams.length || qubitCount - 1));
       resetRuntime(
         simulationQubitCount,
-        `Removed the last process parameter; compile AST to rebuild the circuit inputs.`,
+        'Removed the last process parameter; compile the protocol to rebuild the circuit inputs.',
         startStates,
         nextParams,
       );
@@ -619,7 +653,7 @@ function App() {
   // Compilation is the handoff point between text protocols, visual gates, catalog entries, and simulator runtime sizing.
   const compileProtocolSource = (
     source: string,
-    label = 'QPU AST protocol',
+      label = 'QPU protocol',
     origin: ProcessCatalogOrigin = 'compiled',
     options?: { fileName?: string; skipCatalogRegister?: boolean },
   ) => {
@@ -644,7 +678,7 @@ function App() {
       const registerSummary = result.logicalQubitCount < result.qubitCount
         ? `${result.logicalQubitCount} return qubit(s) over ${result.qubitCount} simulation register(s)${returnSummary}`
         : `${result.qubitCount} register(s)`;
-      setCompileSummary(`Compiled ${result.parsed.length} AST command(s) into ${result.gates.length} runnable gate(s) over ${registerSummary} with ${paramSummary}.`);
+      setCompileSummary(`Compiled ${result.parsed.length} QPU instruction(s) into ${result.gates.length} runnable gate(s) over ${registerSummary} with ${paramSummary}.`);
       resetRuntime(result.qubitCount, `Compiled ${label}. ${result.log[0] ?? ''}`, nextStartStates, result.processParams);
       setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared')).slice(0, 24)]);
       if (!options?.skipCatalogRegister) {
@@ -691,9 +725,9 @@ function App() {
     downloadNamedQpucirContents(name, qpucirFileNameForSource(protocolSource, name), protocolSource);
   };
 
-  // Validates the editor text compiles before exporting so broken AST never leaves the browser.
-  const downloadCompiledAst = () => {
-    const name = extractMainProcessName(protocolSource) ?? 'Compiled AST circuit';
+  // Validate editor text before exporting so an invalid protocol is not downloaded.
+  const downloadCompiledProtocol = () => {
+    const name = extractMainProcessName(protocolSource) ?? 'Compiled QPU circuit';
     try {
       compileQpuProtocol(protocolSource, protocolLibrary);
       downloadNamedQpucirContents(name, qpucirFileNameForSource(protocolSource, name), protocolSource);
@@ -856,7 +890,7 @@ function App() {
           <div>
             <p className="eyebrow">Static React QPU MVP</p>
             <h1>Build, compile, run, and watch quantum circuits collapse.</h1>
-            <p>A mobile-first browser playground with draggable gates, a TypeScript QPU AST compiler/parser, and an in-browser state-vector simulator.</p>
+            <p>A mobile-first browser playground with draggable gates, a QPU protocol compiler, and an in-browser state-vector simulator.</p>
           </div>
           <div className="hero-card">
             <span>{orderedGates.length}</span>
@@ -989,8 +1023,8 @@ function App() {
 
           <section className="panel compiler-panel" aria-labelledby="compiler-title">
             <div className="section-heading">
-              <p className="eyebrow">QPU AST backend</p>
-              <h2 id="compiler-title">Compile parser protocols</h2>
+              <p className="eyebrow">QPU protocol compiler</p>
+              <h2 id="compiler-title">Compile text into a circuit</h2>
             </div>
             <div className="compiler-actions">
               {protocolExamples.map((example) => (
@@ -1004,11 +1038,41 @@ function App() {
               spellCheck={false}
             />
             <div className="compiler-footer">
-              <button onClick={compileProtocol} type="button">Compile AST to circuit</button>
-              <button onClick={downloadCompiledAst} type="button">Download AST as .qpucir</button>
-              <button onClick={() => downloadQpucirTxtSource(protocolSource, extractMainProcessName(protocolSource) ?? 'Compiled AST circuit')} type="button">Download AST as -qpucir.txt</button>
+              <button onClick={compileProtocol} type="button">Compile protocol</button>
+              <button onClick={downloadCompiledProtocol} type="button">Download as .qpucir</button>
+              <button onClick={() => downloadQpucirTxtSource(protocolSource, extractMainProcessName(protocolSource) ?? 'Compiled QPU circuit')} type="button">Download as -qpucir.txt</button>
               <span>{compileSummary}</span>
             </div>
+            <section
+              aria-label="Protocol diagnostics"
+              aria-live="polite"
+              className={`protocol-diagnostics ${protocolDiagnosticReport.errorCount > 0 ? 'has-errors' : protocolDiagnosticReport.warningCount > 0 ? 'has-warnings' : 'is-clear'}`}
+            >
+              <div className="protocol-diagnostics-heading">
+                <strong>Protocol checks</strong>
+                <span>
+                  {protocolDiagnosticReport.errorCount} error(s), {protocolDiagnosticReport.warningCount} warning(s)
+                </span>
+              </div>
+              {protocolDiagnosticReport.diagnostics.length === 0 ? (
+                <p>No syntax or compile issues found.</p>
+              ) : (
+                <ol>
+                  {protocolDiagnosticReport.diagnostics.slice(0, 12).map((diagnostic, index) => (
+                    <li className={`diagnostic-${diagnostic.severity}`} key={`${diagnostic.code}-${diagnostic.line ?? 'protocol'}-${index}`}>
+                      <strong>{diagnostic.severity === 'error' ? 'Error' : 'Warning'}{diagnostic.line ? ` on line ${diagnostic.line}` : ''}: {diagnostic.message}</strong>
+                      {diagnostic.source ? <code>{diagnostic.source}</code> : null}
+                      <span>{diagnostic.suggestion}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {protocolDiagnosticReport.diagnostics.length > 0 ? (
+                <button onClick={() => showView('module-tester')} type="button">
+                  Open Correction Lab for guided help
+                </button>
+              ) : null}
+            </section>
             <details>
               <summary>Supported operations and token map</summary>
               <p>{supportedQpuOperations.join(', ')}</p>
@@ -1034,7 +1098,7 @@ function App() {
               </ul>
             </article>
             <article>
-              <h3>QPU AST compile requirements</h3>
+              <h3>QPU protocol requirements</h3>
               <p>A protocol can begin with <code>PARAMS:</code>, should name its entry point with <code>MAIN-PROCESS</code>, and compiles commands with explicit <code>-I</code> inputs and <code>-O</code> outputs where required.</p>
               <ul>
                 <li>Primitive gates include X, Y, Z, H, S, T, CNOT, CCNOT, CZ, CY, SWAP, and PHASE.</li>
@@ -1045,7 +1109,7 @@ function App() {
             </article>
             <article>
               <h3>Quantum theory references</h3>
-              <p>Gate buttons expose the visual vocabulary, while the compiler maps AST operations to state-vector transformations. For deeper theory, start with matrix definitions for Pauli-X, Hadamard, controlled-NOT, Toffoli, phase rotations, and measurement postulates.</p>
+              <p>Gate buttons expose the visual vocabulary, while the compiler maps QPU instructions to state-vector transformations. For deeper theory, start with matrix definitions for Pauli-X, Hadamard, controlled-NOT, Toffoli, phase rotations, and measurement postulates.</p>
               <div className="reference-links">
                 <a href="https://en.wikipedia.org/wiki/Quantum_logic_gate" rel="noreferrer" target="_blank">Quantum logic gates</a>
                 <a href="https://en.wikipedia.org/wiki/Hadamard_transform" rel="noreferrer" target="_blank">Hadamard transform</a>
@@ -1061,15 +1125,44 @@ function App() {
         <section className="panel docs-panel qpu-doc-panel" aria-labelledby="qpu-docs-title">
           <div className="section-heading">
             <p className="eyebrow">Documentation › QPU Documentation</p>
-            <h2 id="qpu-docs-title">QPU Circuit Docs PDF</h2>
+            <h2 id="qpu-docs-title">QPU documentation library</h2>
           </div>
-          <p className="canvas-tip">The repository PDF is embedded below for quick reference. If the browser cannot render it, open it directly.</p>
+          <p className="canvas-tip">Choose a focused guide. Start with Getting Started if programming or the website is new to you.</p>
+          <div className="qpu-document-grid">
+            {QPU_DOCUMENTS.map((document) => (
+              <button
+                className={selectedQpuDocument.fileName === document.fileName ? 'active' : ''}
+                key={document.fileName}
+                onClick={() => setSelectedQpuDocument(document)}
+                type="button"
+              >
+                <strong>{document.title}</strong>
+                <span>{document.description}</span>
+              </button>
+            ))}
+          </div>
           <div className="pdf-frame">
-            <object aria-label="QPU Circuit Docs PDF" data={`${import.meta.env.BASE_URL}QPU_Circuit_Docs.pdf`} type="application/pdf">
-              <embed src={`${import.meta.env.BASE_URL}QPU_Circuit_Docs.pdf`} type="application/pdf" title="QPU Circuit Docs PDF" />
+            <object
+              aria-label={`${selectedQpuDocument.title} PDF`}
+              data={`${import.meta.env.BASE_URL}${selectedQpuDocument.fileName}`}
+              key={selectedQpuDocument.fileName}
+              type="application/pdf"
+            >
+              <embed
+                src={`${import.meta.env.BASE_URL}${selectedQpuDocument.fileName}`}
+                type="application/pdf"
+                title={`${selectedQpuDocument.title} PDF`}
+              />
             </object>
           </div>
-          <a className="primary-link" href={`${import.meta.env.BASE_URL}QPU_Circuit_Docs.pdf`} target="_blank" rel="noreferrer">Open PDF in a new tab</a>
+          <a
+            className="primary-link"
+            href={`${import.meta.env.BASE_URL}${selectedQpuDocument.fileName}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Open {selectedQpuDocument.title} in a new tab
+          </a>
         </section>
       </PlaygroundPage>}
 
@@ -1104,7 +1197,7 @@ function App() {
         <section className="panel files-panel" aria-labelledby="files-title">
           <div className="section-heading">
             <p className="eyebrow">File upload and download</p>
-            <h2 id="files-title">Move compiled AST circuits as protocol files</h2>
+            <h2 id="files-title">Move compiled QPU circuits as protocol files</h2>
           </div>
           <div className="file-grid">
             <label className="upload-card">
