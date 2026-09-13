@@ -31,12 +31,13 @@ button { font: inherit; }
   display: grid;
   align-content: start;
   gap: 1rem;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
   scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
   overscroll-behavior-y: contain;
-  touch-action: pan-y;
+  touch-action: pan-x pan-y;
   -webkit-overflow-scrolling: touch;
 }
 .hero { display: grid; gap: 1rem; padding: 1.25rem; border-radius: 1.5rem; background: linear-gradient(135deg, rgba(96, 165, 250, .2), rgba(168, 85, 247, .18)); border: 1px solid rgba(255,255,255,.16); box-shadow: 0 24px 80px rgba(0,0,0,.25); }
