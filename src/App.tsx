@@ -89,6 +89,7 @@ const QPU_DOCUMENTS = [
     description: 'A short map of all QPU guides.',
   },
 ] as const;
+type QpuDocument = (typeof QPU_DOCUMENTS)[number];
 
 type AppView = PlaygroundViewId;
 
@@ -166,7 +167,7 @@ function App() {
   const [secondControlQubit, setSecondControlQubit] = useState(2);
   const [phaseDegrees, setPhaseDegrees] = useState(90);
   const [protocolSource, setProtocolSource] = useState(protocolExamples[0].source);
-  const [selectedQpuDocument, setSelectedQpuDocument] = useState(QPU_DOCUMENTS[0]);
+  const [selectedQpuDocument, setSelectedQpuDocument] = useState<QpuDocument>(QPU_DOCUMENTS[0]);
   const [compileSummary, setCompileSummary] = useState('Paste or load a QPU protocol, then compile it into visual gates.');
   const [tokenMap, setTokenMap] = useState<Record<string, number>>({});
   const [processParams, setProcessParams] = useState<ProcessParam[]>([]);
