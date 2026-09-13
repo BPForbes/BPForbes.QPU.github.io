@@ -522,14 +522,16 @@ denominator. A zero denominator and malformed angle raise an error.
 
 \subsection{Backward-prefix syntax}
 
-The AST recognizes a leading \code{B} before any registered primitive gate
-name, for example \code{BX}, \code{BH}, \code{BCNOT}, or \code{BSWAP}, and
-sets \code{reverse=true}. Only \code{BPHASE=angle} currently changes emitted
-behavior: the compiler negates the phase angle. For every other gate the flag
-is presently metadata only. Many gates are self-inverse ($X,H,\mathrm{CNOT},
-\mathrm{CCNOT},\mathrm{CZ},\mathrm{SWAP}$), but S, T, Y, and CY inverses are
-\emph{not} synthesized from the reverse flag. Do not rely on those B-prefixed
-forms for inverse execution.
+The AST recognizes a leading \code{B} before a parseable primitive gate name,
+for example \code{BX}, \code{BH}, \code{BCNOT}, or \code{BSWAP}, and sets
+\code{reverse=true}. (Compiler-internal \code{RESET} remains unavailable in
+source.) Only \code{BPHASE=angle} currently changes emitted behavior: the
+compiler negates the phase angle. For every other gate the flag is metadata
+only. Emitting the ordinary gate still gives the mathematical inverse for the
+self-inverse gates $X,Y,Z,H,\mathrm{CNOT},\mathrm{CCNOT},\mathrm{CZ},
+\mathrm{CY},\mathrm{SWAP}$. In contrast, \code{BS} and \code{BT} do not
+synthesize $S^\dagger$ or $T^\dagger$. Do not rely on B-prefixed forms for
+inverse execution unless the gate is self-inverse or is \code{BPHASE}.
 
 \section{Controlled and two-qubit primitive gates}
 
