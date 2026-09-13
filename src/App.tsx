@@ -1,10 +1,19 @@
-import { ChangeEvent, useEffect, useMemo, useState } from 'react';
-import { announceGuestReady, isEmbedMode } from './embedMode';
+import { ChangeEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { announceGuestReady, isEmbedMode, isHostSetViewMessage, readViewParam, replaceViewInLocation } from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
 import { CustomGatePanel, GatePalette } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
 import { OutputPanel } from './components/OutputPanel';
 import { ParticleView } from './components/ParticleView';
+import {
+  adjacentPlaygroundView,
+  canElementScroll,
+  isPlaygroundViewId,
+  playgroundPageDomId,
+  playgroundScrubStep,
+  type PlaygroundViewId,
+} from './components/PlaygroundScrubber';
+import { MAX_PLAY_SPEED, MIN_PLAY_SPEED, playDelayMs } from './components/circuitLayout';
 import { examples } from './data/examples';
 import {
   isProtectedQpuioProcess,
@@ -49,7 +58,7 @@ import './styles.css';
 
 const QUBIT_COUNT = 3;
 
-type AppView = 'builder' | 'docs' | 'qpu-docs' | 'files' | 'particles' | 'module-tester' | 'more';
+type AppView = PlaygroundViewId;
 
 const initialProtocolSource = protocolExamples[0].source;
 
@@ -81,6 +90,16 @@ const newGate = (
   };
 };
 
+const PlaygroundPage = ({ children, id, label }: { children: ReactNode; id: PlaygroundViewId; label: string }) => (
+  <section className="playground-page" data-playground-page={id} id={playgroundPageDomId(id)} aria-label={label}>
+    {children}
+  </section>
+);
+
+const scrollPlaygroundPage = (view: PlaygroundViewId, behavior: ScrollBehavior = 'smooth') => {
+  document.getElementById(playgroundPageDomId(view))?.scrollIntoView({ behavior, block: 'start' });
+};
+
 function App() {
   const [qubitCount, setQubitCount] = useState(QUBIT_COUNT);
   const [simulationQubitCount, setSimulationQubitCount] = useState(QUBIT_COUNT);
@@ -91,6 +110,8 @@ function App() {
   const [measurements, setMeasurements] = useState<MeasurementMap>({});
   const [log, setLog] = useState<string[]>(['Initialized |000⟩.']);
   const [cursor, setCursor] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [playSpeed, setPlaySpeed] = useState(1);
   const [selectedGate, setSelectedGate] = useState<GateType | null>('H');
   const [targetQubit, setTargetQubit] = useState(0);
   const [controlQubit, setControlQubit] = useState(1);
@@ -101,8 +122,9 @@ function App() {
   const [tokenMap, setTokenMap] = useState<Record<string, number>>({});
   const [processParams, setProcessParams] = useState<ProcessParam[]>([]);
   const [returnValues, setReturnValues] = useState<ReturnValue[]>([]);
-  const [activeView, setActiveView] = useState<AppView>('builder');
+  const [activeView, setActiveView] = useState<AppView>(() => readViewParam(window.location.search) ?? 'builder');
   const [menuOpen, setMenuOpen] = useState(false);
+  const stageRef = useRef<HTMLElement>(null);
   const [fileStatus, setFileStatus] = useState('Upload a .qpucir file (or -qpucir.txt on restrictive file pickers), or download one of the bundled AST circuits.');
   const [protocolMode, setProtocolMode] = useState<'canvas' | 'process'>('process');
   const [customGateRegistryVersion, setCustomGateRegistryVersion] = useState(0);
@@ -275,6 +297,7 @@ function App() {
       : nextStartStates.slice(0, nextSimulationQubitCount).map((value) => value ?? '0p').join(' ');
     setLog([reason ?? `Initialized ${initDesc}.`]);
     setCursor(0);
+    setPlaying(false);
     setParticleSnapshots([]);
     setParticleTransitions([]);
   };
@@ -313,7 +336,9 @@ function App() {
   // cursor to orderedGates.length. `step` applies one gate and increments cursor,
   // so the two modes interleave freely — stepping after a full run is a no-op
   // because cursor >= orderedGates.length guards the gate lookup.
+  // Play Sequence walks the same step path on a timer; Run all skips animation.
   const run = () => {
+    setPlaying(false);
     const result = runCircuit(
       simulationQubitCount,
       orderedGates,
@@ -347,6 +372,36 @@ function App() {
     setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'))]);
     setCursor((current) => current + 1);
   };
+
+  const stepRef = useRef(step);
+  stepRef.current = step;
+
+  const playSequence = () => {
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (orderedGates.length === 0) {
+      setLog((current) => [...current, 'Add gates before playing the sequence.']);
+      return;
+    }
+    if (cursor >= orderedGates.length) {
+      resetRuntime(simulationQubitCount, 'Replay from the start of the circuit.');
+    }
+    setPlaying(true);
+  };
+
+  useEffect(() => {
+    if (!playing) return;
+    if (cursor >= orderedGates.length) {
+      setPlaying(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      stepRef.current();
+    }, cursor === 0 ? 0 : playDelayMs(playSpeed));
+    return () => window.clearTimeout(timer);
+  }, [playing, playSpeed, cursor, orderedGates.length]);
 
   // resetCircuit is a convenience alias; it does not change qubit count or start states.
   const resetCircuit = () => resetRuntime();
@@ -394,6 +449,7 @@ function App() {
     setProtocolMode('process');
     setActiveView('builder');
     setMenuOpen(false);
+    replaceViewInLocation(window.location, 'builder');
     resetRuntime(QUBIT_COUNT, undefined, defaultStartStates);
   };
 
@@ -689,20 +745,120 @@ function App() {
     }
   };
 
+  const ignorePageObserverUntil = useRef(0);
+  const activeViewRef = useRef(activeView);
+  const menuOpenRef = useRef(menuOpen);
+  const showViewRef = useRef<(view: AppView, behavior?: ScrollBehavior) => void>(() => undefined);
+  activeViewRef.current = activeView;
+  menuOpenRef.current = menuOpen;
+
   // View switches are UI-only; simulator state persists until resetRuntime or compile.
-  const showView = (view: AppView) => {
+  // Pages embed URLs keep ?embed=1 and add ?view= so the portfolio lab can deep-link a playground page.
+  const showView = (view: AppView, behavior: ScrollBehavior = 'smooth') => {
+    ignorePageObserverUntil.current = Date.now() + 800;
     setActiveView(view);
     setMenuOpen(false);
+    replaceViewInLocation(window.location, view);
+    requestAnimationFrame(() => scrollPlaygroundPage(view, behavior));
   };
+  showViewRef.current = showView;
 
   const embedMode = isEmbedMode();
 
   useEffect(() => {
-    announceGuestReady();
+    announceGuestReady(window, activeView);
+  }, [activeView]);
+
+  useEffect(() => {
+    const onHostMessage = (event: MessageEvent<unknown>) => {
+      if (!isHostSetViewMessage(event.data)) return;
+      ignorePageObserverUntil.current = Date.now() + 800;
+      setActiveView(event.data.view);
+      setMenuOpen(false);
+      replaceViewInLocation(window.location, event.data.view);
+      requestAnimationFrame(() => scrollPlaygroundPage(event.data.view, 'auto'));
+    };
+    window.addEventListener('message', onHostMessage);
+    return () => window.removeEventListener('message', onHostMessage);
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle('site-menu-open', menuOpen);
+    return () => document.body.classList.remove('site-menu-open');
+  }, [menuOpen]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    scrollPlaygroundPage(activeView, 'auto');
+    const pages = Array.from(stage.querySelectorAll<HTMLElement>('[data-playground-page]'));
+    const observer = new IntersectionObserver((entries) => {
+      if (Date.now() < ignorePageObserverUntil.current) return;
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+      const next = visible?.target.getAttribute('data-playground-page');
+      if (!isPlaygroundViewId(next)) return;
+      setActiveView((current) => {
+        if (current === next) return current;
+        replaceViewInLocation(window.location, next);
+        return next;
+      });
+    }, { root: stage, rootMargin: '-15% 0px -55% 0px', threshold: [0, 0.25, 0.5] });
+    pages.forEach((page) => observer.observe(page));
+
+    const onWheel = (event: WheelEvent) => {
+      if (menuOpenRef.current) return;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      let node = event.target instanceof HTMLElement ? event.target : null;
+      while (node && node !== stage) {
+        if (canElementScroll(node, event.deltaY, getComputedStyle(node).overflowY)) return;
+        node = node.parentElement;
+      }
+      if (canElementScroll(stage, event.deltaY, getComputedStyle(stage).overflowY)) return;
+      const next = adjacentPlaygroundView(activeViewRef.current, playgroundScrubStep(event.deltaY));
+      if (!next) return;
+      event.preventDefault();
+      showViewRef.current(next);
+    };
+    let touchStart: { x: number; y: number } | null = null;
+    const onTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (touch) touchStart = { x: touch.clientX, y: touch.clientY };
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (!touchStart || menuOpenRef.current) return;
+      const touch = event.changedTouches[0];
+      if (!touch) return;
+      const dx = touch.clientX - touchStart.x;
+      const dy = touch.clientY - touchStart.y;
+      touchStart = null;
+      if (Math.abs(dy) < 64 || Math.abs(dy) < Math.abs(dx) * 1.15) return;
+      let node = event.target instanceof HTMLElement ? event.target : null;
+      while (node && node !== stage) {
+        if (canElementScroll(node, dy, getComputedStyle(node).overflowY)) return;
+        node = node.parentElement;
+      }
+      if (canElementScroll(stage, dy, getComputedStyle(stage).overflowY)) return;
+      const next = adjacentPlaygroundView(activeViewRef.current, playgroundScrubStep(dy));
+      if (next) showViewRef.current(next);
+    };
+
+    stage.addEventListener('wheel', onWheel, { passive: false });
+    stage.addEventListener('touchstart', onTouchStart, { passive: true });
+    stage.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      observer.disconnect();
+      stage.removeEventListener('wheel', onWheel);
+      stage.removeEventListener('touchstart', onTouchStart);
+      stage.removeEventListener('touchend', onTouchEnd);
+    };
+    // Gesture/observer attach once; active page is updated from snap position.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
-    <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'}>
+    <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'} ref={stageRef}>
       <button
         aria-expanded={menuOpen}
         aria-label="Open site navigation"
@@ -716,30 +872,35 @@ function App() {
       </button>
 
       <nav className={`site-menu ${menuOpen ? 'open' : ''}`} aria-label="Site sections">
-        <div className="menu-heading">
-          <strong>QPU Playground</strong>
-          <button onClick={() => setMenuOpen(false)} type="button">×</button>
+        <div className="site-menu-panel">
+          <div className="menu-heading">
+            <strong>QPU Playground</strong>
+            <button onClick={() => setMenuOpen(false)} type="button">×</button>
+          </div>
+          <div className="site-menu-scroll" tabIndex={0}>
+            <button className={activeView === 'builder' ? 'active' : ''} onClick={() => showView('builder')} type="button">Circuit builder</button>
+            <details open>
+              <summary>Documentation</summary>
+              <button className={activeView === 'docs' ? 'active' : ''} onClick={() => showView('docs')} type="button">Wiki / docs</button>
+              <button className={activeView === 'qpu-docs' ? 'active' : ''} onClick={() => showView('qpu-docs')} type="button">QPU Documentation</button>
+            </details>
+            <button className={activeView === 'particles' ? 'active' : ''} onClick={() => showView('particles')} type="button">Particle visualization</button>
+            <button className={activeView === 'module-tester' ? 'active' : ''} onClick={() => showView('module-tester')} type="button">Circuit correction lab</button>
+            <details open>
+              <summary>File upload and download</summary>
+              <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Upload files</button>
+              <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Download files</button>
+            </details>
+            <button className={activeView === 'more' ? 'active' : ''} onClick={() => showView('more')} type="button">More</button>
+            <button className="danger" onClick={resetSite} type="button">Reset site</button>
+          </div>
         </div>
-        <button className={activeView === 'builder' ? 'active' : ''} onClick={() => showView('builder')} type="button">Circuit builder</button>
-        <details open>
-          <summary>Documentation</summary>
-          <button className={activeView === 'docs' ? 'active' : ''} onClick={() => showView('docs')} type="button">Wiki / docs</button>
-          <button className={activeView === 'qpu-docs' ? 'active' : ''} onClick={() => showView('qpu-docs')} type="button">QPU Documentation</button>
-        </details>
-        <button className={activeView === 'particles' ? 'active' : ''} onClick={() => showView('particles')} type="button">Particle visualization</button>
-        <button className={activeView === 'module-tester' ? 'active' : ''} onClick={() => showView('module-tester')} type="button">Circuit correction lab</button>
-        <details open>
-          <summary>File upload and download</summary>
-          <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Upload files</button>
-          <button className={activeView === 'files' ? 'active' : ''} onClick={() => showView('files')} type="button">Download files</button>
-        </details>
-        <button className={activeView === 'more' ? 'active' : ''} onClick={() => showView('more')} type="button">More</button>
-        <button className="danger" onClick={resetSite} type="button">Reset site</button>
       </nav>
 
       {menuOpen && <button aria-label="Close menu overlay" className="menu-backdrop" onClick={() => setMenuOpen(false)} type="button" />}
 
-      {!embedMode && activeView !== 'module-tester' && (
+      <PlaygroundPage id="builder" label="Circuit builder">
+      {!embedMode && (
         <header className="hero">
           <div>
             <p className="eyebrow">Static React QPU MVP</p>
@@ -753,8 +914,6 @@ function App() {
         </header>
       )}
 
-      {activeView === 'builder' && (
-        <>
           <section className="panel palette-panel" aria-labelledby="palette-title">
             <div className="section-heading">
               <p className="eyebrow">Gate palette</p>
@@ -772,11 +931,12 @@ function App() {
           <CircuitCanvas
             activeStep={cursor - 1}
             gates={renderedGates}
+            measurements={measurements}
             onDropGate={addGate}
             onRemoveGate={removeGate}
-            qubitColors={Array.from({ length: simulationQubitCount }, (_, qubit) => `hsl(${(qubit * 137.508) % 360} 88% 62%)`)}
             qubitCount={simulationQubitCount}
             selectedGate={selectedGate}
+            startStates={startStates}
           />
 
           <section className="panel workbench-panel" aria-labelledby="workbench-title">
@@ -838,12 +998,27 @@ function App() {
           </section>
 
           <section className="controls panel" aria-label="Run controls">
+            <button aria-pressed={playing} className={playing ? 'playing' : ''} onClick={playSequence} type="button">
+              {playing ? 'Pause sequence' : 'Play Sequence'}
+            </button>
             <button onClick={run} type="button">Run all</button>
-            <button disabled={cursor >= orderedGates.length} onClick={step} type="button">Step gate</button>
+            <button disabled={playing || cursor >= orderedGates.length} onClick={step} type="button">Step gate</button>
             <button onClick={resetCircuit} type="button">Reset state</button>
             <button onClick={measure} type="button">Measure all</button>
             <button onClick={clearCircuit} type="button">Clear circuit</button>
             <button onClick={resetSite} type="button">Reset site</button>
+            <label className="speed-control">
+              Speed {playSpeed.toFixed(2).replace(/\.00$/, '')}x
+              <input
+                aria-label="Play sequence speed"
+                max={MAX_PLAY_SPEED}
+                min={MIN_PLAY_SPEED}
+                onChange={(event) => setPlaySpeed(Number(event.target.value))}
+                step={0.25}
+                type="range"
+                value={playSpeed}
+              />
+            </label>
           </section>
 
           <section className="examples panel" aria-labelledby="examples-title">
@@ -889,10 +1064,9 @@ function App() {
               <pre>{JSON.stringify(tokenMap, null, 2)}</pre>
             </details>
           </section>
-        </>
-      )}
+      </PlaygroundPage>
 
-      {activeView === 'docs' && (
+      <PlaygroundPage id="docs" label="Wiki / docs">
         <section className="panel docs-panel" aria-labelledby="docs-title">
           <div className="section-heading">
             <p className="eyebrow">Wiki / docs</p>
@@ -901,7 +1075,7 @@ function App() {
           <div className="docs-grid">
             <article>
               <h3>How circuits are built</h3>
-              <p>Use the circuit builder to drag a gate onto a qubit wire, or select a gate, target, and controls from the workbench. Gates are queued as ordered circuit steps and can be run all at once or stepped one at a time.</p>
+              <p>Use the circuit builder to drag a gate onto a qubit wire, or select a gate, target, and controls from the workbench. Play Sequence advances one gate at a time at the speed meter, including Measure (M) gates. Run all skips to the finished state.</p>
               <ul>
                 <li><strong>Targets</strong> are the qubit registers modified by a gate.</li>
                 <li><strong>Controls</strong> must be distinct from the target and determine when controlled gates fire.</li>
@@ -930,9 +1104,9 @@ function App() {
             </article>
           </div>
         </section>
-      )}
+      </PlaygroundPage>
 
-      {activeView === 'qpu-docs' && (
+      <PlaygroundPage id="qpu-docs" label="QPU Documentation">
         <section className="panel docs-panel qpu-doc-panel" aria-labelledby="qpu-docs-title">
           <div className="section-heading">
             <p className="eyebrow">Documentation › QPU Documentation</p>
@@ -946,9 +1120,36 @@ function App() {
           </div>
           <a className="primary-link" href={`${import.meta.env.BASE_URL}QPU_Circuit_Docs.pdf`} target="_blank" rel="noreferrer">Open PDF in a new tab</a>
         </section>
-      )}
+      </PlaygroundPage>
 
-      {activeView === 'files' && (
+      <PlaygroundPage id="particles" label="Particle visualization">
+        <div className="results-grid standalone-results">
+          <ParticleView
+            activeStep={cursor - 1}
+            gates={renderedGates}
+            measurements={displayMeasurements}
+            particleSnapshots={particleSnapshots}
+            physicalQubitIndices={displayQubitIndices}
+            qubitCount={displayQubitCount}
+            qubitLabels={displayQubitLabels}
+            startStates={controllableParams.map((param) => startStates[param.qubitIndex] ?? '0p')}
+            transitions={particleTransitions}
+          />
+          <OutputPanel
+            log={log}
+            measurements={displayMeasurements}
+            qubitCount={displayQubitCount}
+            qubitLabels={displayQubitLabels}
+            state={displayState}
+          />
+        </div>
+      </PlaygroundPage>
+
+      <PlaygroundPage id="module-tester" label="Circuit correction lab">
+        <ModuleLab />
+      </PlaygroundPage>
+
+      <PlaygroundPage id="files" label="File upload and download">
         <section className="panel files-panel" aria-labelledby="files-title">
           <div className="section-heading">
             <p className="eyebrow">File upload and download</p>
@@ -975,34 +1176,9 @@ function App() {
           </div>
           <p className="file-status">{fileStatus}</p>
         </section>
-      )}
+      </PlaygroundPage>
 
-      {activeView === 'particles' && (
-        <div className="results-grid standalone-results">
-          <ParticleView
-            activeStep={cursor - 1}
-            gates={renderedGates}
-            measurements={displayMeasurements}
-            particleSnapshots={particleSnapshots}
-            physicalQubitIndices={displayQubitIndices}
-            qubitCount={displayQubitCount}
-            qubitLabels={displayQubitLabels}
-            startStates={controllableParams.map((param) => startStates[param.qubitIndex] ?? '0p')}
-            transitions={particleTransitions}
-          />
-          <OutputPanel
-            log={log}
-            measurements={displayMeasurements}
-            qubitCount={displayQubitCount}
-            qubitLabels={displayQubitLabels}
-            state={displayState}
-          />
-        </div>
-      )}
-
-      {activeView === 'module-tester' && <ModuleLab />}
-
-      {activeView === 'more' && (
+      <PlaygroundPage id="more" label="More">
         <section className="panel docs-panel" aria-labelledby="more-title">
           <div className="section-heading">
             <p className="eyebrow">More</p>
@@ -1014,7 +1190,7 @@ function App() {
             <button onClick={resetSite} type="button">Reset site completely</button>
           </div>
         </section>
-      )}
+      </PlaygroundPage>
     </main>
   );
 }
