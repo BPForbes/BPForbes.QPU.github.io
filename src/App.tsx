@@ -772,11 +772,12 @@ function App() {
   useEffect(() => {
     const onHostMessage = (event: MessageEvent<unknown>) => {
       if (!isHostSetViewMessage(event.data)) return;
+      const view = event.data.view;
       ignorePageObserverUntil.current = Date.now() + 800;
-      setActiveView(event.data.view);
+      setActiveView(view);
       setMenuOpen(false);
-      replaceViewInLocation(window.location, event.data.view);
-      requestAnimationFrame(() => scrollPlaygroundPage(event.data.view, 'auto'));
+      replaceViewInLocation(window.location, view);
+      requestAnimationFrame(() => scrollPlaygroundPage(view, 'auto'));
     };
     window.addEventListener('message', onHostMessage);
     return () => window.removeEventListener('message', onHostMessage);
