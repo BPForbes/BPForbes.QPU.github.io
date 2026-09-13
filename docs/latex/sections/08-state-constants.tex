@@ -1,0 +1,88 @@
+\section{Built-in state constants}
+
+State constants describe how a wire begins. They are not ordinary token names,
+even though they participate in address resolution. Constants are
+case-insensitive and may be written with a leading dollar sign. The three
+supported base constants are \code{0p}, \code{1p}, and \code{sp}; the letter
+\code{p} distinguishes protocol state notation from ordinary numbers.
+
+\subsection{\code{0p}: the zero basis state}
+
+\code{0p} denotes
+\[
+\ket0=\begin{bmatrix}1\\0\end{bmatrix}.
+\]
+\begin{lstlisting}
+SET Output 0p
+\end{lstlisting}
+For workspace, this schedules zero preparation. The compiler batches pending
+zero preparations into internal RESET operations immediately before the next
+real gate, at an \code{INCREASECYCLE}, or at process end. RESET is deliberately
+not source syntax; \code{SET Output 0p} is the public way to request zero.
+
+Zero is the usual target initialization for reversible AND, OR, and XOR:
+with $t=0$, the mutation $t\leftarrow t\oplus f(x)$ leaves $t=f(x)$.
+
+\subsection{\code{1p}: the one basis state}
+
+\code{1p} denotes
+\[
+\ket1=\begin{bmatrix}0\\1\end{bmatrix}.
+\]
+\begin{lstlisting}
+SET Flag 1p
+\end{lstlisting}
+The compiler realizes one preparation by applying X to a zero-initialized
+wire. A target beginning in one is useful when the desired reversible result is
+the complement of a Boolean predicate. For example,
+$1\oplus(A\land B)=\neg(A\land B)$, which is NAND.
+
+\subsection{\code{sp}: equal superposition}
+
+\code{sp} denotes the plus state
+\[
+\ket+=\frac{\ket0+\ket1}{\sqrt2}
+=\frac1{\sqrt2}\begin{bmatrix}1\\1\end{bmatrix}.
+\]
+\begin{lstlisting}
+SET Probe sp
+\end{lstlisting}
+The compiler realizes this preparation with a Hadamard gate. If immediately
+measured, the result is 0 or 1 with equal probability. It is not merely a hidden
+classical random bit: both amplitudes coexist and can interfere after later
+phase and Hadamard operations.
+
+In an expected truth-table \emph{output} cell, \code{sp} has a different
+testing role: it means either measured bit is acceptable. Context therefore
+matters---protocol SET initializes a plus state, while expected output metadata
+uses \code{sp} as a don't-care marker.
+
+\subsection{Dimension-suffixed constants}
+
+The language also recognizes:
+\begin{lstlisting}
+0p_dim2
+1p_dim8
+sp_dim4
+\end{lstlisting}
+The suffix must be \code{_dim} followed by one or more decimal digits. These
+forms preserve compatibility with protocols that annotate a state constant's
+intended dimension. In the current simulator they still perform the same
+single-wire preparation as their unsuffixed forms; the dimension number does
+not allocate a multi-qubit register or change vector size.
+
+\subsection{Constants and state parameters}
+
+For an ordinary local token, SET emits preparation behavior. For a PARAMS entry
+typed \code{state}, SET supplies a default instead:
+\begin{lstlisting}
+PARAMS: Input:state
+MAIN-PROCESS DefaultInput
+SET Input 0p
+X -I Input -O Input
+RETURNVALS Input
+\end{lstlisting}
+The UI or truth-table runner may replace the default start state for Input.
+This distinction is what allows one compiled protocol to be tested over every
+binary input row instead of hard-wiring its parameter to zero.
+

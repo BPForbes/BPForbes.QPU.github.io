@@ -1,0 +1,89 @@
+\newcommand{\QpuDocTitle}{QPU Documentation Suite}
+\newcommand{\QpuDocSubtitle}{Start Here}
+\newcommand{\QpuHeaderTitle}{Documentation Suite}
+\newcommand{\QpuDocDescription}{%
+This short index points to four focused guides: a beginner walkthrough,
+classical and quantum theory, the complete QPU language reference, and worked
+examples with troubleshooting.
+}
+\input{docs/latex/qpu-common.tex}
+
+\begin{document}
+\QpuTitlePage
+\QpuContents
+
+\section{Choose the guide you need}
+
+The documentation is split so a new user does not need to read a large
+reference manual from beginning to end.
+
+\subsection{New to programming or the website}
+
+\textbf{\href{QPU_Getting_Started.pdf}{Open QPU Getting Started}}
+
+Begin here to learn what source text, instructions, arguments, compilation,
+wires, tokens, and gates mean. It gives an exact website workflow and complete
+protocols that can be copied into the editor.
+
+\subsection{New to classical or quantum theory}
+
+\textbf{\href{QPU_Theory_Guide.pdf}{Open Classical and Quantum Theory for QPU}}
+
+This guide starts with bits, Boolean algebra, and truth tables, then develops
+complex numbers, Euler's formula, qubits, the Bloch sphere, tensor products,
+entanglement, interference, measurement, and the mathematics of every gate.
+
+\subsection{Looking up exact syntax}
+
+\textbf{\href{QPU_Language_Reference.pdf}{Open QPU Language Reference}}
+
+Use this guide for token and constant forms, flags, gate arity, every supported
+instruction, child-process binding, truth-table file syntax, compatibility
+behavior, errors, grammar, and the glossary.
+
+\subsection{Learning through examples or fixing an error}
+
+\textbf{\href{QPU_Examples_and_Troubleshooting.pdf}{Open QPU Examples and Troubleshooting}}
+
+This guide explains a first circuit, reversible half-adder, interference
+experiment, child-process example, common protocol errors, diagnostic codes,
+and when to open the Correction Lab.
+
+\section{Recommended learning path}
+
+\begin{enumerate}
+  \item Complete the no-code starter example in Getting Started.
+  \item Copy and compile the first complete protocol.
+  \item Read the classical and quantum foundations needed to understand its
+  output.
+  \item Work through the half-adder and interference examples.
+  \item Keep the Language Reference open while authoring a new protocol.
+  \item Use Protocol checks and the Correction Lab when compilation or
+  truth-table tests report a problem.
+\end{enumerate}
+
+\section{File map}
+
+\begin{tabularx}{\textwidth}{>{\ttfamily}p{0.4\textwidth}X}
+\toprule
+\normalfont\bfseries PDF & \bfseries Purpose\\
+\midrule
+QPU\_Getting\_Started.pdf & Beginner programming concepts and website use.\\
+QPU\_Theory\_Guide.pdf & Classical/quantum theory and gate mathematics.\\
+QPU\_Language\_Reference.pdf & Complete syntax and behavior reference.\\
+QPU\_Examples\_and\_Troubleshooting.pdf & Runnable examples, diagnostics, and
+Correction Lab guidance.\\
+\bottomrule
+\end{tabularx}
+
+\section{A safe first action}
+
+Open the Circuit builder, load a starter circuit, choose \textbf{Play Sequence},
+and observe each gate before writing source. Nothing is uploaded to a server for
+simulation; the state-vector simulator runs in the browser.
+
+When ready to edit text, use a listing explicitly marked
+\textbf{Complete runnable protocol}. Instruction fragments are reference
+material and may not compile by themselves.
+
+\end{document}

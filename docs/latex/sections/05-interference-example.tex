@@ -1,0 +1,111 @@
+\section{Worked example: randomness versus interference}
+
+Classical random choice and quantum superposition can produce identical
+single-measurement frequencies. They are not the same theory. This example
+uses an intermediate phase change to distinguish them.
+
+\subsection{Classical fair coin model}
+
+Imagine a classical variable R chosen by a fair coin:
+\[
+P(R=0)=\frac12,\qquad P(R=1)=\frac12.
+\]
+Once chosen, R is one definite value even if the observer has not looked.
+Applying classical NOT changes 0 to 1 and 1 to 0, but the distribution remains
+half and half. There is no operation that makes the probability of one hidden
+branch cancel the other branch.
+
+\subsection{Quantum preparation with Hadamard}
+
+\begin{lstlisting}
+MAIN-PROCESS QuantumCoin
+CREATETOKEN -I Q
+SET Q 0p
+H -I Q -O Q
+MEASURE -I Q
+RETURNVALS Q
+\end{lstlisting}
+Before measurement,
+\[
+\ket0\xrightarrow{H}
+\ket+=\frac{\ket0+\ket1}{\sqrt2}.
+\]
+The amplitudes are $1/\sqrt2$ and $1/\sqrt2$; squaring magnitudes gives the
+same half-and-half distribution as the classical coin. If measurement happens
+now, this experiment alone cannot distinguish the two descriptions.
+
+\subsection{Insert phase and recombine paths}
+
+\begin{lstlisting}
+MAIN-PROCESS PhaseInterference
+CREATETOKEN -I Q
+SET Q 0p
+H -I Q -O Q
+Z -I Q -O Q
+H -I Q -O Q
+MEASURE -I Q
+RETURNVALS Q
+\end{lstlisting}
+Track the state:
+\[
+\ket0
+\xrightarrow{H}
+\frac{\ket0+\ket1}{\sqrt2}
+\xrightarrow{Z}
+\frac{\ket0-\ket1}{\sqrt2}
+\xrightarrow{H}
+\ket1.
+\]
+
+\subsection{Term-by-term explanation}
+
+\begin{description}
+  \item[Superposition] After the first H, both basis states have coherent
+  amplitudes. No measurement has selected one.
+  \item[Phase] Z multiplies only the $\ket1$ amplitude by $-1=e^{i\pi}$. Its
+  magnitude remains $1/\sqrt2$, so immediate 0/1 probabilities remain equal.
+  \item[Relative phase] The plus relationship between amplitudes becomes a
+  minus relationship. A global minus on both terms would not matter; changing
+  only one term does.
+  \item[Interference] The final H mixes the basis amplitudes. Contributions to
+  the $\ket0$ output cancel, while contributions to $\ket1$ add.
+  \item[Measurement] The final state is $\ket1$, so measurement returns 1 with
+  probability one.
+\end{description}
+
+The cancellation can be seen directly from matrix multiplication:
+\[
+H\frac1{\sqrt2}
+\begin{bmatrix}1\\-1\end{bmatrix}
+=
+\frac12
+\begin{bmatrix}1&1\\1&-1\end{bmatrix}
+\begin{bmatrix}1\\-1\end{bmatrix}
+=
+\frac12\begin{bmatrix}0\\2\end{bmatrix}
+=\begin{bmatrix}0\\1\end{bmatrix}.
+\]
+Classical probability weights are nonnegative and would add rather than cancel.
+Quantum amplitudes are signed or complex, so phase can create destructive and
+constructive interference before the Born rule turns amplitudes into
+probabilities.
+
+\subsection{Comparison table}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\bfseries}lXX}
+\toprule
+Question & Classical fair coin & H--Z--H quantum circuit\\
+\midrule
+State before observation & One hidden definite bit sampled fairly &
+Coherent complex amplitude vector\\
+Effect of middle sign/phase & No probability analogue that preserves a fair
+distribution and later cancels a branch & Z changes relative phase without
+changing immediate basis probabilities\\
+Can paths cancel? & No; probabilities add & Yes; amplitudes add and may cancel\\
+Final result in this example & Still a distribution unless another classical
+rule forces a value & Deterministic 1\\
+\bottomrule
+\end{tabularx}
+\end{center}
+

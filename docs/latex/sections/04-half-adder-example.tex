@@ -1,0 +1,113 @@
+\section{Worked example: reversible half-adder}
+
+A half-adder adds two one-bit numbers without a carry input. Classical theory
+defines two outputs:
+\[
+\mathrm{Sum}=A\oplus B,\qquad
+\mathrm{Carry}=A\land B.
+\]
+The name \emph{half-adder} means it handles half of the full-adder interface:
+there is no $C_{\rm in}$ input.
+
+\subsection{Classical specification}
+
+\begin{center}
+\begin{tabular}{cc|cc|c}
+\toprule
+$A$&$B$&Carry&Sum&Binary interpretation\\
+\midrule
+0&0&0&0&$0+0=00_2$\\
+0&1&0&1&$0+1=01_2$\\
+1&0&0&1&$1+0=01_2$\\
+1&1&1&0&$1+1=10_2$\\
+\bottomrule
+\end{tabular}
+\end{center}
+The Carry column is the high-order bit and Sum is the low-order bit. In the
+last row, decimal $1+1=2$, written $10_2$ in binary.
+
+\subsection{QPU protocol}
+
+\begin{lstlisting}
+PARAMS: A:state B:state
+
+MAIN-PROCESS HalfAdder
+CREATETOKEN -I Carry Sum
+SET Carry 0p
+SET Sum 0p
+
+XOR -I A B -O Sum
+AND -I A B -O Carry
+
+MEASURE -I Carry
+MEASURE -I Sum
+RETURNVALS Carry Sum
+\end{lstlisting}
+
+\subsection{What every term is doing}
+
+\begin{enumerate}
+  \item \textbf{PARAMS} declares A and B as caller-controlled state inputs.
+  In a basis-state truth-table test they receive \code{0p} or \code{1p}.
+  \item \textbf{Carry and Sum are workspace targets.} CREATETOKEN reserves their
+  names; SET prepares both in zero.
+  \item \textbf{XOR uses A and B as controls/inputs.} It mutates Sum according
+  to $s'=s\oplus A\oplus B$. Because $s=0$, the result is $A\oplus B$.
+  \item \textbf{AND uses the same preserved controls.} It mutates Carry
+  according to $c'=c\oplus(A\land B)$. Because $c=0$, Carry becomes the
+  classical carry predicate.
+  \item \textbf{MEASURE produces classical samples.} For basis inputs this
+  example is deterministic. If A or B is in superposition, outputs may be
+  entangled with the inputs and measurement samples a branch.
+  \item \textbf{RETURNVALS defines interface order.} Carry is output column
+  zero and Sum is output column one. It does not perform measurement itself.
+\end{enumerate}
+
+\begin{center}
+\begin{tikzpicture}[scale=.82]
+  \foreach \y/\name in {1.5/A,.5/B,-.5/Sum,-1.5/Carry} {
+    \draw[thick] (0,\y)--(8,\y);
+    \node[left] at (0,\y) {\name};
+  }
+  \fill[QpuNavy] (2,1.5) circle (.09);
+  \fill[QpuNavy] (2,.5) circle (.09);
+  \draw[thick] (2,1.5)--(2,-.5);
+  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.72cm,minimum height=.5cm,font=\scriptsize\bfseries] at (2,-.5) {XOR};
+  \fill[QpuNavy] (4.2,1.5) circle (.09);
+  \fill[QpuNavy] (4.2,.5) circle (.09);
+  \draw[thick] (4.2,1.5)--(4.2,-1.5);
+  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.72cm,minimum height=.5cm,font=\scriptsize\bfseries] at (4.2,-1.5) {AND};
+  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.6cm,minimum height=.5cm,font=\bfseries] at (6.2,-.5) {M};
+  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.6cm,minimum height=.5cm,font=\bfseries] at (6.2,-1.5) {M};
+  \draw[-{Latex[length=2mm]},QpuRed,thick] (6.55,-.5)--(7.8,-.5);
+  \draw[-{Latex[length=2mm]},QpuRed,thick] (6.55,-1.5)--(7.8,-1.5);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Reversible state equation}
+
+Before measurement, the full basis-state action is
+\[
+\ket{A,B,s,c}\longmapsto
+\ket{A,B,s\oplus A\oplus B,\ c\oplus(A\land B)}.
+\]
+The familiar half-adder is the special case $s=c=0$. Writing the complete
+equation avoids a common mistake: XOR and AND do not overwrite arbitrary
+targets. They reversibly combine results with the targets' previous states.
+
+\subsection{Companion truth-table metadata}
+
+\begin{lstlisting}
+MAIN-PROCESS: HalfAdder
+INPUTS: A B
+OUTPUTS: Carry Sum
+# A B Carry Sum
+0 0p 0p 0p 0p
+1 0p 1p 0p 1p
+2 1p 0p 0p 1p
+3 1p 1p 1p 0p
+\end{lstlisting}
+This file compares the measured QPU outputs with the classical half-adder
+specification. Passing all four rows demonstrates basis-state equivalence; it
+does not by itself characterize phases for superposition inputs.
+

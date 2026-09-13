@@ -1,0 +1,126 @@
+\section{Process composition and return values}
+
+\subsection{\code{MAIN-PROCESS} (\implemented)}
+
+\begin{lstlisting}
+MAIN-PROCESS FullAdder
+\end{lstlisting}
+This marks the process body and supplies its catalog/library name. Compilation
+already begins from the named process, so the row itself emits no gate.
+The name is the first positional word after \code{MAIN-PROCESS}; avoid spaces
+inside it. This name connects a protocol to catalog entries, child calls,
+downloads, and companion truth-table metadata. If no marker exists, the system
+uses \code{InlineProcess}, but named processes are strongly recommended.
+
+\subsection{\code{DECLARECHILD} (\acceptedonly)}
+
+\begin{lstlisting}
+DECLARECHILD SingleBitFullAdder
+\end{lstlisting}
+The declaration is logged. It does not load inline source. Child bodies must
+exist in the external \code{librarySources} catalog when called.
+DECLARECHILD is therefore documentation/compatibility syntax rather than an
+import statement. A successful declaration does not guarantee that a later
+call can resolve. The process catalog supplied to compilation remains the
+source of truth.
+
+\subsection{\code{RUNCHILD} --- expand a child process (\implemented)}
+
+\begin{lstlisting}
+RUNCHILD SingleBitFullAdder \
+  -I A B Cin \
+  -O Carry Sum
+\end{lstlisting}
+The first positional argument is the child process name. Inputs bind by the
+child's PARAMS order: A maps to the first parameter, B to the second, and Cin
+to the third in this example. Outputs bind by the child's RETURNVALS order.
+Before expansion, each bound parent output is zero-prepared once. Child-local
+names receive a unique scope.
+
+RUNCHILD is compile-time composition, not a dynamic subroutine call in a
+running quantum machine. The child body is recursively expanded into the
+parent's flat gate sequence. This allows the renderer and simulator to inspect
+every resulting gate.
+
+\subsection{\code{CALL} --- alternate child invocation (\implemented)}
+
+\begin{lstlisting}
+CALL SingleBitFullAdder -I A B Cin -O Carry Sum
+\end{lstlisting}
+CALL currently follows the same child lookup, parameter binding, output
+preparation, and expansion path as RUNCHILD. RUNCHILD is used by the bundled
+multi-bit protocols and makes compile-time expansion explicit; CALL is retained
+as an equivalent system spelling. Both fail when the named child is absent from
+the supplied process library.
+
+\subsection{\code{RETURNVALS} (\implemented)}
+
+\begin{lstlisting}
+RETURNVALS Carry Sum
+\end{lstlisting}
+Positional tokens define the process's ordered public outputs. They determine
+child output binding, truth-table output columns, and the UI's preferred
+logical width. Do not use \code{-I} or \code{-O} here: flags would be retained
+as positional return tokens.
+
+RETURNVALS does not measure automatically. Add MEASURE instructions when
+classical outcomes are required. Returning an unmeasured wire preserves it as
+part of the projected quantum output shown by the system.
+
+\subsection{\code{ACCEPTVALS} (\implemented)}
+
+\begin{lstlisting}
+CALL Child -I A B
+ACCEPTVALS LocalCarry LocalSum
+\end{lstlisting}
+Each positional local token aliases the corresponding value from the most
+recent child return list. Direct \code{-O} binding on RUNCHILD/CALL is clearer
+when output names are known.
+
+Ordering is again essential: the first ACCEPTVALS name receives the first
+returned reference, and so on. The instruction refers to the most recently
+completed child expansion in compiler state; inserting another child call
+changes which return list is accepted.
+
+\subsection{Nested full-adder example}
+
+\begin{lstlisting}
+# child.qpucir
+PARAMS: A:state B:state Cin:state
+MAIN-PROCESS ChildAdder
+CREATETOKEN -I Carry Sum
+SET Carry 0p
+SET Sum 0p
+XOR   -I A B   -O Sum
+CNOT -I Cin   -O Sum
+CCNOT -I A B   -O Carry
+CCNOT -I A Cin -O Carry
+CCNOT -I B Cin -O Carry
+RETURNVALS Carry Sum
+\end{lstlisting}
+
+\begin{lstlisting}
+# parent.qpucir
+PARAMS: A:state B:state Cin:state
+MAIN-PROCESS Parent
+CREATETOKEN -I Cout Result
+RUNCHILD ChildAdder -I A B Cin -O Cout Result
+MEASURE -I Cout
+MEASURE -I Result
+RETURNVALS Cout Result
+\end{lstlisting}
+
+For basis inputs, the full-adder equations are
+\[
+\mathrm{Sum}=A\oplus B\oplus C_{\mathrm{in}},\qquad
+C_{\mathrm{out}}=(A\land B)\oplus(A\land C_{\mathrm{in}})
+\oplus(B\land C_{\mathrm{in}}).
+\]
+\begin{center}
+\begin{tabular}{ccc|cc}\toprule
+$A$&$B$&$C_{\rm in}$&$C_{\rm out}$&Sum\\\midrule
+0&0&0&0&0\\0&0&1&0&1\\0&1&0&0&1\\0&1&1&1&0\\
+1&0&0&0&1\\1&0&1&1&0\\1&1&0&1&0\\1&1&1&1&1\\\bottomrule
+\end{tabular}
+\end{center}
+

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
+    "docs:build": "node scripts/tex-to-pdf.mjs",
+    "docs:check": "node scripts/tex-to-pdf.mjs --check",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "test:watch": "vitest"

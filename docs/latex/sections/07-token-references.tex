@@ -1,0 +1,140 @@
+\section{Names and token references}
+
+A \emph{token} is the QPU language's name for a logical storage location. For
+the circuits in this guide, a token normally identifies one qubit wire.
+Instructions refer to tokens instead of physical machine addresses. During
+compilation, the system resolves each live token to an integer qubit index.
+This indirection makes protocols readable and lets child processes have private
+workspace without colliding with their parents.
+
+\subsection{Token names}
+
+A bare token is written as a whitespace-delimited name:
+\begin{lstlisting}
+Q
+Control
+CarryOut
+scratch_2
+0
+\end{lstlisting}
+Names are case-sensitive even though instruction names are not:
+\code{Carry} and \code{carry} are distinct tokens. A name cannot contain
+whitespace because whitespace separates language elements. Avoid names that
+begin with a hyphen: inside a flag list, any hyphen-prefixed token is treated
+as the beginning of another flag.
+
+Tokens are allocated lazily. Mentioning a token in a gate, a state-setting
+instruction, or \code{CREATETOKEN} gives it a wire when compilation needs one.
+Consequently, source order affects the internal numeric wire index, but not the
+meaning of a consistently named circuit.
+
+\subsection{Direct references}
+
+A direct reference is simply the token's name:
+\begin{lstlisting}
+SET Q 0p
+H -I Q -O Q
+MEASURE -I Q
+RETURNVALS Q
+\end{lstlisting}
+Every occurrence resolves to the same token within that process invocation.
+For a one-qubit gate, repeat the name after both \code{-I} and \code{-O}.
+This does not copy the state. It says that Q is the instruction's incoming
+wire and that the same Q wire is mutated in place.
+
+\subsection{Parameter references with a dollar sign}
+
+A leading dollar sign is the explicit parameter/reference spelling:
+\begin{lstlisting}
+PARAMS: Input:state
+MAIN-PROCESS DollarReference
+SET Local $Input
+H -I $Input -O $Input
+RETURNVALS Local
+\end{lstlisting}
+Address resolution removes the leading \code{$}. Thus \code{Input} and
+\code{$Input} ultimately refer to the same declared parameter. The dollar
+form is especially useful inside reusable child protocols because it visually
+separates caller-supplied values from child-local workspace.
+
+\code{SET Local \$Input} creates an alias: Local resolves to the same underlying
+wire as Input. It does \emph{not} clone an unknown quantum state. Quantum states
+cannot generally be copied because of the no-cloning theorem; aliasing avoids
+claiming that a physical copy occurred.
+
+\subsection{Cycle-qualified references with \code{:}}
+
+A token may carry a suffix after a colon:
+\begin{lstlisting}
+Q:0
+Q:1
+Carry:next
+\end{lstlisting}
+The current system strips the colon and everything after it when mapping source
+references to visual qubit wires. Therefore all three examples above whose
+base is Q---\code{Q:0}, \code{Q:1}, and bare \code{Q}---identify the same
+logical wire. The suffix is protocol notation for a stage, cycle, or bit
+version; it does not create a second qubit.
+
+\begin{lstlisting}
+SET Q:0 0p
+H -I Q:0 -O Q:1
+MEASURE -I Q:2
+\end{lstlisting}
+This example applies H to one wire and then measures that same wire. The
+changing suffix communicates progression to a human reader, while
+\code{INCREASECYCLE} provides the actual compiler cycle boundary.
+
+\textbf{Practical rule:} if two values must exist simultaneously, give them
+different base names. Do not expect \code{Q:0} and \code{Q:1} to hold two
+independent states.
+
+\subsection{Aliases created by \code{SET}}
+
+When the second operand of SET is not a built-in state constant, SET creates a
+name alias:
+\begin{lstlisting}
+SET Working Input
+SET Output Working
+X -I Output -O Output
+\end{lstlisting}
+After resolution, Working, Output, and Input name one wire. Mutating any alias
+mutates that wire for every alias. This behavior is useful for readable names
+and process binding, but it is not assignment in the classical
+``copy a value into a new variable'' sense.
+
+Aliases are resolved within a process frame. PARAMS and parent/child bindings
+take precedence over ordinary child-local scoping, ensuring that an operation
+on a bound parameter affects the caller's intended wire.
+
+\subsection{Numeric workspace references}
+
+Bare numeric names such as \code{0}, \code{1}, and \code{2} are valid token
+names and are common in reusable arithmetic children:
+\begin{lstlisting}
+SET 0:0 $A
+SET 1:0 $B
+SET 2:0 $Cin
+\end{lstlisting}
+When a child process uses a numeric workspace name, the compiler places it in
+the parent invocation's workspace namespace. This lets nested adders reuse the
+same compact source names without globally identifying every child invocation's
+scratch wires.
+
+Numeric token names are not number literals. \code{2} names a wire; it does not
+mean the integer two or the basis state $\ket{2}$.
+
+\subsection{Process scope and child-local references}
+
+Each process invocation receives a unique scope. A local name such as
+\code{Scratch} in two separate child calls therefore denotes two separately
+resolved local references unless output or parameter binding deliberately joins
+them. Conceptually, compilation turns:
+\begin{lstlisting}
+RUNCHILD Worker -I A -O First
+RUNCHILD Worker -I B -O Second
+\end{lstlisting}
+into two independent Worker frames. This is similar to local variables in two
+function calls. PARAMS map caller references into the frame, and RETURNVALS map
+selected frame references back out.
+

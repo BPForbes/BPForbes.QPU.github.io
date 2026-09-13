@@ -1,0 +1,154 @@
+\section{Truth-table companion syntax}
+
+Truth tables are metadata paired to a process; they are not \code{.qpucir}
+commands. A protocol describes \emph{how} a circuit works; its companion
+\code{.qpuio} describes selected input/output expectations.
+
+\subsection{Text \code{.qpuio} structure}
+
+A text table may use spaces or commas:
+
+\begin{lstlisting}
+MAIN-PROCESS: HalfAdder
+INPUTS: A B
+OUTPUTS: Carry Sum
+# A B Carry Sum
+0 0p 0p 0p 0p
+1 0p 1p 0p 1p
+2 1p 0p 0p 1p
+3 1p 1p 1p 0p
+\end{lstlisting}
+
+\subsection{\code{MAIN-PROCESS:} table header}
+
+The colon is required in the table format:
+\begin{lstlisting}
+MAIN-PROCESS: HalfAdder
+\end{lstlisting}
+This name associates metadata with its protocol. Notice the deliberate syntax
+difference: protocol source writes \code{MAIN-PROCESS HalfAdder}, while the
+truth-table header writes \code{MAIN-PROCESS: HalfAdder}.
+
+\subsection{\code{INPUTS:} and \code{OUTPUTS:} column groups}
+
+\begin{lstlisting}
+INPUTS: A B
+OUTPUTS: Carry Sum
+\end{lstlisting}
+These lines divide the columns into values supplied before simulation and
+values checked after simulation. Their order must match the later column header.
+INPUTS should correspond to state-typed PARAMS; OUTPUTS should correspond to
+RETURNVALS. OUTPUTS must contain at least one name.
+
+Explicit groups remove ambiguity. If they are absent, the loader can derive the
+split only when a matching protocol is available and the combined PARAMS and
+RETURNVALS widths match the table header.
+
+\subsection{Column header row}
+
+\begin{lstlisting}
+# A B Carry Sum
+\end{lstlisting}
+The first nonmetadata row beginning with a hash and whitespace or comma is the
+ordered column header. Here A and B are inputs, followed by Carry and Sum
+outputs. Unlike an ordinary protocol hash comment, this row has structural
+meaning inside a \code{.qpuio} file.
+
+\subsection{Indexed data rows}
+
+\begin{lstlisting}
+0 0p 0p 0p 0p
+1 0p 1p 0p 1p
+\end{lstlisting}
+The first cell is a decimal row index. Indices begin at zero and increase by
+one without gaps. Remaining cells align left-to-right with the column header.
+Every row must have exactly the expected width, and every state cell must be
+\code{0p}, \code{1p}, or \code{sp}.
+
+For $n$ binary input columns, a complete table contains $2^n$ rows. The usual
+ordering interprets input columns most-significant first: for two inputs the
+sequence is 00, 01, 10, 11. The loader checks sequential row indices, while
+semantic validation also rejects duplicate input patterns.
+
+\subsection{CSV spelling}
+
+Commas may replace whitespace consistently:
+\begin{lstlisting}
+MAIN-PROCESS: HalfAdder
+INPUTS: A,B
+OUTPUTS: Carry,Sum
+#,A,B,Carry,Sum
+0,0p,0p,0p,0p
+\end{lstlisting}
+Spaces around commas are trimmed. Do not mix extra prose into a data row;
+trailing hash comments are allowed only where the table loader can strip them
+after the data content.
+
+\subsection{Partial truth tables}
+
+A partial table lists selected cases rather than all $2^n$ combinations. It
+must contain at least one row, no duplicate input pattern, and no more than
+$2^n$ rows. Partial tables are useful for state-machine transitions or focused
+regressions, but passing one proves behavior only for the listed cases.
+
+\begin{center}
+\begin{tabular}{c|c|c}\toprule
+Input count $n$ & Complete row count $2^n$ & Example\\\midrule
+0&1&constant-output process\\
+1&2&0, 1\\
+2&4&00, 01, 10, 11\\
+3&8&000 through 111\\
+4&16&0000 through 1111\\\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{JSON \code{.qpuio} envelope}
+
+The equivalent machine-oriented JSON form is:
+\begin{lstlisting}[language={}]
+{
+  "format": "qpuio",
+  "version": 1,
+  "processName": "HalfAdder",
+  "inputColumns": ["A", "B"],
+  "outputColumns": ["Carry", "Sum"],
+  "rows": [
+    ["0p", "0p", "0p", "0p"],
+    ["0p", "1p", "0p", "1p"],
+    ["1p", "0p", "0p", "1p"],
+    ["1p", "1p", "1p", "0p"]
+  ]
+}
+\end{lstlisting}
+
+The \code{format} value must be \code{qpuio} and \code{version} must be 1.
+Column names must be nonempty strings, outputColumns must not be empty, and
+every nested row array must have exactly
+\[
+\text{inputColumns.length}+\text{outputColumns.length}
+\]
+valid cells.
+
+\subsection{How a table test runs}
+
+For each listed row, the runner:
+\begin{enumerate}
+  \item maps input cells to state PARAMS by column name and order;
+  \item creates the circuit's start-state vector;
+  \item executes every compiled gate, including child expansions;
+  \item measures the declared RETURNVALS;
+  \item compares only those measured outputs with expected output cells.
+\end{enumerate}
+An expected output \code{sp} accepts either measured bit. An input \code{sp}
+initializes an equal plus-state superposition. Because one probabilistic sample
+cannot establish a full distribution, tables are strongest for deterministic
+basis-state behavior.
+
+\subsection{Protected bundled tables}
+
+The bundled SingleBitFullAdder, TwoBitFullAdder, FourBitFullAdder, and PhaseDemo
+tables are canonical site assets. Do not rewrite them to make an experiment
+pass. Create a new uploaded or corrected process/table pair when testing
+different expectations. This keeps examples reproducible and prevents a
+protocol correction from silently changing its specification.
+

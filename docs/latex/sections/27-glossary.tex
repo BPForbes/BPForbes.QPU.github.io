@@ -1,0 +1,67 @@
+\section{Glossary}
+
+\begin{longtable}{>{\bfseries}p{0.19\textwidth}p{0.72\textwidth}}
+\toprule
+Term & Meaning\\
+\midrule
+\endhead
+Amplitude & A complex coefficient of a basis state. Its squared magnitude
+contributes to measurement probability.\\
+Ancilla & An auxiliary qubit or workspace wire, usually prepared in a known
+state, used to hold intermediate information in a reversible computation.\\
+Basis state & A state used as a coordinate direction. The computational basis
+for one qubit is $\ket0,\ket1$.\\
+Bloch sphere & A geometric representation of pure one-qubit states after
+ignoring global phase. North/south are $\ket0/\ket1$; longitude represents
+relative phase.\\
+Boolean algebra & The mathematics of 0/1 values and operations such as NOT,
+AND, OR, and XOR.\\
+Child process & A separately named protocol expanded into a parent through
+RUNCHILD or CALL.\\
+Combinational logic & A classical circuit whose output depends only on current
+inputs, not stored history.\\
+Control & A wire whose basis condition decides whether a controlled operation
+acts on its target. The control itself is preserved by the standard controlled
+gates.\\
+Entanglement & A joint multi-qubit state that cannot be written as a tensor
+product of independent qubit states.\\
+Fan-out & Sending one classical value to multiple destinations. Unknown quantum
+states cannot be universally copied; CNOT copies only known basis information
+onto a zero target and otherwise may entangle.\\
+Gate & A state transformation. Closed-system quantum gates are unitary;
+measurement and reset have different semantics.\\
+Garbage & Reversible-workspace information no longer wanted as output but still
+present because it cannot simply be erased.\\
+Global phase & A unit complex multiplier applied to the whole state. It does
+not change physical measurement predictions.\\
+Ket & Dirac notation $\ket{\psi}$ for a state column vector.\\
+Measurement & Conversion of quantum amplitudes into a sampled classical result,
+with state collapse and renormalization.\\
+Phase & The angular part of a complex amplitude. Relative phase controls
+interference even when immediate basis probabilities are unchanged.\\
+Process & A named QPU protocol body with ordered PARAMS and RETURNVALS.\\
+Protocol & Plain-text QPU instructions describing preparation, gates,
+composition, measurement, and returned references.\\
+Qubit & A normalized two-component complex state
+$\alpha\ket0+\beta\ket1$, not merely an unknown classical bit.\\
+Register & One or more logical wires considered together. Current JOIN/SPLIT
+syntax is accepted but does not yet lower to register operations.\\
+Relative phase & The phase difference between amplitudes. Unlike global phase,
+it can change later interference and measurement probabilities.\\
+Superposition & A coherent linear combination of basis states. \code{sp}
+prepares the equal plus superposition.\\
+Target & The wire whose amplitudes a gate mutates; normally the first
+\code{-O} reference.\\
+Tensor product & The operation $\otimes$ that combines state spaces. Two
+one-qubit vectors produce a four-amplitude two-qubit vector.\\
+Token & A source-level logical name resolved to a qubit wire or alias during
+compilation.\\
+Truth table & Listed input/output expectations for measured RETURNVALS. It
+describes basis behavior but not arbitrary phase or entanglement.\\
+Uncomputation & Running suitable inverse gates in reverse order to return
+temporary workspace to a known state without irreversible erasure.\\
+Unitary & A matrix satisfying $U^\dagger U=I$, preserving normalization and
+having a reversible inverse.\\
+\bottomrule
+\end{longtable}
+

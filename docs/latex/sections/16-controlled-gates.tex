@@ -1,0 +1,105 @@
+\section{Controlled and two-qubit primitive gates}
+
+\GateHeading{Controlled NOT}{CNOT}{\ControlledSegment{$\oplus$}}
+
+\[
+\ket{c,t}\longmapsto\ket{c,t\oplus c}.
+\]
+CNOT leaves the control unchanged. When the control is zero, the target is
+unchanged; when the control is one, X acts on the target. Because the map is a
+permutation of basis states, it is reversible and self-inverse. A
+superposition control can entangle the wires, so ``classical XOR'' describes
+only its basis-state action.
+\begin{lstlisting}
+CNOT -I Control -O Target
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{cc|cc}\toprule $c$&$t$&$c'$&$t'$\\\midrule
+0&0&0&0\\0&1&0&1\\1&0&1&1\\1&1&1&0\\\bottomrule
+\end{tabular}
+\end{center}
+CNOT is a reversible embedding of XOR because it preserves the control.
+
+\GateHeading{Doubly controlled NOT / Toffoli}{CCNOT}{\DoubleControlledSegment}
+
+\[
+\ket{a,b,t}\longmapsto\ket{a,b,t\oplus(a\land b)}.
+\]
+CCNOT, also called Toffoli, applies X only when both controls are one. It is a
+reversible universal building block for classical computation embedded in a
+quantum circuit. The target's previous value matters: zero computes AND, while
+one computes NAND. The gate is self-inverse.
+\begin{lstlisting}
+CCNOT -I A B -O Target
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{ccc|ccc}\toprule $a$&$b$&$t$&$a'$&$b'$&$t'$\\\midrule
+0&0&0&0&0&0\\0&0&1&0&0&1\\
+0&1&0&0&1&0\\0&1&1&0&1&1\\
+1&0&0&1&0&0\\1&0&1&1&0&1\\
+1&1&0&1&1&1\\1&1&1&1&1&0\\\bottomrule
+\end{tabular}
+\end{center}
+With a target initialized to zero, Toffoli computes classical AND reversibly.
+
+\GateHeading{Controlled Z}{CZ}{\ControlledSegment{Z}}
+
+\[
+\mathrm{CZ}\ket{c,t}=(-1)^{ct}\ket{c,t},\qquad
+\mathrm{CZ}=\operatorname{diag}(1,1,1,-1).
+\]
+CZ adds a minus sign only to the $\ket{11}$ amplitude. No computational-basis
+bit changes, but superpositions can acquire observable relative phase. CZ is
+symmetric between its two wires, even though QPU syntax writes one as the
+input control and one as the output target. It is self-inverse.
+\begin{lstlisting}
+CZ -I Control -O Target
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{cc|cc}\toprule Input & Measured output & Amplitude multiplier & State\\\midrule
+00&00&$+1$&$\ket{00}$\\01&01&$+1$&$\ket{01}$\\
+10&10&$+1$&$\ket{10}$\\11&11&$-1$&$-\ket{11}$\\\bottomrule
+\end{tabular}
+\end{center}
+The classical columns are unchanged; the quantum phase is the operation.
+
+\GateHeading{Controlled Y}{CY}{\ControlledSegment{Y}}
+
+\[
+\ket{0,t}\mapsto\ket{0,t},\quad
+\ket{1,0}\mapsto i\ket{1,1},\quad
+\ket{1,1}\mapsto-i\ket{1,0}.
+\]
+CY applies the Pauli Y rotation to the target only when the control is one. Its
+basis-bit pattern resembles CNOT, but the $\pm i$ factors distinguish their
+behavior on superpositions. Since $Y^2=I$, CY is self-inverse.
+\begin{lstlisting}
+CY -I Control -O Target
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{cc|cc|c}\toprule $c$&$t$&$c'$&$t'$&Quantum phase\\\midrule
+0&0&0&0&$+1$\\0&1&0&1&$+1$\\
+1&0&1&1&$i$\\1&1&1&0&$-i$\\\bottomrule
+\end{tabular}
+\end{center}
+
+\GateHeading{Swap}{SWAP}{\SwapSegment}
+
+\[
+\mathrm{SWAP}\ket{a,b}=\ket{b,a}.
+\]
+SWAP exchanges the complete quantum states of two wires, including amplitudes
+and any correlations with the rest of the register. It does not copy either
+state. Three CNOTs can decompose SWAP, but the QPU system provides it as one
+primitive instruction. Applying SWAP twice restores the original ordering.
+\begin{lstlisting}
+SWAP -I A B -O A B
+\end{lstlisting}
+The two output tokens are mandatory and must resolve to the same two wires, in
+the same order, as the inputs.
+\begin{center}
+\begin{tabular}{cc|cc}\toprule $a$&$b$&$a'$&$b'$\\\midrule
+0&0&0&0\\0&1&1&0\\1&0&0&1\\1&1&1&1\\\bottomrule
+\end{tabular}
+\end{center}
+

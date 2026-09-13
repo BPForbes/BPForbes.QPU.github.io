@@ -1,0 +1,62 @@
+\section{Gate instruction grammar and arity}
+
+\subsection{General gate shape}
+
+\begin{lstlisting}
+GATE -I input_or_controls -O target
+\end{lstlisting}
+The uppercase word selects a gate. \code{-I} lists the incoming wire for a
+one-qubit operation or the controls for a controlled operation. \code{-O}
+names the wire that is mutated. Except for SWAP, gate instructions do not
+create a separate output wire automatically.
+
+\begin{lstlisting}
+H -I Q -O Q
+CNOT -I Control -O Target
+\end{lstlisting}
+In the first row, Q is listed twice because the state flows through H on one
+wire. In the second, Control is preserved and Target is conditionally changed.
+
+\subsection{Why arity matters}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Gate family & Required \code{-I} count & Required \code{-O} count\\
+\midrule
+X, Y, Z, H, S, T, PHASE, NOT & 1 & 1\\
+CNOT, CZ, CY & 1 & 1\\
+CCNOT, AND, NAND, OR, XOR & 2 & 1\\
+SWAP & 2 & 2\\
+MEASURE & 0 or 1 & 0\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+All counts are exact except \code{MEASURE}. For ordinary single-qubit gates,
+name the same wire in \code{-I} and \code{-O}. The output is the mutated target;
+for controlled gates, \code{-I} contains controls.
+
+\subsection{Validation and common mistakes}
+
+Arity is part of the language contract. A CNOT with two inputs is not silently
+converted into CCNOT, and a CCNOT with one input is not converted into CNOT.
+The compiler reports whether an instruction has too few or too many inputs or
+outputs.
+
+\begin{lstlisting}
+# Wrong: H needs one output.
+H -I Q
+
+# Wrong: CNOT needs exactly one control.
+CNOT -I A B -O Target
+
+# Right:
+CCNOT -I A B -O Target
+\end{lstlisting}
+
+The target is removed from the compiler's control list if the same resolved
+wire appears on both sides. This is necessary for the normal one-qubit form.
+For controlled gates, do not also list the target as an input; doing so either
+violates arity or obscures the intended control relationship.
+

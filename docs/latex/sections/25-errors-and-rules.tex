@@ -1,0 +1,20 @@
+\section{Error conditions and practical rules}
+
+\begin{enumerate}
+  \item Unknown opcodes fail with \code{Unknown command}. \code{RESET} is not a
+  source opcode.
+  \item Every QPU gate except MEASURE requires \code{-I} and \code{-O}, then
+  exact registry arity is checked.
+  \item PHASE requires a valid nonzero-denominator angle after \code{=}.
+  \item SWAP requires two matching input/output wires.
+  \item RUNCHILD/CALL fails if the named process is absent from the library.
+  \item SET fails when its positional value is missing.
+  \item RETURNVALS order is semantically significant for child bindings and
+  truth-table columns.
+  \item Use the same input/output token for single-qubit gates.
+  \item Initialize derived-gate targets deliberately; their operation is XOR
+  into the existing target, not destructive assignment.
+  \item Treat accepted-but-not-executed instructions as compatibility annotations until their
+  runtime lowering is implemented.
+\end{enumerate}
+

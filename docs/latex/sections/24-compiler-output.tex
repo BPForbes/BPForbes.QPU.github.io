@@ -1,0 +1,27 @@
+\section{Compiler output and lowering details}
+
+Compilation returns:
+\begin{lstlisting}[language={}]
+CompileResult {
+  gates: CircuitGate[]
+  qubitCount: number
+  logicalQubitCount: number
+  parsed: ParsedCommand[]
+  log: string[]
+  tokenMap: Record<string, number>
+  processParams: ProcessParam[]
+  returnValues: ReturnValue[]
+}
+\end{lstlisting}
+
+Each accepted instruction entry records \code{op}, original \code{raw} text,
+\code{inputs}, \code{outputs}, positional \code{args}, optional normalized
+radian \code{phase}, \code{reverse}, and \code{noParameterSubstitution}.
+Each emitted gate records \code{id}, \code{type}, ordered \code{step},
+\code{targets}, \code{controls}, optional \code{phase}, and source text.
+
+After child expansion, unused symbolic holes are compacted to dense qubit
+indices. Internal RESET gates count for simulation but are filtered from the
+visible circuit. UI logical width prefers RETURNVALS count, then exposed PARAMS
+count, then physical simulator width.
+

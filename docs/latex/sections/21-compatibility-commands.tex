@@ -1,0 +1,46 @@
+\section{Accepted compatibility commands}
+
+These instructions are part of the accepted QPU language, but their present
+effect is to preserve arguments and add a compiler-log entry. Their acceptance
+must not be confused with simulator behavior.
+
+\subsection{\code{COMPILEPROCESS} (\acceptedonly)}
+
+\begin{lstlisting}
+COMPILEPROCESS ChildName
+\end{lstlisting}
+COMPILEPROCESS records a request associated with another process. It does not
+currently locate, compile, or insert that process. Use RUNCHILD or CALL with a
+process available in the compilation library when actual child gates are
+required. Arguments are positional and no arity is enforced.
+
+\subsection{\code{MASTERVAL} (\acceptedonly)}
+
+\begin{lstlisting}
+MASTERVAL Result
+\end{lstlisting}
+MASTERVAL records the intent that a reference is a final or authoritative
+value. It does not change the process interface, measurement behavior, token
+mapping, or RETURNVALS. Use RETURNVALS to expose outputs that the current
+system will actually project and associate with truth-table columns.
+
+\subsection{Save-state checkpoint instruction (\acceptedonly)}
+
+\begin{lstlisting}
+SAVE_STATE checkpointA
+\end{lstlisting}
+\code{SAVE_STATE} records a named checkpoint request. The simulator does not currently
+copy the state vector into a checkpoint store. In particular, later gates and
+measurements proceed exactly as if this line were absent. A log entry is not
+evidence that a recoverable snapshot exists.
+
+\subsection{Load-state checkpoint instruction (\acceptedonly)}
+
+\begin{lstlisting}
+LOAD_STATE checkpointA
+\end{lstlisting}
+\code{LOAD_STATE} records a restore request but does not replace the active state
+vector. It neither validates that a matching \code{SAVE_STATE} appeared nor rewinds
+measurements. Protocols whose correctness depends on restoration must wait for
+runtime support rather than relying on accepted syntax.
+

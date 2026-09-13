@@ -1,0 +1,95 @@
+\section{Lexical and file syntax}
+
+\subsection{Logical lines, whitespace, and case}
+
+Commands and flags are case-insensitive and are separated by whitespace.
+Token names retain their spelling. CRLF and LF line endings are accepted.
+A physical line ending \emph{exactly} in a backslash joins to the next line:
+
+\begin{lstlisting}
+PARAMS: A:state B:state \
+        Cin:state
+CCNOT -I A B \
+      -O Carry
+\end{lstlisting}
+
+The continuation backslash must be the final character; spaces after it prevent
+continuation. Blank logical lines are discarded.
+
+\subsection{Hash comments}
+
+\begin{lstlisting}
+# Whole-line or trailing hash comment
+H -I Q:0 -O Q:0  # prepare |+>
+\end{lstlisting}
+A hash starts a comment that continues through the logical line. Comments are
+for explanations and do not become instructions. Because continuation joining
+happens first, a hash on a continued logical line can hide text that appeared
+on a later physical line. Prefer comments after a complete instruction.
+
+\subsection{Block comments}
+
+\begin{lstlisting}
+/* A block comment may span logical lines. */
+PHASE=pi/2 -I Q:0 -O Q:0
+\end{lstlisting}
+
+Text from \code{/*} through \code{*/} is ignored. A block may occupy one line
+or continue across several lines. Block comments are useful for temporarily
+annotating a region, but they should not be nested. Keep delimiters visually
+obvious so an omitted closing marker does not hide the remainder of a file.
+
+\subsection{\code{PARAMS:}: the process input declaration}
+
+\begin{lstlisting}
+PARAMS: A:state B:state Theta:float Count:int
+\end{lstlisting}
+
+\code{PARAMS:} is recognized only when it is the first non-comment logical
+line. Each whitespace-separated entry containing a colon becomes
+\code{name:type}. Declaration order is interface order: RUNCHILD inputs and
+truth-table input columns map from left to right.
+
+Long declarations can use continuation:
+\begin{lstlisting}
+PARAMS: A0:state A1:state B0:state B1:state \
+        Cin:state Width:int
+\end{lstlisting}
+
+The system retains the type text:
+\begin{itemize}
+  \item \code{state} entries become user-facing circuit inputs and truth-table
+  input columns. Each participating state parameter resolves to a qubit wire.
+  \item \code{int} and \code{float} entries are retained but excluded from
+  user-facing qubit controls and truth-table state inputs. They describe
+  numeric process metadata rather than prepared qubits.
+  \item other type names are retained as written. Because they are not one of
+  the recognized numeric exclusions, they may be exposed like stateful
+  parameters; prefer \code{state}, \code{int}, or \code{float} for predictable
+  behavior.
+\end{itemize}
+
+PARAMS has a colon after the keyword; \code{MAIN-PROCESS} does not. An empty or
+misplaced PARAMS line is not a substitute for a valid first-line declaration.
+The process's MAIN-PROCESS instruction is described in the composition chapter.
+
+\subsection{Protocol file forms}
+
+The normal authoring format is plain UTF-8 QPU text saved as
+\code{ProcessName.qpucir}. A \code{.qpucir.txt} download is also plain source
+and is useful where browsers or editors insist on a text extension. Uploading
+plain text derives the display name from MAIN-PROCESS.
+
+The loader can also accept a JSON export envelope:
+\begin{lstlisting}[language={}]
+{
+  "format": "qpucir",
+  "version": 1,
+  "name": "First circuit",
+  "source": "MAIN-PROCESS FirstCircuit\nRETURNVALS Q"
+}
+\end{lstlisting}
+The source string is the authoritative language text. Export envelopes may
+also contain compiled qubit count, gates, token map, and export timestamp
+metadata, but compilation from source determines current behavior.
+

@@ -1,0 +1,21 @@
+\section{Measurement gate}
+
+\GateHeading{Measurement}{MEASURE}{\MeasureSegment}
+
+\begin{lstlisting}
+MEASURE -I Q     # exactly one named wire
+MEASURE          # every wire known at this point
+\end{lstlisting}
+\code{MEASURE} takes no \code{-O}. Repeated one-wire commands are useful when
+only declared returns should become classical. A bare command emits one
+measurement operation per currently allocated wire.
+
+\begin{center}
+\begin{tabular}{c|c|c}\toprule State & Outcome probabilities & Collapsed state\\\midrule
+$\ket0$ & $P(0)=1$ & $\ket0$\\
+$\ket1$ & $P(1)=1$ & $\ket1$\\
+$\alpha\ket0+\beta\ket1$ & $P(0)=|\alpha|^2$, $P(1)=|\beta|^2$ &
+$\ket0$ or $\ket1$\\\bottomrule
+\end{tabular}
+\end{center}
+

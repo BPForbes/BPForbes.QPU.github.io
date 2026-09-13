@@ -1,0 +1,187 @@
+\section{Classical computation foundations}
+
+Quantum circuits build on ideas from classical digital logic. Understanding
+bits, Boolean functions, truth tables, and reversible computation makes the
+QPU gate model much easier to use.
+
+\subsection{Classical bits and logical state}
+
+A classical bit has one definite logical value:
+\[
+b\in\{0,1\}.
+\]
+Physical computers may represent that value with voltage, charge, magnetic
+orientation, or another measurable quantity. Digital logic ignores most
+physical detail and works with the abstraction 0 or 1.
+
+A wire carries a bit from one operation to another. A \emph{gate} computes a
+function of one or more incoming bits. For example, NOT has one input and one
+output:
+\[
+\operatorname{NOT}(0)=1,\qquad \operatorname{NOT}(1)=0.
+\]
+In QPU source, a token names the logical wire. On computational-basis states,
+\code{X -I Q -O Q} has the same measured input/output relationship as
+classical NOT.
+
+\subsection{Boolean algebra}
+
+Boolean algebra describes functions whose values are 0 and 1. This guide uses:
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\bfseries}l c l X}
+\toprule
+Operation & Symbol & Spoken form & Meaning\\
+\midrule
+NOT & $\neg A$ & not A & 1 when A is 0; 0 when A is 1.\\
+AND & $A\land B$ & A and B & 1 only when both inputs are 1.\\
+OR & $A\lor B$ & A or B & 1 when either or both inputs are 1.\\
+XOR & $A\oplus B$ & A exclusive-or B & 1 when exactly one input is 1.\\
+NAND & $\neg(A\land B)$ & not-and & The complement of AND.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+For bits, XOR is addition modulo two:
+\[
+0\oplus0=0,\quad 0\oplus1=1,\quad
+1\oplus0=1,\quad 1\oplus1=0.
+\]
+There is no carry in modulo-two addition. Ordinary binary addition handles the
+carry separately, which is why a half-adder produces both Sum and Carry.
+
+\subsection{Truth tables as complete finite specifications}
+
+A truth table lists a function's output for every possible input pattern. With
+$n$ binary inputs there are $2^n$ patterns. AND, OR, XOR, and NAND can be
+compared in one table:
+\begin{center}
+\begin{tabular}{cc|cccc}
+\toprule
+$A$&$B$&$A\land B$&$A\lor B$&$A\oplus B$&$\neg(A\land B)$\\
+\midrule
+0&0&0&0&0&1\\
+0&1&0&1&1&1\\
+1&0&0&1&1&1\\
+1&1&1&1&0&0\\
+\bottomrule
+\end{tabular}
+\end{center}
+For a deterministic combinational circuit, this table completely specifies
+the classical input/output behavior. It does not reveal the circuit's internal
+gate arrangement, propagation time, power consumption, or quantum phase.
+
+\subsection{Combinational logic and stored state}
+
+A \emph{combinational} output depends only on current inputs. Adders and the
+Boolean gates above are combinational. A \emph{sequential} circuit also depends
+on stored state from an earlier step, as in counters and latches.
+
+QPU cycle suffixes can document successive stages, and INCREASECYCLE marks a
+workspace boundary, but the current compiled circuit is still one ordered gate
+sequence. Accepted \code{SAVE_STATE} and \code{LOAD_STATE} syntax does not yet implement a
+classical memory checkpoint. When modeling stateful behavior, expose previous
+state explicitly as PARAMS and return next state explicitly through RETURNVALS.
+
+\subsection{Why ordinary classical gates can lose information}
+
+A function is reversible only if each output identifies exactly one input.
+Classical NOT is reversible: seeing output 1 proves the input was 0. AND is not:
+output 0 could have come from 00, 01, or 10.
+
+\[
+(A,B)\xrightarrow{\mathrm{AND}}A\land B
+\]
+maps four input patterns onto only two output values, discarding information.
+Quantum evolution through closed-system gates must be unitary and therefore
+reversible. A quantum/reversible AND preserves both inputs and mutates another
+target:
+\[
+(A,B,t)\longmapsto(A,B,t\oplus(A\land B)).
+\]
+Knowing the output triple lets the transformation be run backward to recover
+the input triple.
+
+\subsection{Controls, targets, and workspace}
+
+These terms connect classical logic to QPU syntax:
+\begin{description}
+  \item[Control] A wire whose value decides whether a target operation occurs.
+  In \code{CNOT -I A -O T}, A is the control.
+  \item[Target] The wire changed by an operation. T is the target in that CNOT.
+  \item[Workspace or ancilla] An extra wire introduced to hold an intermediate
+  or output while preserving inputs. It is commonly initialized to $\ket0$.
+  \item[Garbage] Intermediate information left in workspace after the desired
+  answer has been computed. Reversible algorithms often \emph{uncompute}
+  temporary gates to return garbage wires to zero.
+  \item[Uncomputation] Applying inverse operations in reverse order to clean
+  workspace without erasing information irreversibly.
+\end{description}
+
+The QPU language calls logical wire names tokens. \code{CREATETOKEN} reserves
+workspace, SET prepares it, \code{-I} lists inputs/controls, and \code{-O}
+names targets.
+
+\subsection{Fan-out, copying, and the no-cloning boundary}
+
+Classical logic freely copies a bit onto several wires. If the source is a
+known basis bit and targets begin at zero, CNOT reproduces that basis value:
+\[
+\ket{x}\ket0\xrightarrow{\mathrm{CNOT}}\ket{x}\ket{x},
+\qquad x\in\{0,1\}.
+\]
+For a superposition $\alpha\ket0+\beta\ket1$, the same circuit produces
+\[
+\alpha\ket{00}+\beta\ket{11},
+\]
+not
+\[
+(\alpha\ket0+\beta\ket1)\otimes
+(\alpha\ket0+\beta\ket1).
+\]
+The first state is generally entangled; the second would be two independent
+copies and contains cross terms. The no-cloning theorem forbids a universal
+gate that copies every unknown quantum state. QPU aliases similarly give two
+names to one wire; they do not create a physical copy.
+
+\subsection{Deterministic, probabilistic, and quantum models}
+
+\begin{tabularx}{\textwidth}{>{\bfseries}p{0.19\textwidth}XXX}
+\toprule
+Model & State description & Transformation & Observation\\
+\midrule
+Deterministic classical & One definite bit string & Boolean function &
+The definite output bits\\
+Probabilistic classical & Probabilities over bit strings & Stochastic update &
+A sampled string\\
+Pure-state quantum & Complex amplitudes over basis strings & Unitary matrix &
+A sampled string after magnitude-squared probabilities and collapse\\
+\bottomrule
+\end{tabularx}
+
+Negative and imaginary amplitudes are not negative or imaginary probabilities.
+They carry phase. Two computational paths can add constructively or cancel
+destructively before probabilities are calculated. This interference has no
+counterpart in an ordinary classical random-choice table.
+
+\subsection{Classical and QPU operation map}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\bfseries}l l X}
+\toprule
+Classical idea & QPU operation & Important difference\\
+\midrule
+NOT & X or NOT & Acts linearly on superpositions; X is unitary.\\
+XOR into target & CNOT & Preserves the control and can entangle.\\
+AND into target & CCNOT or AND & Preserves controls; target is XOR-mutated.\\
+Swap variables & SWAP & Exchanges complete quantum wire states.\\
+Random bit & H then MEASURE & H first creates coherent amplitudes, not an
+ordinary hidden random choice.\\
+Read a bit & MEASURE & Sampling collapses a superposition and can disturb
+entanglement.\\
+Initialize zero & SET token 0p & Compiles to state preparation/reset behavior.\\
+Function output & RETURNVALS & Declares an interface; does not itself copy or
+measure a wire.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+

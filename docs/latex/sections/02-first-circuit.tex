@@ -1,0 +1,66 @@
+\section{First circuit: from source to result}
+
+The shortest useful learning path is to prepare one qubit, transform it,
+measure it, and declare it as an output:
+\begin{lstlisting}
+MAIN-PROCESS FirstCircuit
+CREATETOKEN -I Q
+SET Q 0p
+H -I Q -O Q
+MEASURE -I Q
+RETURNVALS Q
+\end{lstlisting}
+
+\subsection{Read the program line by line}
+
+\begin{enumerate}
+  \item \code{MAIN-PROCESS FirstCircuit} gives the protocol a name.
+  \item \code{CREATETOKEN -I Q} reserves a logical wire named Q.
+  \item \code{SET Q 0p} prepares Q in the basis state $\ket0$.
+  \item \code{H -I Q -O Q} applies Hadamard to that same wire, producing
+  $\ket+=(\ket0+\ket1)/\sqrt2$.
+  \item \code{MEASURE -I Q} samples 0 or 1 and collapses the state.
+  \item \code{RETURNVALS Q} declares Q as the first public result.
+\end{enumerate}
+
+\begin{center}
+\begin{tikzpicture}[scale=.95]
+  \draw[thick] (0,0)--(8,0);
+  \node[left] at (0,0) {$\ket0$ Q};
+  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.7cm,minimum height=.6cm,font=\bfseries] at (2,0) {H};
+  \node[above] at (3.6,0) {$\ket+$};
+  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.7cm,minimum height=.6cm,font=\bfseries] at (5.2,0) {M};
+  \draw[-{Latex[length=2.5mm]},QpuRed,thick] (5.6,0)--(7.7,0);
+  \node[above] at (7,0) {0 or 1};
+\end{tikzpicture}
+\end{center}
+
+\subsection{What one run means}
+
+One execution gives one random-looking sample. For this circuit, theory predicts
+equal probability for 0 and 1. Getting 0 once does not mean H failed, and
+getting 1 once does not prove a bias. Repeat the circuit to compare observed
+frequencies with the predicted distribution.
+
+\subsection{Adding user-controlled input}
+
+Move a wire into PARAMS when callers or truth-table rows should choose its
+start state:
+\begin{lstlisting}
+PARAMS: Input:state
+
+MAIN-PROCESS Inverter
+X -I Input -O Input
+MEASURE -I Input
+RETURNVALS Input
+\end{lstlisting}
+The matching deterministic truth table is:
+\begin{center}
+\begin{tabular}{c|c}\toprule Input & Output\\\midrule
+\code{0p}&\code{1p}\\
+\code{1p}&\code{0p}\\\bottomrule
+\end{tabular}
+\end{center}
+The rest of this manual explains every symbol in these examples before moving
+to multi-qubit gates, child processes, and full truth-table files.
+

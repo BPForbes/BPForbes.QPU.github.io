@@ -282,6 +282,22 @@ button { font: inherit; }
 .compiler-panel details { margin-top: .75rem; color: #cbd5e1; }
 .compiler-panel summary { cursor: pointer; font-weight: 900; color: #e0f2fe; }
 .compiler-panel pre { max-height: 12rem; overflow: auto; padding: .75rem; border-radius: .75rem; background: rgba(2,6,23,.72); }
+.protocol-diagnostics { display: grid; gap: .7rem; margin-top: .85rem; padding: .85rem; border: 1px solid rgba(148,163,184,.28); border-radius: .9rem; background: rgba(2,6,23,.55); color: #dbeafe; }
+.protocol-diagnostics.has-errors { border-color: rgba(248,113,113,.65); background: rgba(127,29,29,.2); }
+.protocol-diagnostics.has-warnings { border-color: rgba(251,191,36,.55); background: rgba(120,53,15,.18); }
+.protocol-diagnostics.is-clear { border-color: rgba(74,222,128,.42); }
+.protocol-diagnostics-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem; }
+.protocol-diagnostics p { margin: 0; color: #bbf7d0; }
+.protocol-diagnostics ol { display: grid; gap: .65rem; margin: 0; padding-left: 1.35rem; }
+.protocol-diagnostics li { padding-left: .2rem; }
+.protocol-diagnostics li strong,
+.protocol-diagnostics li span,
+.protocol-diagnostics li code { display: block; }
+.protocol-diagnostics li span { margin-top: .25rem; color: #dbeafe; }
+.protocol-diagnostics li code { width: fit-content; max-width: 100%; overflow-wrap: anywhere; margin-top: .3rem; padding: .2rem .35rem; border-radius: .35rem; background: rgba(2,6,23,.72); color: #e2e8f0; }
+.protocol-diagnostics .diagnostic-error strong { color: #fecaca; }
+.protocol-diagnostics .diagnostic-warning strong { color: #fde68a; }
+.protocol-diagnostics button { width: fit-content; border: 1px solid rgba(125,211,252,.4); border-radius: .7rem; padding: .6rem .75rem; color: #082f49; background: #67e8f9; font-weight: 900; cursor: pointer; }
 @media (max-width: 520px) {
   .palette { grid-template-columns: repeat(4, minmax(3.25rem, 1fr)); }
   .particle-grid { grid-template-columns: repeat(2, 1fr); }
@@ -300,6 +316,7 @@ button { font: inherit; }
 .workbench-actions button:focus-visible,
 .compiler-actions button:focus-visible,
 .compiler-footer button:focus-visible,
+.protocol-diagnostics button:focus-visible,
 .controls button:focus-visible,
 .example-card:focus-visible,
 .gate:focus-visible,
@@ -450,6 +467,12 @@ body.site-menu-open .app-shell { overflow: hidden; }
 .reference-links { display: flex; flex-wrap: wrap; gap: .55rem; }
 .reference-links a,
 .primary-link { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(125,211,252,.34); border-radius: 999px; color: #082f49; background: #67e8f9; padding: .58rem .8rem; font-weight: 900; text-decoration: none; }
+.qpu-document-grid { display: grid; gap: .7rem; margin-top: 1rem; }
+.qpu-document-grid button { display: grid; gap: .3rem; text-align: left; border: 1px solid rgba(148,163,184,.26); border-radius: .85rem; padding: .8rem; color: #dbeafe; background: rgba(2,6,23,.46); cursor: pointer; }
+.qpu-document-grid button.active { border-color: #67e8f9; background: rgba(8,145,178,.22); box-shadow: 0 0 0 2px rgba(103,232,249,.12); }
+.qpu-document-grid button strong { color: #e0f2fe; }
+.qpu-document-grid button span { color: #bfdbfe; line-height: 1.4; }
+.qpu-document-grid button:focus-visible { outline: 3px solid #dc2626; outline-offset: 2px; }
 .pdf-frame { width: 100%; height: min(72vh, 52rem); overflow: hidden; border: 1px solid rgba(148,163,184,.24); border-radius: 1rem; background: rgba(2,6,23,.7); margin: 1rem 0; }
 .pdf-frame iframe,
 .pdf-frame object,
@@ -468,6 +491,7 @@ body.site-menu-open .app-shell { overflow: hidden; }
 @media (min-width: 780px) {
   .docs-grid,
   .file-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qpu-document-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .docs-grid article:last-child { grid-column: 1 / -1; }
 }
 

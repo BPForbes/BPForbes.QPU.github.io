@@ -1,0 +1,161 @@
+\section{Troubleshooting protocols}
+
+The protocol editor's \textbf{Protocol checks} panel separates errors from
+warnings. Start with the first error because one malformed instruction can
+make later messages less useful.
+
+\subsection{Unknown instruction}
+
+\textbf{Problem fragment}
+\begin{lstlisting}
+FLIP -I Q -O Q
+\end{lstlisting}
+
+\textbf{Typical error:} \code{Unknown command: FLIP}
+
+\textbf{Why:} FLIP is not a QPU instruction. The intended bit-flip gate is X.
+
+\textbf{Corrected fragment}
+\begin{lstlisting}
+X -I Q -O Q
+\end{lstlisting}
+
+\subsection{Missing gate output}
+
+\textbf{Problem fragment}
+\begin{lstlisting}
+H -I Q
+\end{lstlisting}
+
+\textbf{Typical error:} H requires an \code{-O} output.
+
+\textbf{Why:} a one-qubit gate names the same flowing wire as both input and
+mutated output.
+
+\textbf{Corrected fragment}
+\begin{lstlisting}
+H -I Q -O Q
+\end{lstlisting}
+
+\subsection{Wrong number of controls}
+
+\textbf{Problem fragment}
+\begin{lstlisting}
+CNOT -I A B -O Target
+\end{lstlisting}
+
+\textbf{Why:} CNOT has one control. A two-control bit flip is CCNOT.
+
+\textbf{Choose the correction that matches the intent}
+\begin{lstlisting}
+CNOT  -I A   -O Target  # one control
+CCNOT -I A B -O Target  # two controls
+\end{lstlisting}
+
+\subsection{Invalid phase angle}
+
+\textbf{Problem fragment}
+\begin{lstlisting}
+PHASE=ninety -I Q -O Q
+\end{lstlisting}
+
+\textbf{Why:} the angle must be numeric radians, degrees ending in d, or pi
+notation.
+
+\textbf{Equivalent corrected fragments}
+\begin{lstlisting}
+PHASE=pi/2   -I Q -O Q
+PHASE=90d    -I Q -O Q
+PHASE=1.5708 -I Q -O Q
+\end{lstlisting}
+
+\subsection{Unknown child process}
+
+\textbf{Problem fragment}
+\begin{lstlisting}
+RUNCHILD Adder -I A B Cin -O Carry Sum
+\end{lstlisting}
+
+\textbf{Typical error:} \code{Unknown child process 'Adder'}
+
+\textbf{Why:} child source must exist in the process catalog and its
+MAIN-PROCESS name must match exactly. Load the child protocol first, or change
+Adder to the catalog's declared name.
+
+\subsection{Truth-table columns do not match}
+
+If protocol source declares
+\begin{lstlisting}
+PARAMS: A:state B:state
+...
+RETURNVALS Carry Sum
+\end{lstlisting}
+then companion metadata must keep exactly that input and output order:
+\begin{lstlisting}
+INPUTS: A B
+OUTPUTS: Carry Sum
+# A B Carry Sum
+\end{lstlisting}
+Renaming, reordering, or omitting a column changes the interface and causes
+validation errors.
+
+\subsection{Warnings for accepted but inactive syntax}
+
+JOIN, SPLIT, FREE, DELETETOKEN, DECLARECHILD, COMPILEPROCESS, MASTERVAL,
+\code{SAVE_STATE}, and \code{LOAD_STATE} are accepted for compatibility but do not currently
+change the simulated circuit. The \code{-$R} flag is also preserved without
+changing substitution. A warning asks the author to confirm that metadata-only
+behavior is intentional.
+
+\subsection{Using the Correction Lab}
+
+\begin{enumerate}
+  \item In the protocol editor, read the reported line and suggestion.
+  \item Choose \textbf{Open Correction Lab for guided help}.
+  \item Confirm the selected process and its truth table. For a new experiment,
+  use an uploaded or newly created process rather than modifying a protected
+  bundled table.
+  \item Run tests or probe outputs to identify the first behavioral mismatch.
+  \item Apply gate-level guidance to protocol source.
+  \item Return to the Circuit builder, compile again, and confirm that Protocol
+  checks no longer reports an error.
+\end{enumerate}
+
+The Correction Lab is appropriate for syntax failures, child-process binding
+problems, and circuits whose measured outputs disagree with their truth table.
+It cannot make accepted-but-unimplemented operations execute, and it must not
+rewrite canonical bundled truth-table expectations.
+
+\section{Diagnostic message reference}
+
+\begin{longtable}{>{\ttfamily}p{0.25\textwidth}p{0.25\textwidth}p{0.4\textwidth}}
+\toprule
+\normalfont\bfseries Code & \bfseries Meaning & \bfseries First response\\
+\midrule
+\endhead
+EMPTY\_PROTOCOL & No instructions were found. & Add a complete protocol
+starting with MAIN-PROCESS.\\
+EMPTY\_PARAMS & PARAMS has no name:type entries. & Add an entry such as
+Input:state or remove PARAMS.\\
+MISPLACED\_PARAMS & PARAMS is not the first instruction. & Move it before
+MAIN-PROCESS.\\
+UNKNOWN\_INSTRUCTION & The first word is not supported. & Check spelling and
+the language reference.\\
+INVALID\_PHASE & PHASE has an unreadable angle. & Use pi/2, 90d, or numeric
+radians.\\
+INVALID\_GATE\_ARITY & Input/control or output count is wrong. & Compare the
+gate's documented \code{-I}/\code{-O} counts.\\
+COMPILE\_ERROR & Syntax was readable but compilation could not complete. &
+Inspect child names, SET values, and SWAP bindings.\\
+ACCEPTED\_ONLY\_OPERATION & The instruction currently emits no simulator
+behavior. & Replace it with implemented behavior or accept metadata-only use.\\
+INACTIVE\_PARAMETER\_FLAG & \code{-$R} has no current execution effect. & Use
+explicit bindings.\\
+INACTIVE\_REVERSE\_PREFIX & A B-prefixed gate is not being inverted. & Use a
+self-inverse gate or BPHASE where appropriate.\\
+MISSING\_MAIN\_PROCESS & InlineProcess fallback will be used. & Add a stable
+MAIN-PROCESS name.\\
+MISSING\_RETURN\_VALUES & No public outputs are declared. & Add RETURNVALS in
+display order.\\
+\bottomrule
+\end{longtable}

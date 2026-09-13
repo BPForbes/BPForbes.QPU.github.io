@@ -5,22 +5,55 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>QPU Circuit Docs</title>
     <style>
-      html, body { margin: 0; width: 100%; height: 100%; background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
-      .pdf-shell { width: 100%; height: 100%; }
-      object, embed, iframe { display: block; width: 100%; height: 100%; border: 0; background: #0f172a; }
-      .fallback { padding: 1.5rem; line-height: 1.6; }
-      .fallback a { color: #7dd3fc; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 100%; min-height: 100%; background: #0f172a; color: #e2e8f0; font-family: system-ui, sans-serif; }
+      main { display: grid; grid-template-rows: auto 1fr; gap: 1rem; width: 100%; min-height: 100vh; padding: 1rem; }
+      header { display: grid; gap: .75rem; }
+      h1 { margin: 0; font-size: clamp(1.35rem, 3vw, 2rem); }
+      p { margin: 0; color: #bfdbfe; }
+      nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .65rem; }
+      button { display: grid; gap: .25rem; text-align: left; border: 1px solid #334155; border-radius: .75rem; padding: .75rem; color: #dbeafe; background: #1e293b; cursor: pointer; }
+      button.active { border-color: #67e8f9; background: #164e63; }
+      button span { color: #bae6fd; }
+      iframe { display: block; width: 100%; min-height: 72vh; border: 1px solid #334155; border-radius: .75rem; background: white; }
+      a { width: fit-content; color: #082f49; background: #67e8f9; border-radius: 999px; padding: .55rem .8rem; font-weight: 800; text-decoration: none; }
     </style>
   </head>
   <body>
-    <div class="pdf-shell">
-      <object data="./QPU_Circuit_Docs.pdf" type="application/pdf">
-        <embed src="./QPU_Circuit_Docs.pdf" type="application/pdf" />
-        <div class="fallback">
-          <p>Your browser could not embed this PDF inline.</p>
-          <p><a href="./QPU_Circuit_Docs.pdf">Open QPU Circuit Docs (PDF)</a></p>
-        </div>
-      </object>
-    </div>
+    <main>
+      <header>
+        <h1>QPU documentation library</h1>
+        <p>Start with Getting Started, or choose the focused reference you need.</p>
+        <nav id="documents" aria-label="QPU documents"></nav>
+        <a id="open-document" href="./QPU_Getting_Started.pdf" target="_blank" rel="noreferrer">Open selected PDF</a>
+      </header>
+      <iframe id="pdf-viewer" src="./QPU_Getting_Started.pdf" title="Getting Started PDF"></iframe>
+    </main>
+    <script>
+      const documents = [
+        ['QPU_Getting_Started.pdf', 'Getting Started', 'Website and programming basics'],
+        ['QPU_Theory_Guide.pdf', 'Classical and Quantum Theory', 'Bits through Bloch spheres'],
+        ['QPU_Language_Reference.pdf', 'Language Reference', 'Complete protocol syntax'],
+        ['QPU_Examples_and_Troubleshooting.pdf', 'Examples and Troubleshooting', 'Diagnostics and Correction Lab'],
+        ['QPU_Circuit_Docs.pdf', 'Suite Index', 'Map of all guides'],
+      ];
+      const nav = document.querySelector('#documents');
+      const viewer = document.querySelector('#pdf-viewer');
+      const openLink = document.querySelector('#open-document');
+      documents.forEach(([fileName, title, description], index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = index === 0 ? 'active' : '';
+        button.innerHTML = `<strong>${title}</strong><span>${description}</span>`;
+        button.addEventListener('click', () => {
+          nav.querySelectorAll('button').forEach((candidate) => candidate.classList.remove('active'));
+          button.classList.add('active');
+          viewer.src = `./${fileName}`;
+          viewer.title = `${title} PDF`;
+          openLink.href = `./${fileName}`;
+        });
+        nav.appendChild(button);
+      });
+    </script>
   </body>
 </html>

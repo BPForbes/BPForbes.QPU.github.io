@@ -1,0 +1,70 @@
+\section{Instruction flags and argument boundaries}
+
+\subsection{\code{-I}: input and control references}
+
+\code{-I} begins the instruction's input list:
+\begin{lstlisting}
+H     -I Target       -O Target
+CNOT -I Control      -O Target
+CCNOT -I A B          -O Target
+\end{lstlisting}
+Its interpretation depends on the gate. For a one-qubit gate, the input names
+the same wire that the output mutates. For CNOT/CZ/CY it names one control. For
+CCNOT and the two-input derived logic gates it names two controls. Input order
+does not matter to symmetric predicates such as AND or XOR, but it remains part
+of the written instruction and should be kept consistent for readability.
+
+\subsection{\code{-O}: output and target references}
+
+\code{-O} begins the output list. For most gates its first token is the target
+wire whose amplitudes are changed:
+\begin{lstlisting}
+X -I Q -O Q
+AND -I A B -O Result
+\end{lstlisting}
+\code{-O} does not mean ``allocate a fresh classical output.'' The target may
+already contain a quantum state, and reversible logic XORs its result into that
+existing state. SWAP is exceptional: it requires two outputs matching its two
+inputs. MEASURE takes no output flag because the measurement map stores its
+classical result.
+
+\subsection{Where a flag list ends}
+
+An \code{-I} or \code{-O} list continues until the next token beginning with a
+hyphen or the end of the line:
+\begin{lstlisting}
+CCNOT -I A B -O Carry -$R
+\end{lstlisting}
+Here A and B belong to \code{-I}, Carry belongs to \code{-O}, and
+\code{-$R} starts a separate flag. This rule is why token names should not
+begin with a hyphen.
+
+Flags are case-insensitive, so \code{-i} and \code{-o} work, but uppercase is
+the documented style. Supplying flags in an unusual order may still parse, but
+\code{-I} followed by \code{-O} is the clearest and matches generated source.
+
+\subsection{No-parameter-substitution marker}
+
+\begin{lstlisting}
+PHASE=pi/4 -I Q -O Q -$R
+\end{lstlisting}
+The language recognizes this marker and preserves it on the instruction record
+as a request not to substitute parameters. The current compiler does not yet
+change address resolution or gate execution because of the marker. It is
+therefore compatibility syntax, not a reliable way to freeze a reference.
+Write explicit token and parameter bindings instead.
+
+\subsection{Positional arguments}
+
+Not every instruction uses flags. SET, MAIN-PROCESS, RETURNVALS, ACCEPTVALS,
+and several compatibility instructions consume positional words:
+\begin{lstlisting}
+SET Target 0p
+MAIN-PROCESS Example
+RETURNVALS Carry Sum
+\end{lstlisting}
+The command name is the first word and positional arguments follow in order.
+RETURNVALS order is part of the process interface. For non-gate compatibility
+instructions, extra words may be retained even when no execution behavior is
+defined; accepted text should not be mistaken for an implemented effect.
+

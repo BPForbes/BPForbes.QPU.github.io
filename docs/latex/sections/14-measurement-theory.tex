@@ -1,0 +1,64 @@
+\section{Measurement, probability, and truth tables}
+
+\subsection{Projective measurement}
+
+For a measured qubit $q$ in a multi-qubit state,
+\[
+P(q=1)=\sum_{x:\,x_q=1}|a_x|^2,\qquad
+P(q=0)=1-P(q=1).
+\]
+The simulator samples one outcome. Amplitudes incompatible with that outcome
+become zero; compatible amplitudes are divided by the square root of the kept
+probability so the state is normalized again. Measurement is destructive in
+the sense that the pre-measurement superposition is generally unavailable
+after collapse.
+
+\subsection{Single runs and repeated runs}
+
+One simulation run produces one measurement sample. To estimate a probability,
+run the same preparation and circuit many times. If a plus state is measured
+1 approximately 500 times in 1000 shots, the observed frequency $500/1000$
+estimates the theoretical probability $1/2$. More shots reduce ordinary
+sampling noise but never reveal a complex amplitude directly.
+
+\subsection{Truth tables versus quantum amplitudes}
+
+A classical truth table specifies output bits for listed input bits. It is a
+good contract for arithmetic and reversible Boolean circuits operating on
+computational-basis states. It cannot fully describe phase, interference,
+entanglement, or a probability distribution.
+
+The QPU truth-table runner prepares each input row, executes the circuit,
+measures declared RETURNVALS, and compares those measured bits. In companion
+\code{.qpuio} tables, cells are \code{0p}, \code{1p}, or \code{sp}. On an
+expected output, \code{sp} means ``either measured bit is acceptable.'' Use
+state equations and repeated experiments in addition to tables when a circuit's
+purpose is genuinely quantum.
+
+\subsection{A complete interference example}
+
+Starting in zero, two Hadamards restore zero:
+\[
+\ket0\xrightarrow{H}\ket+
+\xrightarrow{H}\ket0.
+\]
+Inserting Z changes the relative phase and changes the final answer:
+\[
+\ket0\xrightarrow{H}\ket+
+\xrightarrow{Z}\ket-
+\xrightarrow{H}\ket1.
+\]
+\begin{lstlisting}
+MAIN-PROCESS Interference
+CREATETOKEN -I Q
+SET Q 0p
+H -I Q -O Q
+Z -I Q -O Q
+H -I Q -O Q
+MEASURE -I Q
+RETURNVALS Q
+\end{lstlisting}
+The middle Z does not change an immediate 0/1 probability, yet interference at
+the final H makes its effect deterministic. This is the central reason the
+system documents matrices and phase as well as truth tables.
+
