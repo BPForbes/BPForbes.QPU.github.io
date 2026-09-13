@@ -496,7 +496,6 @@ html.embed-mode body {
 html.embed-mode .app-shell {
   width: 100%;
   padding: 0.7rem;
-  padding-top: 4.15rem;
 }
 
 html.embed-mode .hamburger-button {
@@ -506,9 +505,17 @@ html.embed-mode .hamburger-button {
   height: 2.6rem;
 }
 
+html.embed-mode .playground-scrub-bar {
+  padding: 0.4rem 0.55rem 0.5rem 3.25rem;
+}
+
+html.embed-mode .circuit-panel,
+html.embed-mode .controls {
+  grid-column: 1 / -1;
+}
+
 @media (min-width: 780px) {
   html.embed-mode .app-shell {
     padding: 0.75rem;
-    padding-top: 4.15rem;
   }
 }

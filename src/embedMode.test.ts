@@ -1,10 +1,18 @@
 import { describe, expect, it, vi } from 'vitest';
+import { PLAYGROUND_VIEWS } from './components/PlaygroundScrubber';
 import {
   EMBED_MESSAGE_SOURCE,
+  GUEST_FEATURES,
+  HOST_MESSAGE_SOURCE,
   announceGuestReady,
   applyEmbedClass,
   detectFramedWindow,
+  guestReadyPayload,
+  isHostSetViewMessage,
   readEmbedFlag,
+  readViewParam,
+  replaceViewInLocation,
+  writeViewParam,
 } from './embedMode';
 
 describe('embedMode', () => {
@@ -47,15 +55,46 @@ describe('embedMode', () => {
     const top = { postMessage: vi.fn() };
     const child = { self: {}, parent: top, postMessage: vi.fn() };
     announceGuestReady(child as unknown as Window);
-    expect(top.postMessage).toHaveBeenCalledWith(
-      { source: EMBED_MESSAGE_SOURCE, type: 'ready' },
-      '*',
-    );
+    expect(top.postMessage).toHaveBeenCalledWith(guestReadyPayload('builder'), '*');
 
     const standalone = { postMessage: vi.fn() } as unknown as Window & { parent: Window; self: Window };
     standalone.parent = standalone;
     standalone.self = standalone;
     announceGuestReady(standalone);
     expect(standalone.postMessage).not.toHaveBeenCalled();
+  });
+
+  it('reads playground views from the Pages embed URL without dropping embed=1', () => {
+    expect(readViewParam('?embed=1')).toBeNull();
+    expect(readViewParam('?embed=1&view=particles')).toBe('particles');
+    expect(readViewParam('view=module-tester')).toBe('module-tester');
+    expect(readViewParam('?embed=1&view=not-a-page')).toBeNull();
+    expect(writeViewParam('?embed=1', 'docs')).toBe('?embed=1&view=docs');
+    expect(writeViewParam('?embed=true&view=builder', 'files')).toBe('?embed=true&view=files');
+  });
+
+  it('replaces only the view query on the GitHub Pages guest path', () => {
+    const replaceState = vi.fn();
+    const href = replaceViewInLocation(
+      { href: 'https://bpforbes.github.io/BPForbes.QPU.github.io/?embed=1', search: '?embed=1' },
+      'qpu-docs',
+      { replaceState },
+    );
+    expect(href).toBe('/BPForbes.QPU.github.io/?embed=1&view=qpu-docs');
+    expect(replaceState).toHaveBeenCalledWith(null, '', href);
+  });
+
+  it('advertises playground pages and lab features to the portfolio host', () => {
+    const payload = guestReadyPayload('builder');
+    expect(payload.source).toBe(EMBED_MESSAGE_SOURCE);
+    expect(payload.views).toEqual(PLAYGROUND_VIEWS);
+    expect(payload.features).toEqual(GUEST_FEATURES);
+    expect(payload.features).toEqual(expect.arrayContaining(['circuit-diagram', 'play-sequence', 'page-scrub']));
+  });
+
+  it('accepts setView commands from the portfolio host', () => {
+    expect(isHostSetViewMessage({ source: HOST_MESSAGE_SOURCE, type: 'setView', view: 'particles' })).toBe(true);
+    expect(isHostSetViewMessage({ source: EMBED_MESSAGE_SOURCE, type: 'setView', view: 'particles' })).toBe(false);
+    expect(isHostSetViewMessage({ source: HOST_MESSAGE_SOURCE, type: 'setView', view: 'nope' })).toBe(false);
   });
 });

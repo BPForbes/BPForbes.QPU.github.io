@@ -15,6 +15,11 @@ export const PLAYGROUND_VIEWS: PlaygroundViewOption[] = [
   { id: 'more', label: 'More' },
 ];
 
+export const PLAYGROUND_VIEW_IDS = PLAYGROUND_VIEWS.map((view) => view.id);
+
+export const isPlaygroundViewId = (value: unknown): value is PlaygroundViewId =>
+  typeof value === 'string' && PLAYGROUND_VIEW_IDS.includes(value as PlaygroundViewId);
+
 type PlaygroundScrubberProps = {
   activeView: PlaygroundViewId;
   onSelect: (view: PlaygroundViewId) => void;

@@ -1,5 +1,5 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { announceGuestReady, isEmbedMode } from './embedMode';
+import { announceGuestReady, isEmbedMode, isHostSetViewMessage, readViewParam, replaceViewInLocation } from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
 import { CustomGatePanel, GatePalette } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
@@ -105,7 +105,7 @@ function App() {
   const [tokenMap, setTokenMap] = useState<Record<string, number>>({});
   const [processParams, setProcessParams] = useState<ProcessParam[]>([]);
   const [returnValues, setReturnValues] = useState<ReturnValue[]>([]);
-  const [activeView, setActiveView] = useState<AppView>('builder');
+  const [activeView, setActiveView] = useState<AppView>(() => readViewParam(window.location.search) ?? 'builder');
   const [menuOpen, setMenuOpen] = useState(false);
   const [fileStatus, setFileStatus] = useState('Upload a .qpucir file (or -qpucir.txt on restrictive file pickers), or download one of the bundled AST circuits.');
   const [protocolMode, setProtocolMode] = useState<'canvas' | 'process'>('process');
@@ -431,6 +431,7 @@ function App() {
     setProtocolMode('process');
     setActiveView('builder');
     setMenuOpen(false);
+    replaceViewInLocation(window.location, 'builder');
     resetRuntime(QUBIT_COUNT, undefined, defaultStartStates);
   };
 
@@ -727,15 +728,28 @@ function App() {
   };
 
   // View switches are UI-only; simulator state persists until resetRuntime or compile.
+  // Pages embed URLs keep ?embed=1 and add ?view= so the portfolio lab can deep-link a playground page.
   const showView = (view: AppView) => {
     setActiveView(view);
     setMenuOpen(false);
+    replaceViewInLocation(window.location, view);
   };
 
   const embedMode = isEmbedMode();
 
   useEffect(() => {
-    announceGuestReady();
+    announceGuestReady(window, activeView);
+  }, [activeView]);
+
+  useEffect(() => {
+    const onHostMessage = (event: MessageEvent<unknown>) => {
+      if (!isHostSetViewMessage(event.data)) return;
+      setActiveView(event.data.view);
+      setMenuOpen(false);
+      replaceViewInLocation(window.location, event.data.view);
+    };
+    window.addEventListener('message', onHostMessage);
+    return () => window.removeEventListener('message', onHostMessage);
   }, []);
 
   return (
