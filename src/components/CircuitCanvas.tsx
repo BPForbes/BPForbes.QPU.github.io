@@ -74,6 +74,7 @@ export function CircuitCanvas({
 
           {sorted.filter(needsConnector).map((gate) => {
             const { min, max } = gateSpanQubits(gate);
+            // Row span covers the outer lanes; CSS margin-block insets to wire centers.
             return (
               <span
                 className={`circuit-connector ${activeStep === gate.step ? 'active' : ''}`}

@@ -96,9 +96,13 @@ button { font: inherit; }
   background: #111;
 }
 .circuit-connector {
+  /* Grid row span covers the full first/last lanes; inset half a row so the
+     vertical line only runs wire-center to wire-center like textbook CNOT/SWAP. */
   position: relative;
   justify-self: center;
+  align-self: stretch;
   width: 2px;
+  margin-block: calc(var(--row-h) / 2);
   background: #111;
   pointer-events: none;
   z-index: 1;

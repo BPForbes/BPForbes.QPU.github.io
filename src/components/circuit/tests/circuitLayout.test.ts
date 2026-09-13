@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CircuitGate } from '../../../simulator/types';
 import {
   circuitColumnCount,
+  connectorEndInset,
   gateSpanQubits,
   glyphKindFor,
   MAX_SLOT_REM,
@@ -48,6 +49,7 @@ describe('circuit layout helpers', () => {
     expect(needsConnector(gate({ type: 'H', targets: [1] }))).toBe(false);
     expect(needsConnector(gate({ type: 'CNOT', targets: [2], controls: [0] }))).toBe(true);
     expect(gateSpanQubits(gate({ type: 'CCNOT', targets: [2], controls: [0, 1] }))).toEqual({ min: 0, max: 2 });
+    expect(connectorEndInset(3.45)).toBeCloseTo(1.725);
   });
 
   it('speeds up frame-by-frame playback as the speed meter increases', () => {

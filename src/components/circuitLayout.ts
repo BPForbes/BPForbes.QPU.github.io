@@ -42,3 +42,6 @@ export const needsConnector = (gate: CircuitGate) => {
   const { min, max } = gateSpanQubits(gate);
   return Number.isFinite(min) && Number.isFinite(max) && max > min;
 };
+
+/** Half of a lane height, used to inset connectors so they stop on the wires. */
+export const connectorEndInset = (rowHeight: number) => rowHeight / 2;
