@@ -1,0 +1,103 @@
+\section{State, token, and cycle commands}
+
+\subsection{\code{SET} --- initialize or alias (\implemented)}
+
+\begin{lstlisting}
+SET Q 0p
+SET Q 1p
+SET Q sp
+SET Local $Parameter
+\end{lstlisting}
+\code{SET target value} requires a positional value. A constant schedules or
+emits initialization: zero, X from zero, or H from zero. A nonconstant value
+makes the target an alias of that source. A \code{state} parameter's constant
+SET is treated as a runtime default, allowing the UI or truth-table runner to
+supply its actual start state.
+
+\textbf{Syntax:} exactly one target and one value are meaningful. SET has no
+\code{-I} or \code{-O} flags. It does not perform classical assignment at each
+simulation step; it establishes compilation-time preparation or reference
+identity. See the dedicated constants and aliases chapters before using SET on
+unknown quantum data.
+
+\subsection{\code{CREATETOKEN} --- reserve wires (\implemented)}
+
+\begin{lstlisting}
+CREATETOKEN -I Sum Carry Workspace
+\end{lstlisting}
+Every \code{-I} token immediately claims a stable wire index. No \code{-O} is
+used. This is useful for declared outputs before their first gate.
+
+\code{CREATETOKEN} does not initialize amplitudes by itself. Pair new workspace
+with SET before relying on its value. Listing outputs early also makes process
+structure easier to review:
+\begin{lstlisting}
+CREATETOKEN -I Sum Carry
+SET Sum 0p
+SET Carry 0p
+\end{lstlisting}
+
+\subsection{\code{DELETETOKEN} --- token lifetime marker (\acceptedonly)}
+
+\begin{lstlisting}
+DELETETOKEN -I Workspace
+\end{lstlisting}
+This says that the named token is no longer needed by the protocol. The current
+compiler records the instruction but does not remove, reset, or reuse its wire.
+It is unsafe to assume that deletion destroys sensitive state or makes a qubit
+available. Unused symbolic holes may disappear during final layout compaction,
+which is a separate implementation optimization.
+
+\subsection{\code{FREE} --- releasable-memory marker (\acceptedonly)}
+
+\begin{lstlisting}
+FREE -I ScratchA ScratchB
+\end{lstlisting}
+FREE marks one or more input references as releasable. Like DELETETOKEN, it is
+currently a compatibility/lifetime hint: no physical reset, deallocation, or
+wire reuse occurs. Use SET with \code{0p} when the intended behavior is actual
+zero preparation for subsequent computation.
+
+\subsection{\code{INCREASECYCLE} --- cycle boundary (\implemented)}
+
+\begin{lstlisting}
+INCREASECYCLE
+\end{lstlisting}
+The compiler flushes pending zero-initializations into an internal batched
+\code{RESET}, increments the cycle counter, and prepares workspace for following
+operations. Cycle suffixes on tokens do not create separate visual wires.
+
+Cycles organize protocol stages. They are not wall-clock timing guarantees and
+do not cause gates to execute concurrently. The final circuit is still an
+ordered gate sequence. Their practical implemented effect today is the
+workspace-zero boundary.
+
+\subsection{\code{JOIN} --- composite-register marker (\acceptedonly)}
+
+\begin{lstlisting}
+JOIN -I A B -O AB
+\end{lstlisting}
+JOIN expresses the intent to view smaller registers as one composite register.
+For independent inputs, the mathematical construction is
+\[
+\ket{AB}=\ket A\otimes\ket B.
+\]
+Tensor product increases dimension multiplicatively: two one-qubit vectors of
+length two produce one two-qubit vector of length four. The current compiler
+logs JOIN but emits no tensor-product allocation, alias, or visible gate.
+Because JOIN is not a gate instruction, its input/output count is not currently
+validated.
+
+\subsection{\code{SPLIT} --- component-register marker (\acceptedonly)}
+
+\begin{lstlisting}
+SPLIT AB A 2
+\end{lstlisting}
+SPLIT expresses the reverse organizational intent: identify a component of a
+larger register. A general entangled state cannot be factored into independent
+pure states, so ``splitting'' is not equivalent to slicing an ordinary array.
+For example, $(\ket{00}+\ket{11})/\sqrt2$ has no separate pure state for A.
+The current compiler logs the positional arguments but performs no extraction,
+measurement, or aliasing. Code requiring an implemented result should instead
+operate directly on named wires and RETURNVALS.
+

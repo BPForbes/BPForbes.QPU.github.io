@@ -1,0 +1,114 @@
+\section{How to use the QPU website}
+
+This chapter assumes no programming experience. You can build circuits by
+clicking controls, or edit the text protocol directly. Both paths describe the
+same circuit.
+
+\subsection{Five programming words used in this guide}
+
+\begin{description}
+  \item[Source text] The human-readable instructions in the protocol editor.
+  It is ordinary text, like a note, with one QPU instruction per logical line.
+  \item[Instruction] One action for the QPU system, such as SET, H, CNOT, or
+  MEASURE. The first word says what action to perform.
+  \item[Argument] Extra information after an instruction. In
+  \code{SET Q 0p}, Q and 0p are arguments: they say which wire and which state.
+  \item[Compile] Translate source text into the ordered visual gates that the
+  simulator can run. Compilation checks spelling, required inputs, and targets.
+  \item[Run] Apply the compiled gates to the selected starting state. Running
+  changes simulator state; it does not rewrite the source text.
+\end{description}
+
+\subsection{Interface words and how they relate}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\bfseries}l X}
+\toprule
+Word on screen or in source & Meaning\\
+\midrule
+Particle / qubit & One simulated quantum two-state system. The interface may
+say particle where circuit theory says qubit.\\
+Wire & The horizontal visual path followed by one qubit through the circuit.\\
+Token & A source-text name, such as Q or Carry, that resolves to a wire.\\
+Register & One or more qubit wires considered as a group.\\
+Gate & A box or controlled symbol that transforms state.\\
+Target & The wire changed by a gate.\\
+Control & A wire whose state decides whether a controlled gate acts.\\
+Protocol / process & The complete source description of a named circuit.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Run a bundled example without writing code}
+
+\begin{enumerate}
+  \item Open the navigation menu and choose \textbf{Circuit builder}.
+  \item Find \textbf{Load a starter circuit} and choose an example.
+  \item Inspect the horizontal wires and gate blocks on the circuit canvas.
+  \item Choose \textbf{Play Sequence} to watch gates advance, or
+  \textbf{Run all} to jump to the final state.
+  \item Choose \textbf{Measure all} if the circuit has not already measured
+  its outputs.
+  \item Read the particle/state display and runtime log. A measured qubit is a
+  classical 0 or 1 outcome for that run.
+  \item Choose \textbf{Reset state} before repeating the same experiment.
+\end{enumerate}
+
+\subsection{Compile a complete protocol}
+
+Listings marked \textbf{Complete runnable protocol} may be copied as a whole:
+
+\textbf{Complete runnable protocol}
+\begin{lstlisting}
+MAIN-PROCESS FirstWebsiteCircuit
+CREATETOKEN -I Q
+SET Q 0p
+H -I Q -O Q
+MEASURE -I Q
+RETURNVALS Q
+\end{lstlisting}
+
+\begin{enumerate}
+  \item Scroll to \textbf{Compile text into a circuit}.
+  \item Replace the editor contents with the complete listing.
+  \item Choose \textbf{Compile protocol}.
+  \item Read \textbf{Protocol checks}. Zero errors means compilation may
+  proceed. Warnings identify accepted syntax that may not behave as expected.
+  \item Return to the run controls and choose \textbf{Run all}.
+\end{enumerate}
+
+\textbf{Expected result:} the H gate prepares equal 0 and 1 amplitudes.
+MEASURE returns either 0 or 1. Repeating from Reset state should produce both
+outcomes over many runs.
+
+\subsection{Complete examples versus fragments}
+
+This documentation uses three listing labels:
+\begin{description}
+  \item[Complete runnable protocol] Copy the entire block into the protocol
+  editor and compile it.
+  \item[Instruction fragment] A few lines demonstrating one syntax rule. Add
+  them to a complete process rather than compiling the fragment alone.
+  \item[Companion metadata] Truth-table text saved separately as
+  \code{.qpuio}; do not paste it into the protocol editor.
+\end{description}
+
+\subsection{When protocol checks report a problem}
+
+An \textbf{error} blocks successful compilation. A \textbf{warning} means the
+text is accepted but may use inactive, incomplete, or surprising behavior.
+Each diagnostic gives a line number, the relevant source line when available,
+and a suggested correction.
+
+Choose \textbf{Open Correction Lab for guided help} below the diagnostic list
+when the correction is not obvious. The Correction Lab can test a protocol,
+probe outputs, explain failures, and propose gate-level guidance. It does not
+change protected bundled truth tables.
+
+\subsection{Saving and reopening work}
+
+Choose \textbf{Download as .qpucir} to save protocol source. The
+\code{-qpucir.txt} option contains the same source for devices that only handle
+plain text files. Use the navigation menu's \textbf{Upload files} page to
+reopen a protocol, optionally together with its matching \code{.qpuio}
+truth-table metadata.

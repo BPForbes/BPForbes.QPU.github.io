@@ -1,0 +1,35 @@
+\newcommand{\QpuDocTitle}{QPU Language Reference}
+\newcommand{\QpuDocSubtitle}{Complete Protocol and Truth-Table Syntax}
+\newcommand{\QpuHeaderTitle}{Language Reference}
+\newcommand{\QpuDocDescription}{%
+The exact QPU protocol surface: references, constants, flags, gates, process
+composition, truth-table metadata, compatibility behavior, diagnostics, and
+quick-reference grammar.
+}
+\input{docs/latex/qpu-common.tex}
+
+\begin{document}
+\QpuTitlePage
+\QpuContents
+
+\input{docs/latex/sections/01-scope-and-execution.tex}
+\input{docs/latex/sections/06-lexical-syntax.tex}
+\input{docs/latex/sections/07-token-references.tex}
+\input{docs/latex/sections/08-state-constants.tex}
+\input{docs/latex/sections/09-instruction-flags.tex}
+\input{docs/latex/sections/10-gate-grammar.tex}
+\input{docs/latex/sections/15-single-qubit-gates.tex}
+\input{docs/latex/sections/16-controlled-gates.tex}
+\input{docs/latex/sections/17-derived-gates.tex}
+\input{docs/latex/sections/18-measurement-gate.tex}
+\input{docs/latex/sections/19-state-token-cycle-commands.tex}
+\input{docs/latex/sections/20-process-composition.tex}
+\input{docs/latex/sections/21-compatibility-commands.tex}
+\input{docs/latex/sections/22-truth-table-syntax.tex}
+\input{docs/latex/sections/24-compiler-output.tex}
+\input{docs/latex/sections/25-errors-and-rules.tex}
+\input{docs/latex/sections/26-quick-grammar.tex}
+\input{docs/latex/sections/27-glossary.tex}
+\input{docs/latex/sections/28-operation-checklist.tex}
+
+\end{document}

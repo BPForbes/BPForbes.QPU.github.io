@@ -1,0 +1,165 @@
+\section{Mathematical foundations}
+
+This chapter assumes no prior quantum mechanics. The essential ideas are
+numbers, vectors, probability, and transformations. Quantum notation can look
+unfamiliar, but each symbol has a concrete computational meaning.
+
+\subsection{Real numbers and complex numbers}
+
+The real numbers include familiar values such as $-2$, $0$, $1/3$, and
+$\sqrt2$. A real number can be placed on a one-dimensional number line.
+Quantum amplitudes require a second numerical direction, represented by the
+\emph{imaginary unit}
+\[
+i=\sqrt{-1},\qquad i^2=-1.
+\]
+There is no real number whose square is $-1$, so $i$ extends the number system.
+A complex number has the form
+\[
+z=a+bi,
+\]
+where $a$ is the real part and $b$ is the imaginary part. Examples are
+$3+2i$, $-i$, and $1$ (which is $1+0i$).
+
+Complex arithmetic follows ordinary algebra together with $i^2=-1$:
+\[
+(a+bi)+(c+di)=(a+c)+(b+d)i,
+\]
+\[
+(a+bi)(c+di)=(ac-bd)+(ad+bc)i.
+\]
+For example,
+\[
+(1+i)^2=1+2i+i^2=2i.
+\]
+
+\subsection{The complex plane, magnitude, and conjugate}
+
+A complex number is a point or arrow in a plane: horizontal coordinate $a$,
+vertical coordinate $b$. Its magnitude is the arrow length,
+\[
+|z|=\sqrt{a^2+b^2}.
+\]
+The complex conjugate reflects the arrow across the real axis:
+\[
+z^*=a-bi.
+\]
+Multiplying by the conjugate gives a nonnegative real number:
+\[
+z^*z=(a-bi)(a+bi)=a^2+b^2=|z|^2.
+\]
+Quantum measurement probabilities use $|z|^2$, not $z$ itself. This guarantees
+real, nonnegative probabilities even though amplitudes may be complex.
+
+\subsection{Angles, radians, sine, and cosine}
+
+An arrow in the complex plane may be described by its length $r$ and angle
+$\theta$:
+\[
+a=r\cos\theta,\qquad b=r\sin\theta.
+\]
+Quantum formulas normally measure angles in radians. One full turn is $2\pi$
+radians, a half turn is $\pi$, and a quarter turn is $\pi/2$. Conversion is
+\[
+\theta_{\rm radians}=\theta_{\rm degrees}\frac{\pi}{180}.
+\]
+This is why \code{PHASE=90d} and \code{PHASE=pi/2} describe the same angle.
+
+\subsection{Euler's formula and Euler's identity}
+
+Euler's formula connects complex numbers to rotations:
+\[
+e^{i\theta}=\cos\theta+i\sin\theta.
+\]
+The value $e^{i\theta}$ always has magnitude one. As $\theta$ changes, it moves
+around the unit circle in the complex plane. Important cases are
+\[
+e^{i0}=1,\quad e^{i\pi/2}=i,\quad e^{i\pi}=-1,\quad
+e^{i2\pi}=1.
+\]
+Setting $\theta=\pi$ gives Euler's identity,
+\[
+e^{i\pi}+1=0.
+\]
+In a phase gate, multiplying an amplitude by $e^{i\theta}$ rotates that
+amplitude without changing its magnitude. Its immediate measurement
+probability is unchanged, but its relationship to other amplitudes changes.
+Later gates can convert that relative phase into different probabilities.
+
+\subsection{Vectors and basis vectors}
+
+A column vector is an ordered list of numbers. The two basis vectors used for
+one qubit are
+\[
+\ket0=\begin{bmatrix}1\\0\end{bmatrix},\qquad
+\ket1=\begin{bmatrix}0\\1\end{bmatrix}.
+\]
+The vertical bars and angle bracket form Dirac's \emph{ket} notation.
+\code{0p} prepares $\ket0$ and \code{1p} prepares $\ket1$.
+Any one-qubit pure state is a complex linear combination:
+\[
+\ket{\psi}=\alpha\ket0+\beta\ket1
+=\begin{bmatrix}\alpha\\\beta\end{bmatrix}.
+\]
+The complex numbers $\alpha$ and $\beta$ are \emph{probability amplitudes}.
+They are not probabilities themselves.
+
+\subsection{Normalization and the Born rule}
+
+A valid state is normalized:
+\[
+|\alpha|^2+|\beta|^2=1.
+\]
+The Born rule turns amplitudes into measurement probabilities:
+\[
+P(0)=|\alpha|^2,\qquad P(1)=|\beta|^2.
+\]
+For the plus state,
+\[
+\ket+=\frac{\ket0+\ket1}{\sqrt2},
+\]
+both amplitudes are $1/\sqrt2$. Squaring their magnitudes gives
+$P(0)=P(1)=1/2$. The factor $1/\sqrt2$ is therefore required; writing
+$\ket0+\ket1$ without normalization would produce total probability two.
+
+\subsection{Matrices as gates}
+
+A matrix is a rectangular array of numbers. A one-qubit gate is represented by
+a $2\times2$ complex matrix. Matrix-vector multiplication computes the new
+amplitudes:
+\[
+\begin{bmatrix}a&b\\c&d\end{bmatrix}
+\begin{bmatrix}\alpha\\\beta\end{bmatrix}
+=
+\begin{bmatrix}a\alpha+b\beta\\c\alpha+d\beta\end{bmatrix}.
+\]
+For example, the X gate exchanges the two amplitudes:
+\[
+\begin{bmatrix}0&1\\1&0\end{bmatrix}
+\begin{bmatrix}\alpha\\\beta\end{bmatrix}
+=\begin{bmatrix}\beta\\\alpha\end{bmatrix}.
+\]
+Applying gates in source order means multiplying by matrices in the same
+temporal order: if U acts first and V second, then
+\[
+\ket{\psi_{\rm final}}=V(U\ket{\psi_{\rm initial}})=VU\ket{\psi_{\rm initial}}.
+\]
+
+\subsection{Unitarity and reversibility}
+
+Closed-system quantum gates must preserve total probability. Their matrices are
+\emph{unitary}:
+\[
+U^\dagger U=I.
+\]
+Here $U^\dagger$ means transpose the matrix and complex-conjugate every entry;
+$I$ is the identity matrix. Unitarity guarantees an inverse,
+$U^{-1}=U^\dagger$. Quantum gates therefore cannot normally erase information.
+Classical functions such as AND are embedded reversibly by preserving inputs
+and XORing the result into a target:
+\[
+\ket{a,b,t}\mapsto\ket{a,b,t\oplus(a\land b)}.
+\]
+Measurement and reset are exceptions because they interact with classical
+outcomes or preparation rather than acting as closed unitary gates.
+

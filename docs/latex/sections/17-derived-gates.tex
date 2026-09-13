@@ -1,0 +1,101 @@
+\section{Derived logical gates}
+
+Derived gates are QPU instructions implemented as reversible target
+mutations. Inputs are preserved. If target $t$ starts in zero, AND/OR/XOR
+write the familiar classical function. If it does not, the true behavior is
+the XOR embedding shown below.
+
+\GateHeading{Logical NOT}{NOT}{\GateSegment{$\neg$}}
+
+\[
+t'\;=\;t\oplus1.
+\]
+NOT is the derived logical spelling of a bit flip. In the current simulator it
+uses the same X matrix on the output target. The required input establishes the
+one-input instruction shape, but a distinct input is not copied into the
+output; use the same token on both sides.
+\begin{lstlisting}
+NOT -I Target -O Target
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{c|c}\toprule $t$&$t'$\\\midrule0&1\\1&0\\\bottomrule\end{tabular}
+\end{center}
+The current gate implementation mutates the output target. Use the same token
+for input and output; a distinct input token is not copied.
+
+\GateHeading{Reversible AND}{AND}{\DoubleControlledSegment}
+
+\[
+t'=t\oplus(a\land b).
+\]
+AND flips the target exactly on the basis components where both controls are
+one. This is Toffoli-style behavior. It remains linear on superpositions and
+may entangle the target with its controls. Calling it AND is convenient only
+when the target is deliberately initialized.
+\begin{lstlisting}
+SET Out 0p
+AND -I A B -O Out
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{cc|c|c}\toprule $a$&$b$&$t=0$&$t'=a\land b$\\\midrule
+0&0&0&0\\0&1&0&0\\1&0&0&0\\1&1&0&1\\\bottomrule
+\end{tabular}
+\end{center}
+
+\GateHeading{Reversible NAND}{NAND}{\DoubleControlledSegment}
+
+\[
+t'=t\oplus(a\land b)\oplus1.
+\]
+NAND first performs the all-controls-active mutation and then inverts the
+target. With target zero it produces the familiar NAND column. With target one
+it instead produces AND, illustrating why reversible target state must always
+be included in the full mathematical definition.
+\begin{lstlisting}
+SET Out 0p
+NAND -I A B -O Out
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{cc|c|c}\toprule $a$&$b$&$t=0$&$t'=\neg(a\land b)$\\\midrule
+0&0&0&1\\0&1&0&1\\1&0&0&1\\1&1&0&0\\\bottomrule
+\end{tabular}
+\end{center}
+
+\GateHeading{Reversible OR}{OR}{\DoubleControlledSegment}
+
+\[
+t'=t\oplus(a\lor b).
+\]
+OR uses an ``any control is one'' predicate. If either or both controls are
+active, the target is flipped. This direct derived operation is equivalent on
+basis states to combining XOR and AND through
+$a\lor b=a\oplus b\oplus(a\land b)$.
+\begin{lstlisting}
+SET Out 0p
+OR -I A B -O Out
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{cc|c|c}\toprule $a$&$b$&$t=0$&$t'=a\lor b$\\\midrule
+0&0&0&0\\0&1&0&1\\1&0&0&1\\1&1&0&1\\\bottomrule
+\end{tabular}
+\end{center}
+For bits, $a\lor b=a\oplus b\oplus(a\land b)$.
+
+\GateHeading{Reversible XOR}{XOR}{\DoubleControlledSegment}
+
+\[
+t'=t\oplus a\oplus b.
+\]
+XOR flips the target when an odd number of controls is one. With two inputs,
+this is the ordinary exclusive-or predicate. The parity definition explains
+why the 11 row does not flip: two active controls have even parity.
+\begin{lstlisting}
+SET Out 0p
+XOR -I A B -O Out
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{cc|c|c}\toprule $a$&$b$&$t=0$&$t'=a\oplus b$\\\midrule
+0&0&0&0\\0&1&0&1\\1&0&0&1\\1&1&0&0\\\bottomrule
+\end{tabular}
+\end{center}
+

@@ -1,0 +1,55 @@
+\section{Multiple qubits and entanglement}
+
+\subsection{Tensor products}
+
+Two classical bits have four possibilities; two qubits have four basis vectors:
+\[
+\ket{00},\ \ket{01},\ \ket{10},\ \ket{11}.
+\]
+Independent systems combine with the tensor product $\otimes$. If
+$\ket A=[a_0,a_1]^T$ and $\ket B=[b_0,b_1]^T$, then
+\[
+\ket A\otimes\ket B=
+\begin{bmatrix}
+a_0b_0\\a_0b_1\\a_1b_0\\a_1b_1
+\end{bmatrix}.
+\]
+For $n$ qubits, the simulator stores $2^n$ amplitudes:
+\[
+\ket{\Psi}=\sum_{x=0}^{2^n-1}a_x\ket{x},\qquad
+\sum_x|a_x|^2=1.
+\]
+This exponential growth is why state-vector simulation becomes expensive as
+qubit count increases.
+
+\subsection{Entanglement}
+
+Some multi-qubit states cannot be factored into independent one-qubit states.
+The Bell state
+\[
+\ket{\Phi^+}=\frac{\ket{00}+\ket{11}}{\sqrt2}
+\]
+is entangled. Each qubit measured alone is equally likely to be 0 or 1, but
+their outcomes are perfectly correlated. It can be prepared from $\ket{00}$:
+\begin{lstlisting}
+H -I A -O A
+CNOT -I A -O B
+\end{lstlisting}
+The first gate creates a superposition; the controlled gate correlates B with
+A. Entanglement is not a classical alias. It is a property of the joint
+amplitude vector.
+
+\subsection{Controlled operations}
+
+A controlled gate applies a target operation only on basis components where
+its control condition is true. CNOT applies X when its control is one. If the
+control is in superposition, linearity applies the operation to one branch and
+not the other, which can create entanglement:
+\[
+\frac{\ket0+\ket1}{\sqrt2}\otimes\ket0
+\xrightarrow{\mathrm{CNOT}}
+\frac{\ket{00}+\ket{11}}{\sqrt2}.
+\]
+CCNOT requires both controls to be one. The system's OR and XOR derived gates
+use ``any active'' and ``odd parity'' predicates respectively.
+

@@ -1,0 +1,36 @@
+\section{Quick-reference grammar}
+
+This is a practical description of the accepted surface language rather than a
+separate formal language specification:
+\begin{lstlisting}[language={}]
+protocol     := [params-line] logical-line*
+params-line  := "PARAMS:" (name ":" type)*
+logical-line := command | comment | blank
+
+command      := opcode argument*
+opcode       := supported-command
+             | primitive-gate
+             | "B" primitive-gate
+             | "PHASE=" angle
+             | "BPHASE=" angle
+
+gate-row     := opcode "-I" input+ "-O" output+ ["-$R"]
+measure-row  := "MEASURE" ["-I" input]
+set-row      := "SET" target value
+process-row  := "MAIN-PROCESS" name
+child-row    := ("RUNCHILD" | "CALL") name
+                ["-I" argument*] ["-O" argument*]
+returns-row  := "RETURNVALS" token*
+accept-row   := "ACCEPTVALS" token*
+
+token        := ["$"] name [":" suffix]
+constant     := ("0p" | "1p" | "sp") ["_dim" integer]
+angle        := rational
+             | rational "d"
+             | [sign] [integer ["*"]] "pi" ["/" integer]
+\end{lstlisting}
+
+\textbf{Syntax detail:} \code{PHASE= pi/2} is joined into one opcode/value pair,
+but \code{PHASE = pi/2} is not. Operations and flags are case-insensitive;
+names, types, and positional values are otherwise retained.
+

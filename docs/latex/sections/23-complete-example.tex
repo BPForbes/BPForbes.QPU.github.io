@@ -1,0 +1,42 @@
+\section{Complete worked protocol}
+
+\begin{lstlisting}
+PARAMS: A:state B:state Theta:float
+
+MAIN-PROCESS BellAndLogic
+CREATETOKEN -I Q0 Q1 AndOut
+
+SET Q0 $A
+SET Q1 $B
+SET AndOut 0p
+
+# Quantum segment
+H -I Q0 -O Q0
+CNOT -I Q0 -O Q1
+PHASE=pi/4 -I Q1 -O Q1
+
+# Basis-state comparison output
+AND -I A B -O AndOut
+
+MEASURE -I Q0
+MEASURE -I Q1
+MEASURE -I AndOut
+RETURNVALS Q0 Q1 AndOut
+\end{lstlisting}
+
+Starting from $\ket{00}$, the H--CNOT segment prepares
+\[
+\ket{00}\xrightarrow{H\otimes I}
+\frac{\ket{00}+\ket{10}}{\sqrt2}
+\xrightarrow{\mathrm{CNOT}}
+\frac{\ket{00}+\ket{11}}{\sqrt2}.
+\]
+The phase gate then produces
+\[
+\frac{\ket{00}+e^{i\pi/4}\ket{11}}{\sqrt2}.
+\]
+The two quantum measurements are correlated, while \code{AndOut} compares the
+basis inputs through $A\land B$. A deterministic truth table can specify the
+logic output, but repeated simulation is needed to characterize Bell-state
+measurement probabilities.
+

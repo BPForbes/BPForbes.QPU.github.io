@@ -1,0 +1,175 @@
+\section{Single-qubit primitive gates}
+
+\GateHeading{Pauli X}{X}{\GateSegment{X}}
+
+\[
+X=\begin{bmatrix}0&1\\1&0\end{bmatrix},\quad
+X\ket0=\ket1,\quad X\ket1=\ket0,\quad
+X(\alpha\ket0+\beta\ket1)=\beta\ket0+\alpha\ket1.
+\]
+X is the quantum bit flip. On the Bloch sphere it is a half-turn around the
+x-axis. It exchanges the north and south poles and is self-inverse:
+$X^2=I$. Unlike a classical NOT implementation, X remains meaningful on a
+superposition because it exchanges amplitudes linearly without measuring.
+\begin{lstlisting}
+X -I Q:0 -O Q:0
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{ccc}\toprule Input & Classical comparison & Output\\\midrule
+0 & NOT 0 & 1\\
+1 & NOT 1 & 0\\\bottomrule\end{tabular}
+\end{center}
+
+\GateHeading{Pauli Y}{Y}{\GateSegment{Y}}
+
+\[
+Y=\begin{bmatrix}0&-i\\i&0\end{bmatrix},\quad
+Y\ket0=i\ket1,\quad Y\ket1=-i\ket0.
+\]
+It flips the basis value like X but adds phases that become observable through
+later interference. Geometrically it is a half-turn around the y-axis and is
+self-inverse, $Y^2=I$. The factors $i$ and $-i$ are global phases for either
+basis state by itself, but on components of a larger superposition they may
+become relative phases.
+\begin{lstlisting}
+Y -I Q -O Q
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{ccc}\toprule Input & Measured bit & Quantum output\\\midrule
+0 & 1 & $i\ket1$\\
+1 & 0 & $-i\ket0$\\\bottomrule\end{tabular}
+\end{center}
+
+\GateHeading{Pauli Z}{Z}{\GateSegment{Z}}
+
+\[
+Z=\begin{bmatrix}1&0\\0&-1\end{bmatrix},\quad
+Z\ket0=\ket0,\quad Z\ket1=-\ket1.
+\]
+Z does not change a computational-basis measurement, but it changes relative
+phase. For example, $Z\ket+=\ket-=(\ket0-\ket1)/\sqrt2$.
+On the Bloch sphere it is a half-turn around z. It is self-inverse and is the
+simplest example showing why quantum state cannot be reduced to a table of
+immediate measurement probabilities.
+\begin{lstlisting}
+Z -I Q -O Q
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{ccc}\toprule Input & Classical bit & Quantum output\\\midrule
+0 & 0 & $\ket0$\\
+1 & 1 & $-\ket1$\\\bottomrule\end{tabular}
+\end{center}
+
+\GateHeading{Hadamard}{H}{\GateSegment{H}}
+
+\[
+H=\frac1{\sqrt2}\begin{bmatrix}1&1\\1&-1\end{bmatrix},\quad
+H\ket0=\ket+,\quad H\ket1=\ket-.
+\]
+Hadamard changes between the computational z basis and the plus/minus x basis.
+It creates equal magnitudes from a basis state, but the sign of the second
+amplitude depends on the input. It is also self-inverse: applying H twice
+returns the original state. H is commonly used before controlled gates to
+create entanglement and after phase gates to reveal interference.
+\begin{lstlisting}
+SET Q 0p
+H -I Q -O Q
+MEASURE -I Q
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{ccc}\toprule Input & Measurement distribution & State before measurement\\\midrule
+0 & 50\% 0, 50\% 1 & $(\ket0+\ket1)/\sqrt2$\\
+1 & 50\% 0, 50\% 1 & $(\ket0-\ket1)/\sqrt2$\\\bottomrule\end{tabular}
+\end{center}
+Equal classical probabilities hide the relative minus sign responsible for
+interference.
+
+\GateHeading{S phase}{S}{\GateSegment{S}}
+
+\[
+S=P(\pi/2)=\begin{bmatrix}1&0\\0&i\end{bmatrix},\qquad
+S\ket1=i\ket1,\qquad S^2=Z.
+\]
+S is a quarter-turn around the Bloch sphere's z-axis. It changes $\ket+$ into
+$(\ket0+i\ket1)/\sqrt2$ while leaving basis measurement probabilities
+unchanged. Its inverse is $S^\dagger=P(-\pi/2)$, not S itself.
+\begin{lstlisting}
+S -I Q -O Q
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{ccc}\toprule Input & Measured bit & Quantum output\\\midrule
+0 & 0 & $\ket0$\\
+1 & 1 & $i\ket1$\\\bottomrule\end{tabular}
+\end{center}
+
+\GateHeading{T phase}{T}{\GateSegment{T}}
+
+\[
+T=P(\pi/4)=\begin{bmatrix}1&0\\0&e^{i\pi/4}\end{bmatrix},\qquad
+T^2=S,\qquad T^4=Z.
+\]
+T is an eighth-turn around z. Together with gates such as H and CNOT, it is an
+important non-Clifford resource for expressing general quantum computations.
+Its inverse is $T^\dagger=P(-\pi/4)$; the current \code{BT} spelling does not
+synthesize that inverse, so use \code{BPHASE=pi/4} when the negative phase is
+required.
+\begin{lstlisting}
+T -I Q -O Q
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{ccc}\toprule Input & Measured bit & Quantum output\\\midrule
+0 & 0 & $\ket0$\\
+1 & 1 & $e^{i\pi/4}\ket1$\\\bottomrule\end{tabular}
+\end{center}
+
+\GateHeading{Arbitrary phase}{PHASE}{\GateSegment{$P(\theta)$}}
+
+\[
+P(\theta)=\begin{bmatrix}1&0\\0&e^{i\theta}\end{bmatrix},\qquad
+\alpha\ket0+\beta\ket1\mapsto
+\alpha\ket0+\beta e^{i\theta}\ket1.
+\]
+PHASE is the general form behind S, T, and Z. It preserves
+$|\alpha|^2$ and $|\beta|^2$ because $|e^{i\theta}|=1$, yet rotates the
+relative phase by $\theta$. On the Bloch sphere this is a z-axis rotation up to
+global phase. A later H or another basis-changing gate is normally needed to
+turn that phase difference into changed computational-basis probabilities.
+The angle is embedded in the opcode:
+\begin{lstlisting}
+PHASE=1.5708 -I Q -O Q     # radians
+PHASE=3/2 -I Q -O Q        # rational radians
+PHASE=90d -I Q -O Q        # degrees
+PHASE=45/2d -I Q -O Q      # rational degrees
+PHASE=pi -I Q -O Q
+PHASE=-11pi/6 -I Q -O Q
+PHASE=2*pi/3 -I Q -O Q
+BPHASE=pi/4 -I Q -O Q      # P(-pi/4)
+\end{lstlisting}
+Accepted numeric atoms include signed integers, decimals, leading-dot decimals,
+and one optional rational denominator. Pi notation accepts an optional sign,
+an integer coefficient, an optional \code{*}, and an optional positive integer
+denominator. A zero denominator and malformed angle raise an error.
+
+\begin{center}
+\begin{tabular}{ccc}\toprule Input & Measured bit & Quantum output\\\midrule
+0 & 0 & $\ket0$\\
+1 & 1 & $e^{i\theta}\ket1$\\\bottomrule\end{tabular}
+\end{center}
+
+\subsection{Backward-prefix syntax}
+
+The QPU language recognizes a leading \code{B} before a supported primitive gate name,
+for example \code{BX}, \code{BH}, \code{BCNOT}, or \code{BSWAP}, and sets
+\code{reverse=true}. (Compiler-internal \code{RESET} remains unavailable in
+source.) Only \code{BPHASE=angle} currently changes emitted behavior: the
+compiler negates the phase angle. For every other gate the flag is metadata
+only. Emitting the ordinary gate still gives the mathematical inverse for these
+self-inverse gates:
+\[
+X,\ Y,\ Z,\ H,\ \mathrm{CNOT},\ \mathrm{CCNOT},\
+\mathrm{CZ},\ \mathrm{CY},\ \mathrm{SWAP}.
+\]
+In contrast, \code{BS} and \code{BT} do not synthesize $S^\dagger$ or
+$T^\dagger$. Do not rely on B-prefixed forms for inverse execution unless the
+gate is self-inverse or is \code{BPHASE}.
+

@@ -1,0 +1,56 @@
+\section{Scope and execution model}
+
+The compiler turns a plain-text \code{.qpucir} protocol into one flat sequence
+of circuit gates:
+\[
+\text{protocol source}\longrightarrow
+\text{logical lines}\longrightarrow
+\text{QPU instructions}\longrightarrow
+\text{scoped tokens}\longrightarrow
+\text{gates}\longrightarrow
+\text{state-vector simulation}.
+\]
+Child processes are expanded at compile time. The UI and simulator therefore
+see the same ordered gate list even when the source contains nested processes.
+
+\subsection{Three levels of support}
+
+\begin{tabularx}{\textwidth}{>{\bfseries}l X}
+\toprule
+Status & Meaning\\
+\midrule
+\implemented & The QPU language accepts the instruction and the compiler emits behavior
+that the simulator executes.\\
+\acceptedonly & The QPU language accepts the instruction and preserves it in compiler output or
+the compiler log, but no visual/simulator operation is emitted yet.\\
+\internal & The compiler may emit the operation itself, but protocol source
+cannot name it directly. \code{RESET} is the important example.\\
+\bottomrule
+\end{tabularx}
+
+\subsection{QPU instruction inventory}
+
+\begin{longtable}{>{\ttfamily}p{0.24\textwidth}p{0.18\textwidth}p{0.48\textwidth}}
+\toprule
+\normalfont\bfseries Command & \bfseries Status & \bfseries Purpose\\
+\midrule
+\endhead
+X, Y, Z, H, S, T, PHASE & \implemented & Single-qubit matrix operations.\\
+CNOT, CCNOT, CZ, CY, SWAP & \implemented & Controlled and two-wire primitive operations.\\
+NOT, AND, NAND, OR, XOR & \implemented & Derived logical target mutations.\\
+MEASURE & \implemented & Measure one named wire or all known wires.\\
+SET, CREATETOKEN & \implemented & Initialize/alias tokens and reserve wires.\\
+RUNCHILD, CALL & \implemented & Expand a catalog/library child process.\\
+RETURNVALS, ACCEPTVALS & \implemented & Bind child and process outputs.\\
+MAIN-PROCESS, INCREASECYCLE & \implemented & Mark a process and flush cycle workspace.\\
+FREE, DELETETOKEN, DECLARECHILD & \acceptedonly & Lifetime/declaration hints; currently logged.\\
+JOIN, SPLIT & \acceptedonly & Register-memory compatibility syntax.\\
+COMPILEPROCESS, MASTERVAL & \acceptedonly & Process-control compatibility syntax.\\
+\code{SAVE_STATE}, \code{LOAD_STATE} & \acceptedonly & Checkpoint compatibility syntax.\\
+\bottomrule
+\end{longtable}
+
+\textbf{Not source syntax:} \code{RESET} exists in the gate registry, but it is
+not a supported source instruction. Write \code{SET wire 0p};
+the compiler schedules internal \code{RESET} gates for zeroed workspace.
+
