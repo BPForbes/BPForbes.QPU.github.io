@@ -4,3 +4,4 @@ dist
 *.local
 .env
 .env.*
+public/project-metadata.json

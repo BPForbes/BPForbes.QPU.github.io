@@ -1,5 +1,14 @@
+import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 import { analyzeQpuProtocol } from '../protocolDiagnostics';
+
+const readProcess = (fileName: string) => readFileSync(new URL(`../../../data/processes/${fileName}`, import.meta.url), 'utf8');
+
+const adderLibrary = {
+  SingleBitFullAdder: readProcess('single-bit-full-adder.qpucir'),
+  TwoBitFullAdder: readProcess('two-bit-full-adder.qpucir'),
+  FourBitFullAdder: readProcess('four-bit-full-adder.qpucir'),
+};
 
 const validProtocol = `PARAMS: A:state
 MAIN-PROCESS Valid
@@ -85,6 +94,40 @@ RETURNVALS Result`);
       code: 'COMPILE_ERROR',
       line: 2,
       source: 'RUNCHILD MissingChild -I A -O Result',
+      suggestion: expect.stringContaining('register'),
+    }));
+  });
+
+  it('binds DECLARECHILD for bundled adder protocols without accepted-only warnings', () => {
+    const fourBit = analyzeQpuProtocol(adderLibrary.FourBitFullAdder, adderLibrary);
+    const twoBit = analyzeQpuProtocol(adderLibrary.TwoBitFullAdder, adderLibrary);
+
+    expect(fourBit).toMatchObject({
+      diagnostics: [],
+      errorCount: 0,
+      warningCount: 0,
+      canCompile: true,
+    });
+    expect(twoBit).toMatchObject({
+      diagnostics: [],
+      errorCount: 0,
+      warningCount: 0,
+      canCompile: true,
+    });
+  });
+
+  it('reports unknown DECLARECHILD names on the declaration line', () => {
+    const report = analyzeQpuProtocol(`MAIN-PROCESS Parent
+DECLARECHILD MissingChild
+RUNCHILD MissingChild -I A -O Result
+RETURNVALS Result`);
+
+    expect(report.canCompile).toBe(false);
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'error',
+      code: 'COMPILE_ERROR',
+      line: 2,
+      source: 'DECLARECHILD MissingChild',
       suggestion: expect.stringContaining('register'),
     }));
   });

@@ -95,15 +95,8 @@ export const configuredProcesses = [
   parseConfiguredProcess('phase-demo.qpucir', phaseDemoQpucir, bundledQpuio('phase-demo.qpuio', phaseDemoQpuio)),
 ];
 
-const protocolLibraryNames: Record<string, string> = {
-  'single-bit-full-adder.qpucir': 'SingleBitFullAdder',
-  'two-bit-full-adder.qpucir': 'TwoBitFullAdder',
-};
-
 export const protocolLibrary = Object.fromEntries(
-  configuredProcesses
-    .filter((process) => protocolLibraryNames[process.fileName])
-    .map((process) => [protocolLibraryNames[process.fileName], process.source]),
+  configuredProcesses.map((process) => [process.name, process.source]),
 ) as Record<string, string>;
 
 export const protocolExamples = configuredProcesses;

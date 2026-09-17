@@ -256,6 +256,7 @@ type Frame = {
   scope: string;
   aliases: Map<string, string>;
   params: Map<string, string>;
+  declaredChildren: Map<string, ProtocolProcess>;
 };
 
 type CompilerState = {
@@ -379,7 +380,7 @@ const executeProcess = (
     }
     params.set(param.name, resolved);
   });
-  const frame: Frame = { process, scope, aliases: new Map(), params };
+  const frame: Frame = { process, scope, aliases: new Map(), params, declaredChildren: new Map() };
   outputBindings.forEach((parentToken, childRegister) => {
     frame.aliases.set(childRegister, parentToken);
   });
@@ -449,14 +450,20 @@ const executeProcess = (
     }
 
     if (command.op === 'DECLARECHILD') {
-      // Child bodies resolve from librarySources at RUNCHILD/CALL time, not inline in the parent file.
-      state.log.push(`Declared child '${command.args[0]}'.`);
+      const childName = command.args[0];
+      if (!childName) throw new Error('DECLARECHILD requires a process name');
+      const child = library.get(childName);
+      if (!child) throw new Error(`Unknown child process '${childName}'`);
+      // Bind the catalog/library body now so later RUNCHILD/CALL rows expand this process, not a later alias.
+      frame.declaredChildren.set(childName, child);
+      state.log.push(`Bound child process '${childName}' for RUNCHILD/CALL.`);
       continue;
     }
 
     if (command.op === 'RUNCHILD' || command.op === 'CALL') {
-      const childName = command.op === 'RUNCHILD' ? command.args[0] : command.args[0];
-      const child = library.get(childName);
+      const childName = command.args[0];
+      if (!childName) throw new Error(`${command.op} requires a process name`);
+      const child = frame.declaredChildren.get(childName) ?? library.get(childName);
       if (!child) throw new Error(`Unknown child process '${childName}'`);
       const childReturnRegisters = returnRegistersForProcess(child);
       const childOutputBindings = new Map<string, string>();

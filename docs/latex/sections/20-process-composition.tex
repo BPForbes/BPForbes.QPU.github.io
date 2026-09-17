@@ -12,17 +12,17 @@ inside it. This name connects a protocol to catalog entries, child calls,
 downloads, and companion truth-table metadata. If no marker exists, the system
 uses \code{InlineProcess}, but named processes are strongly recommended.
 
-\subsection{\code{DECLARECHILD} (\acceptedonly)}
+\subsection{\code{DECLARECHILD} (\implemented)}
 
 \begin{lstlisting}
 DECLARECHILD SingleBitFullAdder
 \end{lstlisting}
-The declaration is logged. It does not load inline source. Child bodies must
-exist in the external \code{librarySources} catalog when called.
-DECLARECHILD is therefore documentation/compatibility syntax rather than an
-import statement. A successful declaration does not guarantee that a later
-call can resolve. The process catalog supplied to compilation remains the
-source of truth.
+The named child is bound from the compilation \code{librarySources} catalog.
+An unknown name fails on this line. The row itself emits no gate; later
+\code{RUNCHILD} or \code{CALL} expansions use the bound process body.
+A successful declaration therefore guarantees that the named child exists in
+the catalog supplied to this compile, and that later calls of that name expand
+the bound body rather than a later alias.
 
 \subsection{\code{RUNCHILD} --- expand a child process (\implemented)}
 

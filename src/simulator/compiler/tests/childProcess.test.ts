@@ -25,6 +25,27 @@ const setToken = (tokenMap: Record<string, number>, startStates: ParticleStartSt
 const readMeasured = (tokenMap: Record<string, number>, measurements: Record<number, 0 | 1>, name: string) =>
   measurements[tokenQubit(tokenMap, name)];
 
+describe('DECLARECHILD bindings', () => {
+  it('binds SingleBitFullAdder before TwoBitFullAdder RUNCHILD expansion', () => {
+    const compiled = compileQpuProtocol(protocolLibrary.TwoBitFullAdder, protocolLibrary);
+    expect(compiled.log).toContain("Bound child process 'SingleBitFullAdder' for RUNCHILD/CALL.");
+    expect(visibleCircuitGates(compiled.gates).some((gate) => gate.type === 'CNOT')).toBe(true);
+  });
+
+  it('binds TwoBitFullAdder before FourBitFullAdder nested RUNCHILD expansion', () => {
+    const source = readProcess('four-bit-full-adder.qpucir');
+    const compiled = compileQpuProtocol(source, protocolLibrary);
+    expect(compiled.log).toContain("Bound child process 'TwoBitFullAdder' for RUNCHILD/CALL.");
+    expect(compiled.log).toContain("Bound child process 'SingleBitFullAdder' for RUNCHILD/CALL.");
+  });
+
+  it('rejects DECLARECHILD of a process that is not in the library', () => {
+    expect(() => compileQpuProtocol(`MAIN-PROCESS Parent
+DECLARECHILD MissingChild
+RETURNVALS A`, {})).toThrow("Unknown child process 'MissingChild'");
+  });
+});
+
 describe('SingleBitFullAdder via TwoBitFullAdder', () => {
   it('writes child sum and carry into S0tmp, S1tmp, and Cmid', () => {
     const compiled = compileQpuProtocol(protocolLibrary.TwoBitFullAdder, protocolLibrary);

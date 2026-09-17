@@ -20,8 +20,8 @@ import { MAX_PLAY_SPEED, MIN_PLAY_SPEED, playDelayMs } from './components/circui
 import { examples } from './data/examples';
 import {
   isProtectedQpuioProcess,
+  getCatalogLibrarySources,
   protocolExamples,
-  protocolLibrary,
   registerCatalogProcess,
   warnProtectedTruthTable,
   type ConfiguredQpucirProcess,
@@ -185,7 +185,7 @@ function App() {
 
   const orderedGates = useMemo(() => gates.slice().sort((a, b) => a.step - b.step), [gates]);
   const protocolDiagnosticReport = useMemo(
-    () => analyzeQpuProtocol(protocolSource, protocolLibrary),
+    () => analyzeQpuProtocol(protocolSource, getCatalogLibrarySources()),
     [protocolSource],
   );
   // RESET lowering stays in orderedGates for simulation but is hidden on the canvas timeline.
@@ -397,7 +397,7 @@ function App() {
       orderedGates,
       startStates,
       paramQubitIndices.length ? paramQubitIndices : undefined,
-      { librarySources: protocolLibrary, trackParticles: true },
+      { librarySources: getCatalogLibrarySources(), trackParticles: true },
     );
     setState(result.state);
     setRuntimeQubitCount(resolveStateQubitCount(result.state, simulationQubitCount));
@@ -414,7 +414,7 @@ function App() {
     if (!gate) return;
     const workingQubitCount = resolveStateQubitCount(state, runtimeQubitCount);
     const { result, qubitCount: nextQubitCount } = stepCircuitGate(state, workingQubitCount, gate, measurements, {
-      librarySources: protocolLibrary,
+      librarySources: getCatalogLibrarySources(),
       trackParticles: true,
     });
     setRuntimeQubitCount(nextQubitCount);
@@ -659,7 +659,7 @@ function App() {
     options?: { fileName?: string; skipCatalogRegister?: boolean },
   ) => {
     try {
-      const result = compileQpuProtocol(source, protocolLibrary);
+      const result = compileQpuProtocol(source, getCatalogLibrarySources());
       setProtocolMode('process');
       setSimulationQubitCount(result.qubitCount);
       setQubitCount(result.logicalQubitCount);
@@ -730,7 +730,7 @@ function App() {
   const downloadCompiledProtocol = () => {
     const name = extractMainProcessName(protocolSource) ?? 'Compiled QPU circuit';
     try {
-      compileQpuProtocol(protocolSource, protocolLibrary);
+      compileQpuProtocol(protocolSource, getCatalogLibrarySources());
       downloadNamedQpucirContents(name, qpucirFileNameForSource(protocolSource, name), protocolSource);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1029,7 +1029,23 @@ function App() {
             </div>
             <div className="compiler-actions">
               {protocolExamples.map((example) => (
-                <button key={example.name} onClick={() => { setProtocolMode('process'); setProtocolSource(example.source); }} type="button">{example.name}</button>
+                <button
+                  key={example.name}
+                  onClick={() => {
+                    setProtocolSource(example.source);
+                    try {
+                      compileProtocolSource(example.source, example.name, 'compiled', {
+                        fileName: example.fileName,
+                        skipCatalogRegister: true,
+                      });
+                    } catch {
+                      // Compile summary and runtime log already contain the parse error.
+                    }
+                  }}
+                  type="button"
+                >
+                  {example.name}
+                </button>
               ))}
             </div>
             <textarea
