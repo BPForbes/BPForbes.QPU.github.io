@@ -33,7 +33,6 @@ const ACCEPTED_ONLY_OPERATIONS = new Set([
   'FREE',
   'JOIN',
   'SPLIT',
-  'DECLARECHILD',
   'MASTERVAL',
   'SAVE_STATE',
   'LOAD_STATE',
@@ -132,10 +131,10 @@ const semanticErrorLine = (
     const exact = lines.find((line) => line.text === quotedSource);
     if (exact) return exact;
   }
-  if (message.includes('Unknown child process')) {
+  if (message.includes('Unknown child process') || message.includes('DECLARECHILD requires')) {
     const child = message.match(/Unknown child process '([^']+)'/)?.[1];
     return lines.find((line) => (
-      /^(RUNCHILD|CALL)\b/i.test(line.text)
+      /^(DECLARECHILD|RUNCHILD|CALL)\b/i.test(line.text)
       && (!child || line.text.split(/\s+/)[1] === child)
     ));
   }
