@@ -43,7 +43,8 @@ SET, CREATETOKEN & \implemented & Initialize/alias tokens and reserve wires.\\
 RUNCHILD, CALL & \implemented & Expand a catalog/library child process.\\
 RETURNVALS, ACCEPTVALS & \implemented & Bind child and process outputs.\\
 MAIN-PROCESS, INCREASECYCLE & \implemented & Mark a process and flush cycle workspace.\\
-FREE, DELETETOKEN, DECLARECHILD & \acceptedonly & Lifetime/declaration hints; currently logged.\\
+DECLARECHILD & \implemented & Bind a catalog child for later RUNCHILD/CALL.\\
+FREE, DELETETOKEN & \acceptedonly & Lifetime hints; currently logged.\\
 JOIN, SPLIT & \acceptedonly & Register-memory compatibility syntax.\\
 COMPILEPROCESS, MASTERVAL & \acceptedonly & Process-control compatibility syntax.\\
 \code{SAVE_STATE}, \code{LOAD_STATE} & \acceptedonly & Checkpoint compatibility syntax.\\

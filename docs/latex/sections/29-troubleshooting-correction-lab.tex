@@ -101,11 +101,12 @@ validation errors.
 
 \subsection{Warnings for accepted but inactive syntax}
 
-JOIN, SPLIT, FREE, DELETETOKEN, DECLARECHILD, COMPILEPROCESS, MASTERVAL,
+JOIN, SPLIT, FREE, DELETETOKEN, COMPILEPROCESS, MASTERVAL,
 \code{SAVE_STATE}, and \code{LOAD_STATE} are accepted for compatibility but do not currently
 change the simulated circuit. The \code{-$R} flag is also preserved without
 changing substitution. A warning asks the author to confirm that metadata-only
-behavior is intentional.
+behavior is intentional. \code{DECLARECHILD} is not in that list: it binds a
+catalog child so later \code{RUNCHILD}/\code{CALL} rows can expand it.
 
 \subsection{Using the Correction Lab}
 

@@ -448,7 +448,7 @@ export const generateProjectMetadata = async ({
     timelineTags.push(tagEvent(
       tag,
       publishedAt,
-      `https://github.com/${owner}/${repo}/releases/tag/${encodeURIComponent(tag.name)}`,
+      `https://github.com/${owner}/${repo}/tree/${encodeURIComponent(tag.name)}`,
     ));
   }
 

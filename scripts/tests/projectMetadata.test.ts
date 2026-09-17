@@ -260,6 +260,42 @@ describe('generateProjectMetadata', () => {
     expect(JSON.stringify(metadata)).not.toMatch(/secret-token|authorization|example\.com/i);
   });
 
+  it('points unpublished tags at a repository tree page rather than a missing release', async () => {
+    const tagRoutes = {
+      ...routes,
+      'https://api.github.com/repos/BPForbes/BPForbes.QPU.github.io/tags?per_page=100': [
+        { name: 'v0.1.0', commit: { sha: 'abc1234def5678' } },
+      ],
+      'https://api.github.com/repos/BPForbes/BPForbes.QPU.github.io/commits/abc1234def5678': {
+        commit: { committer: { date: '2026-02-01T00:00:00Z' }, author: { date: '2026-02-01T00:00:00Z' } },
+      },
+    };
+    const metadata = await generateProjectMetadata({
+      token: 'secret-token',
+      repository: 'BPForbes/BPForbes.QPU.github.io',
+      sourceCommit: 'abc1234def5678901234567890abcdef12345678',
+      generatedAt: '2026-09-17T12:00:00Z',
+      fetchImpl: async (url) => {
+        const body = tagRoutes[url];
+        if (body === undefined) throw new Error(`unexpected GitHub request ${url}`);
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: jsonHeaders(),
+          json: async () => body,
+        };
+      },
+    });
+    const tag = metadata.timeline.find((event) => event.type === 'tag');
+    expect(tag).toMatchObject({
+      type: 'tag',
+      tag: 'v0.1.0',
+      url: 'https://github.com/BPForbes/BPForbes.QPU.github.io/tree/v0.1.0',
+    });
+    expect(tag?.url).not.toContain('/releases/tag/');
+  });
+
   it('follows GitHub Link pagination', async () => {
     const pages = {
       'https://api.github.com/items?page=1': { body: [{ id: 1 }], link: '<https://api.github.com/items?page=2>; rel="next"' },
