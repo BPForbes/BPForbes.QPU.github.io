@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "docs:build": "node scripts/tex-to-pdf.mjs",
     "docs:check": "node scripts/tex-to-pdf.mjs --check",
+    "generate:metadata": "node scripts/generate-project-metadata.mjs",
+    "validate:metadata": "node scripts/generate-project-metadata.mjs --validate dist/project-metadata.json",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "test:watch": "vitest"

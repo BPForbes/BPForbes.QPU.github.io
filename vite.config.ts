@@ -18,7 +18,7 @@ export default defineConfig(({ command, isPreview }) => ({
     exclude: ['@mlc-ai/web-llm'],
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
     testTimeout: 60_000,
   },
 }));
