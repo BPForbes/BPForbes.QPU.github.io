@@ -45,3 +45,23 @@ export const needsConnector = (gate: CircuitGate) => {
 
 /** Half of a lane height, used to inset connectors so they stop on the wires. */
 export const connectorEndInset = (rowHeight: number) => rowHeight / 2;
+
+export type CircuitDisplayMode = 'standard' | 'blocks';
+
+export const SHOW_QUBIT_WIRES_LABEL = 'Show Qubit Wires';
+export const DEFAULT_SHOW_QUBIT_WIRES = true;
+
+export const circuitDisplayMode = (showQubitWires: boolean): CircuitDisplayMode =>
+  showQubitWires ? 'standard' : 'blocks';
+
+export const circuitViewTitle = (showQubitWires: boolean) =>
+  showQubitWires ? 'Standard circuit view' : 'Gate block view';
+
+export const circuitViewTip = (showQubitWires: boolean) => (
+  showQubitWires
+    ? 'Black wires stay equal length and shrink their spacing as more gates are added. Active steps use a red outline; measured particles turn red on the wire.'
+    : 'Qubit wires are hidden. Each operation is a labeled gate block. The circuit, measurements, and simulator are unchanged. Click a block to remove it; drop onto a particle slot to add a gate.'
+);
+
+/** Conventional gate-type names for Gate Block View (CNOT, AND, H) rather than palette glyphs (CX). */
+export const blockViewLabel = (gate: Pick<CircuitGate, 'type'>) => String(gate.type);

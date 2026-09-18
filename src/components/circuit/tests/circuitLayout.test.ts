@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import type { CircuitGate } from '../../../simulator/types';
 import {
+  blockViewLabel,
   circuitColumnCount,
+  circuitDisplayMode,
+  circuitViewTip,
+  circuitViewTitle,
   connectorEndInset,
+  DEFAULT_SHOW_QUBIT_WIRES,
   gateSpanQubits,
   glyphKindFor,
   MAX_SLOT_REM,
   MIN_SLOT_REM,
   needsConnector,
   playDelayMs,
+  SHOW_QUBIT_WIRES_LABEL,
   startStateKet,
 } from '../../circuitLayout';
 
@@ -57,5 +63,21 @@ describe('circuit layout helpers', () => {
     expect(playDelayMs(2, 800)).toBe(400);
     expect(playDelayMs(0.25, 800)).toBe(3200);
     expect(playDelayMs(4, 800)).toBe(playDelayMs(3, 800));
+  });
+
+  it('toggles presentation labels without changing gate identities', () => {
+    expect(DEFAULT_SHOW_QUBIT_WIRES).toBe(true);
+    expect(SHOW_QUBIT_WIRES_LABEL).toBe('Show Qubit Wires');
+    expect(circuitDisplayMode(true)).toBe('standard');
+    expect(circuitDisplayMode(false)).toBe('blocks');
+    expect(circuitViewTitle(true)).toBe('Standard circuit view');
+    expect(circuitViewTitle(false)).toBe('Gate block view');
+    expect(circuitViewTip(true)).toMatch(/wires/i);
+    expect(circuitViewTip(false)).toMatch(/gate block/i);
+    expect(blockViewLabel(gate({ type: 'H' }))).toBe('H');
+    expect(blockViewLabel(gate({ type: 'CNOT', targets: [1], controls: [0] }))).toBe('CNOT');
+    expect(blockViewLabel(gate({ type: 'AND', targets: [2], controls: [0, 1] }))).toBe('AND');
+    expect(blockViewLabel(gate({ type: 'XOR' }))).toBe('XOR');
+    expect(blockViewLabel(gate({ type: 'Z' }))).toBe('Z');
   });
 });

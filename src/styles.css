@@ -47,9 +47,26 @@ button { font: inherit; }
 .hero-card small { color: #cbd5e1; text-transform: uppercase; letter-spacing: .08em; }
 
 .panel { border: 1px solid rgba(148, 163, 184, .25); background: rgba(15, 23, 42, .78); border-radius: 1.25rem; padding: 1rem; box-shadow: 0 20px 60px rgba(0,0,0,.18); backdrop-filter: blur(16px); }
-.section-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: end; margin-bottom: .9rem; }
+.section-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: end; margin-bottom: .9rem; flex-wrap: wrap; }
 .section-heading h2 { margin: 0; font-size: 1.1rem; }
 .eyebrow { margin: 0; color: #67e8f9; text-transform: uppercase; letter-spacing: .14em; font-size: .72rem; font-weight: 800; }
+.circuit-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  margin: 0;
+  color: #e2e8f0;
+  font-size: .86rem;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.circuit-view-toggle input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #67e8f9;
+  cursor: pointer;
+}
 
 .palette { display: grid; grid-template-columns: repeat(5, minmax(3.25rem, 1fr)); gap: .65rem; }
 .gate { min-height: 3.4rem; border: 0; border-radius: 1rem; color: white; font-weight: 900; cursor: grab; touch-action: manipulation; box-shadow: inset 0 -6px 16px rgba(0,0,0,.2), 0 12px 24px rgba(0,0,0,.2); transition: transform .2s ease, outline .2s ease; }
@@ -222,6 +239,80 @@ button { font: inherit; }
   box-shadow: 0 0 0 2px #dc2626;
 }
 .canvas-tip { color: #a7b4cc; margin: .75rem 0 0; font-size: .9rem; }
+.circuit-board-blocks {
+  display: grid;
+  gap: .85rem;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: none;
+  width: 100%;
+  min-width: 0;
+  min-height: 8.5rem;
+}
+.circuit-block-ops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .65rem;
+  align-items: center;
+  min-height: 3.2rem;
+}
+.circuit-block-empty {
+  margin: 0;
+  color: #64748b;
+  font-size: .9rem;
+}
+.circuit-gate-block {
+  min-width: 3.6rem;
+  min-height: 2.55rem;
+  padding: .45rem .8rem;
+  border: 2px solid #111;
+  border-radius: .28rem;
+  background: #fff;
+  color: #111;
+  font-size: .92rem;
+  font-weight: 850;
+  letter-spacing: .04em;
+  cursor: pointer;
+}
+.circuit-gate-block.active {
+  outline: 2px solid #dc2626;
+  outline-offset: 2px;
+  border-color: #dc2626;
+  color: #dc2626;
+}
+.circuit-block-drops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  align-items: center;
+}
+.circuit-block-drop-caption {
+  width: 100%;
+  margin: 0;
+  color: #475569;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.circuit-block-drop {
+  min-width: 3.1rem;
+  min-height: 2.35rem;
+  display: grid;
+  place-items: center;
+  border: 1px dashed #94a3b8;
+  border-radius: .5rem;
+  color: #334155;
+  font-size: .78rem;
+  font-weight: 800;
+  cursor: copy;
+}
+.circuit-block-drops.ready .circuit-block-drop:hover,
+.circuit-block-drops.ready .circuit-block-drop:focus-visible,
+.circuit-block-drop:focus-visible {
+  background: rgba(220, 38, 38, .06);
+  outline: 2px solid #dc2626;
+  outline-offset: 1px;
+}
 
 .controls { display: grid; grid-template-columns: repeat(2, 1fr); gap: .65rem; }
 .controls button, .example-card { border: 1px solid rgba(148,163,184,.24); color: #f8fafc; background: rgba(51,65,85,.9); border-radius: 1rem; padding: .9rem 1rem; min-height: 3.3rem; font-weight: 800; cursor: pointer; }
