@@ -1,0 +1,45 @@
+# Tells bailey-forbes.com that this project changed, so it refreshes the QPU
+# metadata it displays and redeploys.
+#
+# Waits for "Deploy static React QPU app" rather than firing on push, because
+# that workflow is what publishes the workbench to GitHub Pages. Notifying on
+# push would advertise a QPU state on the portfolio before the site that state
+# describes is actually live.
+#
+# The dispatch itself lives in the portfolio repository so all projects share
+# one implementation — see
+# BPForbes/Bailey-Forbes-Portfolio-Site.github.io/docs/project-metadata.md.
+
+name: Notify portfolio
+
+on:
+  workflow_run:
+    workflows: ["Deploy static React QPU app"]
+    types: [completed]
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: notify-portfolio
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    # Only a successful deployment is worth advertising. A cancelled or failed
+    # run leaves the published site as it was, so the portfolio should not move.
+    if: github.event.workflow_run.conclusion == 'success'
+    # Pinned to a commit rather than @main: this job hands PORTFOLIO_DISPATCH_TOKEN
+    # to the called workflow, and a branch reference would let a change pushed to
+    # that branch see the token before anyone reviewed it. The reusable workflow
+    # has not merged to the portfolio repo's main yet (it lives on
+    # claude/portfolio-metadata-automation-4r522m); re-pin this to the commit on
+    # main once that PR merges, then keep pinning on every subsequent change.
+    uses: BPForbes/Bailey-Forbes-Portfolio-Site.github.io/.github/workflows/notify-portfolio.yml@52b4093c6ddb4b6a4dddd220a3284b87cdcbbc14
+    with:
+      project: qpu
+      sha: ${{ github.event.workflow_run.head_sha }}
+      ref: ${{ github.event.workflow_run.head_branch }}
+      source-workflow: ${{ github.event.workflow_run.name }}
+    secrets:
+      PORTFOLIO_DISPATCH_TOKEN: ${{ secrets.PORTFOLIO_DISPATCH_TOKEN }}
