@@ -8,6 +8,7 @@ import {
   MIN_SLOT_REM,
   needsConnector,
   startStateKet,
+  wireKindSegments,
 } from './circuitLayout';
 
 type CircuitCanvasProps = {
@@ -36,6 +37,7 @@ export function CircuitCanvas({
   const sorted = gates.slice().sort((a, b) => a.step - b.step);
   const maxStep = sorted.reduce((highest, gate) => Math.max(highest, gate.step), -1);
   const columns = circuitColumnCount(sorted.length, maxStep);
+  const wireKinds = wireKindSegments(qubitCount, sorted, startStates, columns, measurements);
   const activeGate = activeStep >= 0 ? sorted.find((gate) => gate.step === activeStep) : undefined;
 
   const handleDrop = (event: React.DragEvent, qubit: number) => {
@@ -64,11 +66,16 @@ export function CircuitCanvas({
             ['--slot-max' as string]: `${MAX_SLOT_REM}rem`,
           }}
         >
-          <div aria-hidden="true" className="circuit-wire-layer">
-            {Array.from({ length: qubitCount }, (_, qubit) => (
-              <span className="circuit-wire" key={`wire-${qubit}`} />
-            ))}
-          </div>
+          {Array.from({ length: qubitCount }, (_, qubit) =>
+            Array.from({ length: columns }, (_, column) => (
+              <span
+                aria-hidden="true"
+                className={`circuit-wire ${wireKinds[qubit][column]}`}
+                key={`wire-${qubit}-${column}`}
+                style={{ gridColumn: column + 2, gridRow: qubit + 1 }}
+              />
+            )),
+          )}
 
           {sorted.filter(needsConnector).map((gate) => {
             const { min, max } = gateSpanQubits(gate);
@@ -137,8 +144,8 @@ export function CircuitCanvas({
         </div>
       </div>
       <p className="canvas-tip">
-        Black wires stay equal length and shrink their spacing as more gates are added. Active steps use a red outline;
-        measured particles turn red on the wire.
+        Classical bits (0p, 1p, or measured) use double lines; superposition uses a single line. Measure is the meter
+        symbol. Active steps use a red outline; measured particles turn red on the wire.
       </p>
     </section>
   );
