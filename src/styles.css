@@ -112,8 +112,17 @@ button { font: inherit; }
 }
 .circuit-wire {
   align-self: center;
+  justify-self: stretch;
   height: 2px;
   background: #111;
+  pointer-events: none;
+  z-index: 0;
+}
+.circuit-wire.classical {
+  height: .42rem;
+  background:
+    linear-gradient(#111, #111) 0 0 / 100% 2px no-repeat,
+    linear-gradient(#111, #111) 0 100% / 100% 2px no-repeat;
 }
 .circuit-connector {
   /* Grid row span covers the full first/last lanes; inset half a row so the
@@ -209,6 +218,12 @@ button { font: inherit; }
   background: #111;
 }
 .glyph-svg { width: 1.35rem; height: 1.35rem; display: block; }
+.circuit-glyph.glyph-measure {
+  min-width: 1.7rem;
+  min-height: 1.7rem;
+  padding: .08rem;
+}
+.glyph-meter { width: 1.15rem; height: 1.15rem; }
 .circuit-glyph.glyph-wide { min-width: 2rem; font-size: .58rem; }
 .circuit-glyph.active {
   outline: 2px solid #dc2626;

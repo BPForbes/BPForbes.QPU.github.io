@@ -1,6 +1,6 @@
 import { getGateDefinition } from '../../simulator/gates/registry';
 import type { CircuitGate } from '../../simulator/types';
-import { glyphKindFor, type CircuitGlyphKind } from '../circuitLayout';
+import { glyphKindFor, glyphLabelFor, type CircuitGlyphKind } from '../circuitLayout';
 
 type CircuitGlyphProps = {
   gate: CircuitGate;
@@ -22,9 +22,18 @@ const SwapMark = () => (
   </svg>
 );
 
+const MeasureMeter = () => (
+  <svg aria-hidden="true" className="glyph-svg glyph-meter" viewBox="0 0 24 24">
+    <path d="M4.8 17.2a7.2 7.2 0 0 1 14.4 0" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M12 17.2L17.4 8.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <circle cx="12" cy="17.2" r="1.25" fill="currentColor" />
+  </svg>
+);
+
 const glyphContent = (kind: CircuitGlyphKind, label: string) => {
   if (kind === 'plus') return <PlusTarget />;
   if (kind === 'swap') return <SwapMark />;
+  if (kind === 'measure') return <MeasureMeter />;
   if (kind === 'control') return <span className="glyph-control-dot" />;
   return <span>{label}</span>;
 };
@@ -32,7 +41,7 @@ const glyphContent = (kind: CircuitGlyphKind, label: string) => {
 export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitGlyphProps) {
   const kind = glyphKindFor(gate, qubit);
   const definition = getGateDefinition(String(gate.type));
-  const label = definition?.label ?? gate.type;
+  const label = glyphLabelFor(gate, qubit, definition?.label ?? String(gate.type));
   const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${active ? ' active' : ''}`;
   const title = `${gate.type}${kind === 'control' ? ' control' : ''}`;
 
