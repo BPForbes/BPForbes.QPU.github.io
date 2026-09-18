@@ -60,7 +60,7 @@ export const circuitViewTitle = (showQubitWires: boolean) =>
 export const circuitViewTip = (showQubitWires: boolean) => (
   showQubitWires
     ? 'Black wires stay equal length and shrink their spacing as more gates are added. Active steps use a red outline; measured particles turn red on the wire.'
-    : 'Qubit wires are hidden. Each operation is a labeled gate block. The circuit, measurements, and simulator are unchanged. Click a block to remove it; drop onto a particle slot to add a gate.'
+    : 'Gate Block View uses compact labeled blocks on drop lanes. Active steps use a red outline. The circuit, measurements, and simulator are unchanged.'
 );
 
 /** Conventional gate-type names for Gate Block View (CNOT, AND, H) rather than palette glyphs (CX). */

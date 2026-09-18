@@ -74,6 +74,7 @@ describe('circuit layout helpers', () => {
     expect(circuitViewTitle(false)).toBe('Gate block view');
     expect(circuitViewTip(true)).toMatch(/wires/i);
     expect(circuitViewTip(false)).toMatch(/gate block/i);
+    expect(circuitViewTip(false)).toMatch(/red outline/i);
     expect(blockViewLabel(gate({ type: 'H' }))).toBe('H');
     expect(blockViewLabel(gate({ type: 'CNOT', targets: [1], controls: [0] }))).toBe('CNOT');
     expect(blockViewLabel(gate({ type: 'AND', targets: [2], controls: [0, 1] }))).toBe('AND');

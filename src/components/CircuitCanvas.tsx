@@ -90,7 +90,7 @@ export function CircuitCanvas({
       <p className="sr-only" id="circuit-view-toggle-hint">
         Display-mode toggle. Checked shows Standard Circuit View with qubit wires. Unchecked shows Gate Block View. Presentation only; the circuit and simulator stay the same.
       </p>
-      <div className="canvas-scroll">
+      <div className="canvas-scroll" style={showQubitWires ? undefined : { ['--columns' as string]: columns }}>
         {showQubitWires ? (
           <div
             className="circuit-board"
@@ -163,42 +163,48 @@ export function CircuitCanvas({
             )}
           </div>
         ) : (
-          <div className="circuit-board circuit-board-blocks" id="circuit-board-view">
-            <div aria-label="Gate operations" className="circuit-block-ops">
-              {sorted.length === 0 ? (
-                <p className="circuit-block-empty">No gates yet. Drop a gate onto a particle slot below.</p>
-              ) : (
-                sorted.map((gate) => {
-                  const label = blockViewLabel(gate);
-                  const active = activeStep === gate.step;
-                  return (
-                    <button
-                      aria-label={`Remove ${label}`}
-                      className={`circuit-gate-block ${active ? 'active' : ''}`}
-                      key={gate.id}
-                      onClick={() => onRemoveGate(gate.id)}
-                      title={label}
-                      type="button"
-                    >
-                      {label}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-            <div className={`circuit-block-drops ${selectedGate ? 'ready' : ''}`}>
-              <p className="circuit-block-drop-caption">Place a gate</p>
-              {Array.from({ length: qubitCount }, (_, qubit) => (
+          <div className="circuit-grid" id="circuit-board-view">
+            {Array.from({ length: qubitCount }, (_, qubit) => (
+              <div className="wire-row" key={qubit}>
+                <div className="wire-label">q{qubit}</div>
                 <div
                   aria-label={`Place gate on q${qubit}`}
-                  className="circuit-block-drop"
-                  key={`block-drop-${qubit}`}
+                  className={`wire-lane ${selectedGate ? 'ready' : ''}`}
                   {...dropSlotProps(qubit)}
                 >
-                  q{qubit}
+                  <span aria-hidden="true" className="wire-line" />
+                  {sorted.map((gate) => {
+                    if (!gateTouchesQubit(gate, qubit)) return null;
+                    const isTarget = gate.targets.includes(qubit);
+                    const isControl = gate.controls.includes(qubit);
+                    const label = blockViewLabel(gate);
+                    return (
+                      <span
+                        className={`placed-gate ${activeStep === gate.step ? 'active' : ''} ${activeStep >= gate.step ? 'done' : ''}`}
+                        key={`${gate.id}-${qubit}`}
+                        style={{ ['--step' as string]: gate.step + 1 }}
+                      >
+                        {isControl ? <span className="control-dot" title={`${label} control`} /> : null}
+                        {isTarget ? (
+                          <button
+                            aria-label={`Remove ${label}`}
+                            className="block-gate"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onRemoveGate(gate.id);
+                            }}
+                            title={label}
+                            type="button"
+                          >
+                            {label}
+                          </button>
+                        ) : null}
+                      </span>
+                    );
+                  })}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
