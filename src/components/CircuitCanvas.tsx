@@ -14,6 +14,8 @@ import {
 type CircuitCanvasProps = {
   qubitCount: number;
   gates: CircuitGate[];
+  /** Full simulator sequence, including hidden RESET gates used only for wire style. */
+  wireGates?: CircuitGate[];
   activeStep: number;
   selectedGate: GateType | null;
   measurements?: MeasurementMap;
@@ -27,6 +29,7 @@ const gateTouchesQubit = (gate: CircuitGate, qubit: number) => gate.targets.incl
 export function CircuitCanvas({
   qubitCount,
   gates,
+  wireGates,
   activeStep,
   selectedGate,
   measurements = {},
@@ -35,9 +38,10 @@ export function CircuitCanvas({
   onRemoveGate,
 }: CircuitCanvasProps) {
   const sorted = gates.slice().sort((a, b) => a.step - b.step);
-  const maxStep = sorted.reduce((highest, gate) => Math.max(highest, gate.step), -1);
+  const trackingGates = (wireGates ?? gates).slice().sort((a, b) => a.step - b.step);
+  const maxStep = trackingGates.reduce((highest, gate) => Math.max(highest, gate.step), -1);
   const columns = circuitColumnCount(sorted.length, maxStep);
-  const wireKinds = wireKindSegments(qubitCount, sorted, startStates, columns, measurements);
+  const wireKinds = wireKindSegments(qubitCount, trackingGates, startStates, columns, measurements);
   const activeGate = activeStep >= 0 ? sorted.find((gate) => gate.step === activeStep) : undefined;
 
   const handleDrop = (event: React.DragEvent, qubit: number) => {

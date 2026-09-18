@@ -923,6 +923,7 @@ function App() {
             qubitCount={simulationQubitCount}
             selectedGate={selectedGate}
             startStates={startStates}
+            wireGates={orderedGates}
           />
 
           <section className="panel workbench-panel" aria-labelledby="workbench-title">

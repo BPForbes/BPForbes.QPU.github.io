@@ -83,11 +83,26 @@ describe('circuit layout helpers', () => {
     expect(initialWireKind('1p')).toBe('classical');
     expect(initialWireKind('sp')).toBe('quantum');
     expect(applyGateToWireKind(['classical'], gate({ type: 'H', targets: [0] }))).toEqual(['quantum']);
+    expect(applyGateToWireKind(['quantum'], gate({ type: 'H', targets: [0] }))).toEqual(['classical']);
     expect(applyGateToWireKind(['quantum'], gate({ type: 'MEASURE', targets: [0] }))).toEqual(['classical']);
+    expect(applyGateToWireKind(['quantum'], gate({ type: 'RESET', targets: [0] }))).toEqual(['classical']);
 
     const afterH = wireKindSegments(1, [gate({ type: 'H', step: 0, targets: [0] })], ['0p'], 4);
     expect(afterH[0][0]).toBe('classical');
     expect(afterH[0][1]).toBe('quantum');
+
+    const afterTwoH = wireKindSegments(
+      1,
+      [gate({ type: 'H', step: 0, targets: [0] }), gate({ id: 'h2', type: 'H', step: 1, targets: [0] })],
+      ['0p'],
+      4,
+    );
+    expect(afterTwoH[0][1]).toBe('quantum');
+    expect(afterTwoH[0][2]).toBe('classical');
+
+    const spThenH = wireKindSegments(1, [gate({ type: 'H', step: 0, targets: [0] })], ['sp'], 4);
+    expect(spThenH[0][0]).toBe('quantum');
+    expect(spThenH[0][1]).toBe('classical');
 
     const afterMeasure = wireKindSegments(
       1,
@@ -98,7 +113,30 @@ describe('circuit layout helpers', () => {
     expect(afterMeasure[0][1]).toBe('quantum');
     expect(afterMeasure[0][2]).toBe('classical');
 
+    const measureThenH = wireKindSegments(
+      1,
+      [
+        gate({ type: 'H', step: 0, targets: [0] }),
+        gate({ id: 'm', type: 'MEASURE', step: 1, targets: [0] }),
+        gate({ id: 'h2', type: 'H', step: 2, targets: [0] }),
+      ],
+      ['0p'],
+      5,
+      { 0: 1 },
+    );
+    expect(measureThenH[0][2]).toBe('classical');
+    expect(measureThenH[0][3]).toBe('quantum');
+
     const runtimeMeasured = wireKindSegments(1, [gate({ type: 'H', step: 0, targets: [0] })], ['0p'], 4, { 0: 1 });
     expect(runtimeMeasured[0].every((kind) => kind === 'classical')).toBe(true);
+
+    const hiddenReset = wireKindSegments(
+      1,
+      [gate({ type: 'H', step: 0, targets: [0] }), gate({ id: 'r', type: 'RESET', step: 1, targets: [0] })],
+      ['0p'],
+      4,
+    );
+    expect(hiddenReset[0][1]).toBe('quantum');
+    expect(hiddenReset[0][2]).toBe('classical');
   });
 });

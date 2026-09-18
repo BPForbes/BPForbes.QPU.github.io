@@ -60,7 +60,6 @@ export const initialWireKind = (state?: ParticleStartState): WireKind =>
   state === 'sp' ? 'quantum' : 'classical';
 
 const CLASSICAL_AFTER_GATES = new Set(['MEASURE', 'RESET']);
-const SUPERPOSITION_ON_TARGET = new Set(['H']);
 const SPREADS_SUPERPOSITION = new Set(['CNOT', 'CCNOT', 'CY']);
 
 export const applyGateToWireKind = (kinds: readonly WireKind[], gate: CircuitGate): WireKind[] => {
@@ -74,9 +73,10 @@ export const applyGateToWireKind = (kinds: readonly WireKind[], gate: CircuitGat
     return next;
   }
 
-  if (SUPERPOSITION_ON_TARGET.has(type)) {
+  // H is its own inverse on |0⟩/|1⟩/|+⟩/|-⟩, so a second H (or H on sp) returns a computational bit.
+  if (type === 'H') {
     gate.targets.forEach((qubit) => {
-      next[qubit] = 'quantum';
+      next[qubit] = next[qubit] === 'quantum' ? 'classical' : 'quantum';
     });
     return next;
   }
@@ -133,9 +133,11 @@ export const wireKindSegments = (
   Object.keys(measuredQubits).forEach((key) => {
     const qubit = Number(key);
     if (!Number.isInteger(qubit) || qubit < 0 || qubit >= qubitCount) return;
-    const measureStep = gates.find((gate) => gate.type === 'MEASURE' && gate.targets.includes(qubit))?.step;
-    const fromColumn = measureStep === undefined ? 0 : measureStep + 1;
-    for (let column = fromColumn; column < columnCount; column += 1) {
+    const hasMeasureGate = gates.some((gate) => gate.type === 'MEASURE' && gate.targets.includes(qubit));
+    // Runtime Measure all/target has no meter on the diagram. A MEASURE box already
+    // updated later segments, including a following H, so do not overwrite those.
+    if (hasMeasureGate) return;
+    for (let column = 0; column < columnCount; column += 1) {
       segments[qubit][column] = 'classical';
     }
   });
