@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { CircuitGate } from '../../../simulator/types';
 import {
+  applyGateToWireKind,
   circuitColumnCount,
   connectorEndInset,
   gateSpanQubits,
   glyphKindFor,
+  glyphLabelFor,
+  initialWireKind,
   MAX_SLOT_REM,
   MIN_SLOT_REM,
   needsConnector,
   playDelayMs,
   startStateKet,
+  wireKindSegments,
 } from '../../circuitLayout';
 
 const gate = (overrides: Partial<CircuitGate> = {}): CircuitGate => ({
@@ -45,6 +49,21 @@ describe('circuit layout helpers', () => {
     expect(glyphKindFor(gate({ type: 'H', targets: [0] }), 0)).toBe('box');
   });
 
+  it('draws CZ and CY as boxed Pauli letters, leaving CX as a plus', () => {
+    const cz = gate({ type: 'CZ', targets: [1], controls: [0] });
+    expect(glyphKindFor(cz, 0)).toBe('control');
+    expect(glyphKindFor(cz, 1)).toBe('box');
+    expect(glyphLabelFor(cz, 1, 'CZ')).toBe('Z');
+
+    const cy = gate({ type: 'CY', targets: [1], controls: [0] });
+    expect(glyphKindFor(cy, 0)).toBe('control');
+    expect(glyphKindFor(cy, 1)).toBe('box');
+    expect(glyphLabelFor(cy, 1, 'CY')).toBe('Y');
+
+    expect(glyphKindFor(gate({ type: 'CNOT', targets: [1], controls: [0] }), 1)).toBe('plus');
+    expect(glyphKindFor(gate({ type: 'CCNOT', targets: [2], controls: [0, 1] }), 2)).toBe('plus');
+  });
+
   it('draws a connector only when a gate spans more than one wire', () => {
     expect(needsConnector(gate({ type: 'H', targets: [1] }))).toBe(false);
     expect(needsConnector(gate({ type: 'CNOT', targets: [2], controls: [0] }))).toBe(true);
@@ -57,5 +76,67 @@ describe('circuit layout helpers', () => {
     expect(playDelayMs(2, 800)).toBe(400);
     expect(playDelayMs(0.25, 800)).toBe(3200);
     expect(playDelayMs(4, 800)).toBe(playDelayMs(3, 800));
+  });
+
+  it('uses double-line classical wires for 0p/1p and single-line wires for superposition', () => {
+    expect(initialWireKind('0p')).toBe('classical');
+    expect(initialWireKind('1p')).toBe('classical');
+    expect(initialWireKind('sp')).toBe('quantum');
+    expect(applyGateToWireKind(['classical'], gate({ type: 'H', targets: [0] }))).toEqual(['quantum']);
+    expect(applyGateToWireKind(['quantum'], gate({ type: 'H', targets: [0] }))).toEqual(['classical']);
+    expect(applyGateToWireKind(['quantum'], gate({ type: 'MEASURE', targets: [0] }))).toEqual(['classical']);
+    expect(applyGateToWireKind(['quantum'], gate({ type: 'RESET', targets: [0] }))).toEqual(['classical']);
+
+    const afterH = wireKindSegments(1, [gate({ type: 'H', step: 0, targets: [0] })], ['0p'], 4);
+    expect(afterH[0][0]).toBe('classical');
+    expect(afterH[0][1]).toBe('quantum');
+
+    const afterTwoH = wireKindSegments(
+      1,
+      [gate({ type: 'H', step: 0, targets: [0] }), gate({ id: 'h2', type: 'H', step: 1, targets: [0] })],
+      ['0p'],
+      4,
+    );
+    expect(afterTwoH[0][1]).toBe('quantum');
+    expect(afterTwoH[0][2]).toBe('classical');
+
+    const spThenH = wireKindSegments(1, [gate({ type: 'H', step: 0, targets: [0] })], ['sp'], 4);
+    expect(spThenH[0][0]).toBe('quantum');
+    expect(spThenH[0][1]).toBe('classical');
+
+    const afterMeasure = wireKindSegments(
+      1,
+      [gate({ type: 'H', step: 0, targets: [0] }), gate({ id: 'm', type: 'MEASURE', step: 1, targets: [0] })],
+      ['0p'],
+      4,
+    );
+    expect(afterMeasure[0][1]).toBe('quantum');
+    expect(afterMeasure[0][2]).toBe('classical');
+
+    const measureThenH = wireKindSegments(
+      1,
+      [
+        gate({ type: 'H', step: 0, targets: [0] }),
+        gate({ id: 'm', type: 'MEASURE', step: 1, targets: [0] }),
+        gate({ id: 'h2', type: 'H', step: 2, targets: [0] }),
+      ],
+      ['0p'],
+      5,
+      { 0: 1 },
+    );
+    expect(measureThenH[0][2]).toBe('classical');
+    expect(measureThenH[0][3]).toBe('quantum');
+
+    const runtimeMeasured = wireKindSegments(1, [gate({ type: 'H', step: 0, targets: [0] })], ['0p'], 4, { 0: 1 });
+    expect(runtimeMeasured[0].every((kind) => kind === 'classical')).toBe(true);
+
+    const hiddenReset = wireKindSegments(
+      1,
+      [gate({ type: 'H', step: 0, targets: [0] }), gate({ id: 'r', type: 'RESET', step: 1, targets: [0] })],
+      ['0p'],
+      4,
+    );
+    expect(hiddenReset[0][1]).toBe('quantum');
+    expect(hiddenReset[0][2]).toBe('classical');
   });
 });
