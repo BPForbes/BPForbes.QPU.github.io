@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialState, runCircuit } from '../../engine';
-import { getGateDefinition, isKnownGateType } from '../registry';
+import { compileQpuProtocol, serializeCircuitToQpuProtocol } from '../../compiler';
+import { controlsForGateType, getGateDefinition, isKnownGateType } from '../registry';
 import type { CircuitGate } from '../types';
 const gate = (type: string, step: number, targets: number[], controls: number[] = [], phase?: number): CircuitGate => ({
   id: `${type}-${step}`,
@@ -52,5 +53,19 @@ describe('gate registry', () => {
       measurements: {},
     });
     expect(Math.abs(swapped.state[1].re)).toBeCloseTo(1, 5);
+  });
+
+  it('places two-input derived gates with two controls so the canvas protocol compiles', () => {
+    ['AND', 'NAND', 'OR', 'XOR'].forEach((type) => {
+      const placement = controlsForGateType(type, 2, 3);
+      expect(placement).toEqual({ controls: [0, 1], targets: [2] });
+      const source = serializeCircuitToQpuProtocol(
+        [{ ...gate(type, 0, placement!.targets, placement!.controls) }],
+        3,
+        ['0p', '0p', '0p'],
+      );
+      expect(() => compileQpuProtocol(source)).not.toThrow();
+    });
+    expect(controlsForGateType('CNOT', 2, 3)).toEqual({ controls: [0], targets: [2] });
   });
 });

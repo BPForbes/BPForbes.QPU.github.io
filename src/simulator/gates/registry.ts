@@ -80,9 +80,10 @@ export const controlsForGateType = (
   }
 
   if (definition.controlKind === 'single' || definition.controlKind === 'parametric') {
+    // Derived AND/NAND/OR/XOR share the single-control shape but need two inputs to compile.
     const inputCount = definition.controlKind === 'parametric'
       ? (getCustomGateRecord(type)?.inputParamNames.length ?? 1)
-      : 1;
+      : Math.max(1, definition.astInputCount);
     if (candidates.length < inputCount) return null;
     return {
       controls: candidates.slice(0, inputCount),

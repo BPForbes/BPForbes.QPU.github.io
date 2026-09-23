@@ -274,9 +274,7 @@ function App() {
     const definition = getGateDefinition(type);
     if (!definition || definition.controlKind === 'none' || definition.controlKind === 'swap') return undefined;
     if (definition.controlKind === 'single' || definition.controlKind === 'parametric') {
-      const inputCount = definition.controlKind === 'parametric'
-        ? Math.max(1, definition.astInputCount)
-        : 1;
+      const inputCount = Math.max(1, definition.astInputCount);
       if (simulationQubitCount - 1 < inputCount) return undefined;
       const controls: number[] = [];
       for (let index = 0; index < inputCount; index += 1) {
