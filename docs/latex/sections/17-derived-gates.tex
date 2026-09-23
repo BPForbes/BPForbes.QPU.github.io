@@ -5,6 +5,15 @@ mutations. Inputs are preserved. If target $t$ starts in zero, AND/OR/XOR
 write the familiar classical function. If it does not, the true behavior is
 the XOR embedding shown below.
 
+\begin{beginnerbox}[One shape for every two-input gate]
+AND, NAND, OR, and XOR all follow $t' = t\oplus f(a,b)$. The two inputs $a$
+and $b$ (\textbf{Control A} and \textbf{Control B} in the workbench) are read
+and left unchanged. The target $t$ (\textbf{Target particle}) is the output
+workspace and is the only wire that changes. Only $f$ differs between the
+four gates. To get the ordinary classical answer, start the target at 0 with
+\code{SET Out 0p}.
+\end{beginnerbox}
+
 \GateHeading{Logical NOT}{NOT}{\GateSegment{$\neg$}}
 
 \[

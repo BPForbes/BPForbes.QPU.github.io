@@ -51,16 +51,46 @@ and when to open the Correction Lab.
 
 \section{Recommended learning path}
 
-\begin{enumerate}
-  \item Complete the no-code starter example in Getting Started.
-  \item Copy and compile the first complete protocol.
-  \item Read the classical and quantum foundations needed to understand its
-  output.
-  \item Work through the half-adder and interference examples.
-  \item Keep the Language Reference open while authoring a new protocol.
-  \item Use Protocol checks and the Correction Lab when compilation or
-  truth-table tests report a problem.
-\end{enumerate}
+Getting Started explains each step in detail, with a starter circuit and a
+checkpoint question. The starter-circuit cards in the Circuit builder are
+numbered with the same steps.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\bfseries}p{0.24\textwidth}X>{\raggedright\arraybackslash}p{0.3\textwidth}}
+\toprule
+Step & What you learn & Where to read\\
+\midrule
+1. Single qubit & X, H, Z, and measurement; superposition versus
+interference. & Getting Started; Theory Guide (single-qubit gates)\\
+2. Controlled gates & CNOT, CZ, CY, SWAP: which wire is read and which is
+changed. & Theory Guide (controlled gates)\\
+3. Reversible logic & CCNOT and AND/OR/XOR/NAND: inputs are kept, answers go
+into a target. & Getting Started (half-adder); Theory Guide (derived gates)\\
+4. Entanglement & Bell states and phase kickback. & Theory Guide (multiple
+qubits); Examples (phase kickback)\\
+5. Arithmetic & Full adders, multi-bit adders, comparators, parity. &
+Examples (advanced worked circuits)\\
+6. Multi-stage & Child processes, uncomputation, oracles, custom gates. &
+Language Reference (process composition); Examples (custom gates)\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Throughout, keep the Language Reference open while authoring a protocol, and
+use Protocol checks and the Correction Lab when compilation or truth-table
+tests report a problem.
+
+\section{Find the explanation for what is on screen}
+
+\begin{itemize}
+  \item \textbf{A button or selector:} Getting Started, \emph{Every control on
+  screen, by its exact name}.
+  \item \textbf{A gate:} select it in the workbench and open \emph{Read the
+  full gate reference}, or see the Theory Guide gate chapters.
+  \item \textbf{Reset state, Clear circuit, or Reset site:} \emph{Reset: an
+  operation that is not a gate}, in Getting Started, the Theory Guide, and the
+  Language Reference.
+\end{itemize}
 
 \section{File map}
 

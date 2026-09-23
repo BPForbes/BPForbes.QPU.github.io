@@ -101,6 +101,22 @@ target:
 Knowing the output triple lets the transformation be run backward to recover
 the input triple.
 
+\begin{beginnerbox}[How to read $t' = t\oplus(A\land B)$]
+\begin{itemize}
+  \item $A$ and $B$ are \textbf{controls}. They are only read. After the gate
+  they still hold exactly what they held before, which is why the input can
+  always be recovered.
+  \item $t$ is the \textbf{target}, the output workspace. It is the only wire
+  that changes. The prime in $t'$ means ``$t$ after the gate''.
+  \item $\oplus$ means ``flip if''. The target flips when $A\land B$ is 1 and
+  stays put otherwise.
+  \item Start the target at 0 and it ends holding $A\land B$, the ordinary AND
+  answer. Start it at 1 and it ends holding NAND instead.
+\end{itemize}
+In the Circuit builder, $A$ is \textbf{Control A}, $B$ is
+\textbf{Control B}, and $t$ is \textbf{Target particle}.
+\end{beginnerbox}
+
 \subsection{Controls, targets, and workspace}
 
 These terms connect classical logic to QPU syntax:
