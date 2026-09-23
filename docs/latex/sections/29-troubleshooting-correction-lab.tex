@@ -99,14 +99,15 @@ OUTPUTS: Carry Sum
 Renaming, reordering, or omitting a column changes the interface and causes
 validation errors.
 
-\subsection{Warnings for accepted but inactive syntax}
+\subsection{Cycle-suffix warnings}
 
-JOIN, SPLIT, FREE, DELETETOKEN, COMPILEPROCESS, MASTERVAL,
-\code{SAVE_STATE}, and \code{LOAD_STATE} are accepted for compatibility but do not currently
-change the simulated circuit. The \code{-$R} flag is also preserved without
-changing substitution. A warning asks the author to confirm that metadata-only
-behavior is intentional. \code{DECLARECHILD} is not in that list: it binds a
-catalog child so later \code{RUNCHILD}/\code{CALL} rows can expand it.
+An integer token suffix is checked against the process cycle.
+\code{Q:1} while the process is still on cycle 0 produces
+\code{CYCLE_SUFFIX_MISMATCH}. Child processes count cycles from zero again.
+\code{-$R}, JOIN, SPLIT, FREE, DELETETOKEN, COMPILEPROCESS, MASTERVAL,
+\code{SAVE_STATE}, and \code{LOAD_STATE} now execute; they are not
+metadata-only warnings. \code{DECLARECHILD} still binds a catalog child for
+later \code{RUNCHILD} or \code{CALL}.
 
 \subsection{Using the Correction Lab}
 
@@ -124,8 +125,7 @@ catalog child so later \code{RUNCHILD}/\code{CALL} rows can expand it.
 
 The Correction Lab is appropriate for syntax failures, child-process binding
 problems, and circuits whose measured outputs disagree with their truth table.
-It cannot make accepted-but-unimplemented operations execute, and it must not
-rewrite canonical bundled truth-table expectations.
+It must not rewrite canonical bundled truth-table expectations.
 
 \section{Diagnostic message reference}
 
@@ -148,12 +148,10 @@ INVALID\_GATE\_ARITY & Input/control or output count is wrong. & Compare the
 gate's documented \code{-I}/\code{-O} counts.\\
 COMPILE\_ERROR & Syntax was readable but compilation could not complete. &
 Inspect child names, SET values, and SWAP bindings.\\
-ACCEPTED\_ONLY\_OPERATION & The instruction currently emits no simulator
-behavior. & Replace it with implemented behavior or accept metadata-only use.\\
-INACTIVE\_PARAMETER\_FLAG & \code{-$R} has no current execution effect. & Use
-explicit bindings.\\
-INACTIVE\_REVERSE\_PREFIX & A B-prefixed gate is not being inverted. & Use a
-self-inverse gate or BPHASE where appropriate.\\
+CYCLE\_SUFFIX\_MISMATCH & An integer \code{:} suffix does not match the
+process cycle. & Move the reference or add \code{INCREASECYCLE}.\\
+INACTIVE\_REVERSE\_PREFIX & A B-prefixed gate other than S, T, or PHASE is
+not a distinct inverse. & Drop the prefix on a self-inverse gate.\\
 MISSING\_MAIN\_PROCESS & InlineProcess fallback will be used. & Add a stable
 MAIN-PROCESS name.\\
 MISSING\_RETURN\_VALUES & No public outputs are declared. & Add RETURNVALS in

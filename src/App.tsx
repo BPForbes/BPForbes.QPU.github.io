@@ -67,7 +67,7 @@ import {
 } from './simulator/compiler';
 import { controlsForGateType, getGateDefinition, paletteGateIds } from './simulator/gates/registry';
 import type { OperationTransition, ParticleSnapshot } from './simulator/physics';
-import { CircuitGate, GateType, MeasurementMap, ParticleStartState } from './simulator/types';
+import { CircuitGate, GateType, MeasurementMap, ParticleStartState, StateCheckpoint } from './simulator/types';
 import { Complex } from './simulator/complex';
 import './styles.css';
 
@@ -199,6 +199,7 @@ function App() {
   // The workbench docs follow the canvas while stepping and return to the selectors on any selector change.
   const [docFocus, setDocFocus] = useState<'selection' | 'circuit'>('selection');
   const [preStep, setPreStep] = useState<{ cursor: number; state: Complex[]; qubitCount: number } | null>(null);
+  const checkpointsRef = useRef<Record<string, StateCheckpoint>>({});
   const [particleSnapshots, setParticleSnapshots] = useState<ParticleSnapshot[]>([]);
   const [particleTransitions, setParticleTransitions] = useState<OperationTransition[]>([]);
   // Palette refresh bumps when custom gates register so GateBlock picks up new definitions.
@@ -363,6 +364,7 @@ function App() {
     const activeParamIndices = activeControllable.length
       ? activeControllable.map((param) => param.qubitIndex)
       : undefined;
+    checkpointsRef.current = {};
     setState(createInitialState(nextSimulationQubitCount, nextStartStates, activeParamIndices));
     setRuntimeQubitCount(nextSimulationQubitCount);
     setMeasurements({});
@@ -413,12 +415,13 @@ function App() {
   // Play Sequence walks the same step path on a timer; Run all skips animation.
   const run = () => {
     setPlaying(false);
+    checkpointsRef.current = {};
     const result = runCircuit(
       simulationQubitCount,
       orderedGates,
       startStates,
       paramQubitIndices.length ? paramQubitIndices : undefined,
-      { librarySources: getCatalogLibrarySources(), trackParticles: true },
+      { librarySources: getCatalogLibrarySources(), trackParticles: true, checkpoints: checkpointsRef.current },
     );
     setState(result.state);
     setRuntimeQubitCount(resolveStateQubitCount(result.state, simulationQubitCount));
@@ -439,6 +442,7 @@ function App() {
     const { result, qubitCount: nextQubitCount } = stepCircuitGate(state, workingQubitCount, gate, measurements, {
       librarySources: getCatalogLibrarySources(),
       trackParticles: true,
+      checkpoints: checkpointsRef.current,
     });
     setRuntimeQubitCount(nextQubitCount);
     setState(result.state);

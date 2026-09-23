@@ -141,6 +141,28 @@ button { font: inherit; }
   z-index: 1;
 }
 .circuit-connector.active { background: #dc2626; }
+.circuit-cycle-slice {
+  justify-self: center;
+  border-left: 2px dashed #64748b;
+  pointer-events: none;
+  z-index: 1;
+  color: #64748b;
+  font-size: .62rem;
+  font-weight: 800;
+  padding-top: .1rem;
+}
+.circuit-checkpoint {
+  justify-self: center;
+  align-self: start;
+  z-index: 4;
+  border: 2px solid #111;
+  background: #fff;
+  color: #111;
+  font-size: .58rem;
+  font-weight: 800;
+  padding: .12rem .2rem;
+  pointer-events: none;
+}
 .circuit-label-cell {
   position: relative;
   display: grid;

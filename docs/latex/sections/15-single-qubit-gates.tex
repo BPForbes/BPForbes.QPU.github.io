@@ -117,9 +117,9 @@ T^2=S,\qquad T^4=Z.
 \]
 T is an eighth-turn around z. Together with gates such as H and CNOT, it is an
 important non-Clifford resource for expressing general quantum computations.
-Its inverse is $T^\dagger=P(-\pi/4)$; the current \code{BT} spelling does not
-synthesize that inverse, so use \code{BPHASE=pi/4} when the negative phase is
-required.
+Its inverse is $T^\dagger=P(-\pi/4)$. \code{BT} lowers to that gate, and
+\code{BS} lowers to $S^\dagger=P(-\pi/2)$. \code{BPHASE=pi/4} remains the
+spelling for the same negative phase.
 \begin{lstlisting}
 T -I Q -O Q
 \end{lstlisting}
@@ -168,15 +168,14 @@ denominator. A zero denominator and malformed angle raise an error.
 The QPU language recognizes a leading \code{B} before a supported primitive gate name,
 for example \code{BX}, \code{BH}, \code{BCNOT}, or \code{BSWAP}, and sets
 \code{reverse=true}. (Compiler-internal \code{RESET} remains unavailable in
-source.) Only \code{BPHASE=angle} currently changes emitted behavior: the
-compiler negates the phase angle. For every other gate the flag is metadata
-only. Emitting the ordinary gate still gives the mathematical inverse for these
+source.) \code{BPHASE=angle} negates the phase angle. \code{BS} and \code{BT}
+emit the negative phase gates above. For every other primitive the prefix is
+metadata, and emitting the ordinary gate is already the inverse for these
 self-inverse gates:
 \[
 X,\ Y,\ Z,\ H,\ \mathrm{CNOT},\ \mathrm{CCNOT},\
 \mathrm{CZ},\ \mathrm{CY},\ \mathrm{SWAP}.
 \]
-In contrast, \code{BS} and \code{BT} do not synthesize $S^\dagger$ or
-$T^\dagger$. Do not rely on B-prefixed forms for inverse execution unless the
-gate is self-inverse or is \code{BPHASE}.
+\code{BS} and \code{BT} synthesize $S^\dagger$ and $T^\dagger$. A \code{B}
+prefix on a derived gate such as \code{BAND} is still an unknown opcode.
 

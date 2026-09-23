@@ -265,6 +265,14 @@ export const serializeCircuitToQpuProtocol = (
     .sort((a, b) => a.step - b.step)
     .forEach((gate) => {
       // RESET on the canvas becomes explicit SET 0p lines because the protocol has no RESET opcode.
+      if (gate.type === 'CYCLE') {
+        lines.push('INCREASECYCLE');
+        return;
+      }
+      if (gate.type === 'SAVE_STATE' || gate.type === 'LOAD_STATE') {
+        lines.push(`${gate.type} ${gate.checkpoint ?? 'checkpoint'}`);
+        return;
+      }
       if (gate.type === 'RESET') {
         gate.targets.forEach((qubit) => {
           lines.push(`SET ${canvasParamRef(qubit)} 0p`);

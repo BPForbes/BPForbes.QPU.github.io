@@ -15,7 +15,6 @@
   \item Use the same input/output token for single-qubit gates.
   \item Initialize derived-gate targets deliberately; their operation is XOR
   into the existing target, not destructive assignment.
-  \item Treat accepted-but-not-executed instructions as compatibility annotations until their
-  runtime lowering is implemented.
+  \item \code{FREE} and \code{DELETETOKEN} end a name. They reuse a wire only from a known $\ket0$.
 \end{enumerate}
 

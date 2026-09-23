@@ -56,7 +56,7 @@ RETURNVALS Q`);
     }));
   });
 
-  it('warns about accepted-only and inactive compatibility syntax', () => {
+  it('executes join, parameter lock, and BT without inactive-syntax warnings', () => {
     const report = analyzeQpuProtocol(`MAIN-PROCESS Compatibility
 JOIN -I A B -O AB
 PHASE=pi/2 -I A -O A -$R
@@ -65,11 +65,7 @@ RETURNVALS A B`);
 
     expect(report.canCompile).toBe(true);
     expect(report.errorCount).toBe(0);
-    expect(report.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
-      'ACCEPTED_ONLY_OPERATION',
-      'INACTIVE_PARAMETER_FLAG',
-      'INACTIVE_REVERSE_PREFIX',
-    ]);
+    expect(report.diagnostics).toEqual([]);
   });
 
   it('recommends names and outputs without blocking compilation', () => {

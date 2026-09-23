@@ -67,9 +67,11 @@ RETURNVALS Carry Sum
 \begin{center}
 \begin{tikzpicture}[scale=.82]
   \foreach \y/\name in {1.5/A,.5/B,-.5/Sum,-1.5/Carry} {
-    \draw[thick] (0,\y)--(8,\y);
+    \draw[thick] (0,\y)--(5.85,\y);
     \node[left] at (0,\y) {\name};
   }
+  \draw[thick] (5.85,1.5)--(8,1.5);
+  \draw[thick] (5.85,.5)--(8,.5);
   \fill[QpuNavy] (2,1.5) circle (.09);
   \fill[QpuNavy] (2,.5) circle (.09);
   \draw[thick] (2,1.5)--(2,-.5);
@@ -78,10 +80,12 @@ RETURNVALS Carry Sum
   \fill[QpuNavy] (4.2,.5) circle (.09);
   \draw[thick] (4.2,1.5)--(4.2,-1.5);
   \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.72cm,minimum height=.5cm,font=\scriptsize\bfseries] at (4.2,-1.5) {AND};
-  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.6cm,minimum height=.5cm,font=\bfseries] at (6.2,-.5) {M};
-  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.6cm,minimum height=.5cm,font=\bfseries] at (6.2,-1.5) {M};
-  \draw[-{Latex[length=2mm]},QpuRed,thick] (6.55,-.5)--(7.8,-.5);
-  \draw[-{Latex[length=2mm]},QpuRed,thick] (6.55,-1.5)--(7.8,-1.5);
+  \QpuMeter{6.2}{-.5}
+  \QpuMeter{6.2}{-1.5}
+  \draw[thick] (6.55,-0.455)--(8,-0.455);
+  \draw[thick] (6.55,-0.545)--(8,-0.545);
+  \draw[thick] (6.55,-1.455)--(8,-1.455);
+  \draw[thick] (6.55,-1.545)--(8,-1.545);
 \end{tikzpicture}
 \end{center}
 

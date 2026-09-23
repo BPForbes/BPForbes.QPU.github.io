@@ -83,6 +83,26 @@ export function CircuitCanvas({
             ),
           )}
 
+          {sorted.filter((gate) => gate.type === 'CYCLE').map((gate) => (
+            <span
+              className="circuit-cycle-slice"
+              key={gate.id}
+              style={{ gridColumn: gate.step + 2, gridRow: `1 / ${qubitCount + 1}` }}
+            >
+              {gate.cycle ?? ''}
+            </span>
+          ))}
+
+          {sorted.filter((gate) => gate.type === 'SAVE_STATE' || gate.type === 'LOAD_STATE').map((gate) => (
+            <span
+              className="circuit-checkpoint"
+              key={gate.id}
+              style={{ gridColumn: gate.step + 2, gridRow: 1 }}
+            >
+              {gate.type === 'SAVE_STATE' ? 'save' : 'load'}
+            </span>
+          ))}
+
           {sorted.filter(needsConnector).map((gate) => {
             const { min, max } = gateSpanQubits(gate);
             // Row span covers the outer lanes; CSS margin-block insets to wire centers.

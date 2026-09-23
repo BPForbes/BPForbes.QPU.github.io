@@ -115,9 +115,18 @@ export type CircuitGate = {
   phase?: number;
   source?: string;
   customGateId?: string;
+  /** Timeline cycle that produced this gate. INCREASECYCLE advances it. */
+  cycle?: number;
+  /** Named simulator checkpoint for SAVE_STATE and LOAD_STATE. */
+  checkpoint?: string;
 };
 
 export type MeasurementMap = Record<number, 0 | 1>;
+
+export type StateCheckpoint = {
+  state: Complex[];
+  measurements: MeasurementMap;
+};
 
 export type {
   MixedStateMetrics,
@@ -135,4 +144,5 @@ export type ExecutionResult = {
   log: string[];
   particles?: import('./physics/particleTracking').ParticleSnapshot[];
   transitions?: import('./physics/particleTracking').OperationTransition[];
+  checkpoints?: Record<string, StateCheckpoint>;
 };
