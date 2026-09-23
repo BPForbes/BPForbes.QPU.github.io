@@ -98,17 +98,20 @@ export const applyGateToWireKind = (kinds: readonly WireKind[], gate: CircuitGat
   return next;
 };
 
+export type WireKindHalves = { incoming: WireKind; outgoing: WireKind };
+
 /**
  * Per-column wire style: `=` classical (0p/1p or measured), `-` superposition.
- * The kind in a column is the incoming state before gates at that step apply.
+ * `incoming` is the left half of a column (before gates at that step apply) and
+ * `outgoing` the right half, so the style flips at the gate glyph, not a column later.
  */
-export const wireKindSegments = (
+export const wireKindHalves = (
   qubitCount: number,
   gates: CircuitGate[],
   startStates: ParticleStartState[] = [],
   columnCount: number,
   measuredQubits: MeasurementMap = {},
-): WireKind[][] => {
+): WireKindHalves[][] => {
   const kinds = Array.from({ length: qubitCount }, (_, qubit) => initialWireKind(startStates[qubit]));
   const gatesByStep = new Map<number, CircuitGate[]>();
   gates.forEach((gate) => {
@@ -117,17 +120,20 @@ export const wireKindSegments = (
     gatesByStep.set(gate.step, list);
   });
 
-  const segments = Array.from({ length: qubitCount }, () => Array.from({ length: columnCount }, () => 'classical' as WireKind));
+  const segments = Array.from({ length: qubitCount }, () =>
+    Array.from({ length: columnCount }, (): WireKindHalves => ({ incoming: 'classical', outgoing: 'classical' })),
+  );
   for (let column = 0; column < columnCount; column += 1) {
-    for (let qubit = 0; qubit < qubitCount; qubit += 1) {
-      segments[qubit][column] = kinds[qubit];
-    }
+    const incoming = kinds.slice();
     (gatesByStep.get(column) ?? []).forEach((gate) => {
       const updated = applyGateToWireKind(kinds, gate);
       updated.forEach((kind, qubit) => {
         kinds[qubit] = kind;
       });
     });
+    for (let qubit = 0; qubit < qubitCount; qubit += 1) {
+      segments[qubit][column] = { incoming: incoming[qubit], outgoing: kinds[qubit] };
+    }
   }
 
   Object.keys(measuredQubits).forEach((key) => {
@@ -138,9 +144,21 @@ export const wireKindSegments = (
     // updated later segments, including a following H, so do not overwrite those.
     if (hasMeasureGate) return;
     for (let column = 0; column < columnCount; column += 1) {
-      segments[qubit][column] = 'classical';
+      segments[qubit][column] = { incoming: 'classical', outgoing: 'classical' };
     }
   });
 
   return segments;
 };
+
+/** Incoming (left-half) wire kind per column. */
+export const wireKindSegments = (
+  qubitCount: number,
+  gates: CircuitGate[],
+  startStates: ParticleStartState[] = [],
+  columnCount: number,
+  measuredQubits: MeasurementMap = {},
+): WireKind[][] =>
+  wireKindHalves(qubitCount, gates, startStates, columnCount, measuredQubits).map((row) =>
+    row.map((halves) => halves.incoming),
+  );

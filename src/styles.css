@@ -118,6 +118,10 @@ button { font: inherit; }
   pointer-events: none;
   z-index: 0;
 }
+.circuit-wire.incoming,
+.circuit-wire.outgoing { width: 50%; }
+.circuit-wire.incoming { justify-self: start; }
+.circuit-wire.outgoing { justify-self: end; }
 .circuit-wire.classical {
   height: .42rem;
   background:
