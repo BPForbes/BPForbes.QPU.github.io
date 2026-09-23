@@ -8,7 +8,7 @@ import {
   replaceViewInLocation,
 } from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
-import { CustomGatePanel, GatePalette } from './components/gate';
+import { CustomGatePanel, GatePalette, SelectorMapDiagram } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
 import { OutputPanel } from './components/OutputPanel';
 import { ParticleView } from './components/ParticleView';
@@ -17,7 +17,16 @@ import {
   type PlaygroundViewId,
 } from './components/PlaygroundScrubber';
 import { MAX_PLAY_SPEED, MIN_PLAY_SPEED, playDelayMs } from './components/circuitLayout';
-import { examples } from './data/examples';
+import { examples, learningSteps } from './data/examples';
+import {
+  docHref,
+  docTargets,
+  gateDocTarget,
+  gateHelp,
+  uiTips,
+  workbenchSelectorUse,
+  type DocTarget,
+} from './data/learning/learningHelp';
 import {
   isProtectedQpuioProcess,
   getCatalogLibrarySources,
@@ -94,6 +103,12 @@ type QpuDocument = (typeof QPU_DOCUMENTS)[number];
 type AppView = PlaygroundViewId;
 
 const initialProtocolSource = protocolExamples[0].source;
+
+const DocLink = ({ target, children }: { target: DocTarget; children?: ReactNode }) => (
+  <a className="doc-link" href={docHref(import.meta.env.BASE_URL, target)} rel="noreferrer" target="_blank">
+    {children ?? target.label}
+  </a>
+);
 
 // Placement defers control/target wiring to the registry so palette drops and workbench picks share one layout policy.
 const newGate = (
@@ -182,6 +197,9 @@ function App() {
   // Palette refresh bumps when custom gates register so GateBlock picks up new definitions.
   const palette = useMemo(() => paletteGateIds(), [customGateRegistryVersion]);
   const selectedGateDefinition = selectedGate ? getGateDefinition(selectedGate) : undefined;
+  const selectorUse = workbenchSelectorUse(selectedGateDefinition);
+  const selectedGateHelp = selectedGate ? gateHelp[selectedGate] : undefined;
+  const selectedGateSwaps = selectedGateDefinition?.controlKind === 'swap';
 
   const orderedGates = useMemo(() => gates.slice().sort((a, b) => a.step - b.step), [gates]);
   const protocolDiagnosticReport = useMemo(
@@ -229,6 +247,15 @@ function App() {
   const selectedSimulationQubit = displayQubitIndices[selectedTarget]
     ?? controllableParams[selectedTarget]?.qubitIndex
     ?? selectedTarget;
+  const onDiagram = (qubit: number) => qubit !== selectedTarget && qubit < qubitCount;
+  const previewControls = [
+    selectorUse.controlA ? controlQubit : undefined,
+    selectorUse.controlB && !selectedGateSwaps ? secondControlQubit : undefined,
+  ].filter((qubit): qubit is number => qubit !== undefined && onDiagram(qubit));
+  const previewSwapPartner = selectedGateSwaps && onDiagram(secondControlQubit) ? secondControlQubit : undefined;
+  const previewSymbol = selectedGate && ['X', 'NOT', 'CNOT', 'CCNOT'].includes(selectedGate)
+    ? '⊕'
+    : selectedGateDefinition?.label ?? selectedGate ?? '';
   const displayQubitLabels = useMemo(
     () => (returnValues.length > 0
       ? returnValues.map((value) => value.name)
@@ -930,46 +957,77 @@ function App() {
               <h2 id="workbench-title">Add particles, gates, and measurements</h2>
             </div>
             <div className="workbench-grid">
-              <label>
+              <label title={uiTips.gate}>
                 Gate
                 <select value={selectedGate ?? ''} onChange={(event) => setSelectedGate(event.target.value as GateType)}>
                   {palette.map((gate) => <option key={gate} value={gate}>{gate}</option>)}
                 </select>
               </label>
-              <label>
-                Target particle
+              <label className="selector-role selector-writes" title={uiTips.targetParticle}>
+                <span>Target particle <small>changed</small></span>
                 <select value={selectedTarget} onChange={(event) => setTargetQubit(Number(event.target.value))}>
                   {Array.from({ length: qubitCount }, (_, qubit) => <option key={qubit} value={qubit}>q{qubit}</option>)}
                 </select>
               </label>
-              <label>
-                Control A
+              <label className={`selector-role ${selectorUse.controlA ? 'selector-reads' : 'selector-unused'}`} title={uiTips.controlA}>
+                <span>Control A <small>{selectorUse.controlA ? 'read only' : `not used by ${selectedGate ?? 'this gate'}`}</small></span>
                 <select value={controlQubit} onChange={(event) => setControlQubit(Number(event.target.value))}>
                   {Array.from({ length: qubitCount }, (_, qubit) => <option disabled={qubit === selectedTarget} key={qubit} value={qubit}>q{qubit}</option>)}
                 </select>
               </label>
-              <label>
-                Control B
+              <label className={`selector-role ${selectorUse.controlB ? 'selector-reads' : 'selector-unused'}`} title={uiTips.controlB}>
+                <span>Control B <small>{selectorUse.controlB ? (selectedGateDefinition?.controlKind === 'swap' ? 'swap partner' : 'read only') : `not used by ${selectedGate ?? 'this gate'}`}</small></span>
                 <select value={secondControlQubit} onChange={(event) => setSecondControlQubit(Number(event.target.value))}>
                   {Array.from({ length: qubitCount }, (_, qubit) => <option disabled={qubit === selectedTarget || qubit === controlQubit} key={qubit} value={qubit}>q{qubit}</option>)}
                 </select>
               </label>
               {selectedGateDefinition?.supportsPhase ? (
-                <label className="phase-control">
+                <label className="phase-control" title={uiTips.phaseAngle}>
                   Phase angle: {phaseDegrees}°
                   <input min="0" max="360" step="15" type="range" value={phaseDegrees} onChange={(event) => setPhaseDegrees(Number(event.target.value))} />
                 </label>
               ) : null}
             </div>
+            {selectedGate ? (
+              <aside aria-label={`What ${selectedGate} does`} className="gate-help">
+                <div className="gate-help-heading">
+                  <strong>{selectedGateHelp?.name ?? `Custom gate ${selectedGate}`}</strong>
+                  {selectedGateHelp ? <code>{selectedGateHelp.rule}</code> : null}
+                </div>
+                <p>
+                  {selectedGateHelp?.summary
+                    ?? 'Runs the gates of the process it was registered from. Its inputs come from Control A, Control B, and then the next free wires; its output is the target.'}
+                </p>
+                <SelectorMapDiagram
+                  controls={previewControls}
+                  qubitCount={qubitCount}
+                  swapPartner={previewSwapPartner}
+                  symbol={previewSymbol}
+                  target={selectedTarget}
+                />
+                <p className="gate-help-roles">
+                  Reads{' '}
+                  {[selectorUse.controlA && `Control A (q${controlQubit})`, selectorUse.controlB && !selectedGateSwaps && `Control B (q${secondControlQubit})`]
+                    .filter(Boolean)
+                    .join(' and ') || 'no other wire'}
+                  ; changes Target particle (q{selectedTarget})
+                  {selectedGateSwaps ? ` and Control B (q${secondControlQubit})` : ''}.
+                  {selectedGateHelp && !selectedGateHelp.reversible ? ' Not reversible.' : ''}
+                </p>
+                <DocLink target={gateDocTarget(selectedGate)}>
+                  {selectedGateHelp ? `Read the full ${selectedGate} reference` : 'How custom gates work'}
+                </DocLink>
+              </aside>
+            ) : null}
             <div className="workbench-actions">
-              <button onClick={addGateFromWorkbench} type="button">Add gate to target</button>
-              <button onClick={addParticle} type="button">Add particle</button>
-              <button onClick={removeParticle} type="button">Remove particle</button>
-              <button onClick={measureSelectedQubit} type="button">Measure target</button>
+              <button onClick={addGateFromWorkbench} title={uiTips.addGate} type="button">Add gate to target</button>
+              <button onClick={addParticle} title={uiTips.addParticle} type="button">Add particle</button>
+              <button onClick={removeParticle} title={uiTips.removeParticle} type="button">Remove particle</button>
+              <button onClick={measureSelectedQubit} title={uiTips.measureTarget} type="button">Measure target</button>
             </div>
             <div className="start-state-picker" aria-label="Process parameter start states">
               {controllableParams.map((param) => (
-                <label key={param.name}>
+                <label key={param.name} title={uiTips.startState}>
                   {param.name} start
                   <select value={startStates[param.qubitIndex] ?? '0p'} onChange={(event) => updateStartState(param.qubitIndex, event.target.value as ParticleStartState)}>
                     <option value="0p">0p</option>
@@ -983,16 +1041,38 @@ function App() {
           </section>
 
           <section className="controls panel" aria-label="Run controls">
-            <button aria-pressed={playing} className={playing ? 'playing' : ''} onClick={playSequence} type="button">
+            <button aria-pressed={playing} className={playing ? 'playing' : ''} onClick={playSequence} title={uiTips.playSequence} type="button">
               {playing ? 'Pause sequence' : 'Play Sequence'}
             </button>
-            <button onClick={run} type="button">Run all</button>
-            <button disabled={playing || cursor >= orderedGates.length} onClick={step} type="button">Step gate</button>
-            <button onClick={resetCircuit} type="button">Reset state</button>
-            <button onClick={measure} type="button">Measure all</button>
-            <button onClick={clearCircuit} type="button">Clear circuit</button>
-            <button onClick={resetSite} type="button">Reset site</button>
-            <label className="speed-control">
+            <button onClick={run} title={uiTips.runAll} type="button">Run all</button>
+            <button disabled={playing || cursor >= orderedGates.length} onClick={step} title={uiTips.stepGate} type="button">Step gate</button>
+            <button onClick={resetCircuit} title={uiTips.resetState} type="button">Reset state</button>
+            <button onClick={measure} title={uiTips.measureAll} type="button">Measure all</button>
+            <button onClick={clearCircuit} title={uiTips.clearCircuit} type="button">Clear circuit</button>
+            <button onClick={resetSite} title={uiTips.resetSite} type="button">Reset site</button>
+            <details className="help-panel">
+              <summary>What do Reset state, Clear circuit, and Reset site do?</summary>
+              <table>
+                <thead>
+                  <tr><th>Button</th><th>Gates</th><th>Wires and start states</th><th>Protocol editor</th></tr>
+                </thead>
+                <tbody>
+                  <tr><th>Reset state</th><td>kept</td><td>kept</td><td>kept</td></tr>
+                  <tr><th>Clear circuit</th><td>deleted</td><td>kept</td><td>rewritten from the empty canvas</td></tr>
+                  <tr><th>Reset site</th><td>deleted</td><td>back to 3 wires at 0p</td><td>back to the default protocol</td></tr>
+                </tbody>
+              </table>
+              <p>
+                All three rewind the quantum state and clear measurements. None of them adds a gate. The compiler&apos;s
+                internal RESET is different: it is inserted by <code>SET wire 0p</code>, is hidden from the canvas, and
+                is not reversible, unlike every palette gate except M.
+              </p>
+              <p className="help-links">
+                <DocLink target={docTargets.resetButtons} />
+                <DocLink target={docTargets.resetSemantics} />
+              </p>
+            </details>
+            <label className="speed-control" title={uiTips.speed}>
               Speed {playSpeed.toFixed(2).replace(/\.00$/, '')}x
               <input
                 aria-label="Play sequence speed"
@@ -1011,9 +1091,26 @@ function App() {
               <p className="eyebrow">Examples</p>
               <h2 id="examples-title">Load a starter circuit</h2>
             </div>
+            <details className="help-panel learning-path">
+              <summary>New here? Follow the six-step learning path</summary>
+              <ol>
+                <li><strong>Single qubit:</strong> X flips, H makes a superposition, Z changes phase, M measures.</li>
+                <li><strong>Controlled gates:</strong> Control A is read, Target particle is changed.</li>
+                <li><strong>Reversible logic:</strong> AND and CCNOT compute t&apos; = t ⊕ (A ∧ B). A and B are kept; t is the output.</li>
+                <li><strong>Entanglement:</strong> correlated wires with no separate states, and phase kickback.</li>
+                <li><strong>Arithmetic:</strong> sums are parity (XOR), carries are majority (AND). Try the bundled full adders below.</li>
+                <li><strong>Multi-stage:</strong> compute, use, and uncompute helper wires; reuse circuits as child processes or custom gates.</li>
+              </ol>
+              <p>Cards below are numbered by step. For each one, predict the result, then use Step gate and compare.</p>
+              <p className="help-links">
+                <DocLink target={docTargets.learningPath} />
+                <DocLink target={docTargets.advancedCircuits} />
+              </p>
+            </details>
             <div className="example-grid">
               {examples.map((example, index) => (
                 <button className="example-card" key={example.name} onClick={() => loadExample(index)} type="button">
+                  <small className="example-step">Step {example.step} · {learningSteps[example.step - 1]}</small>
                   <strong>{example.name}</strong>
                   <span>{example.description}</span>
                 </button>
@@ -1041,6 +1138,7 @@ function App() {
                       // Compile summary and runtime log already contain the parse error.
                     }
                   }}
+                  title={uiTips.bundledProtocol}
                   type="button"
                 >
                   {example.name}
@@ -1054,9 +1152,9 @@ function App() {
               spellCheck={false}
             />
             <div className="compiler-footer">
-              <button onClick={compileProtocol} type="button">Compile protocol</button>
-              <button onClick={downloadCompiledProtocol} type="button">Download as .qpucir</button>
-              <button onClick={() => downloadQpucirTxtSource(protocolSource, extractMainProcessName(protocolSource) ?? 'Compiled QPU circuit')} type="button">Download as -qpucir.txt</button>
+              <button onClick={compileProtocol} title={uiTips.compileProtocol} type="button">Compile protocol</button>
+              <button onClick={downloadCompiledProtocol} title={uiTips.downloadQpucir} type="button">Download as .qpucir</button>
+              <button onClick={() => downloadQpucirTxtSource(protocolSource, extractMainProcessName(protocolSource) ?? 'Compiled QPU circuit')} title={uiTips.downloadQpucirTxt} type="button">Download as -qpucir.txt</button>
               <span>{compileSummary}</span>
             </div>
             <section
@@ -1105,6 +1203,64 @@ function App() {
           </div>
           <div className="docs-grid">
             <article>
+              <h3>Start here: six steps</h3>
+              <ol>
+                <li><strong>Single qubit</strong>: X, H, Z, and measurement.</li>
+                <li><strong>Controlled gates</strong>: CNOT, CZ, CY, SWAP.</li>
+                <li><strong>Reversible logic</strong>: CCNOT and AND/OR/XOR/NAND; the half adder.</li>
+                <li><strong>Entanglement</strong>: Bell states and phase kickback.</li>
+                <li><strong>Arithmetic</strong>: full adders, comparators, parity.</li>
+                <li><strong>Multi-stage</strong>: child processes, uncomputation, oracles, custom gates.</li>
+              </ol>
+              <p>Every starter circuit in the builder is labelled with its step. Load one, predict the result, then use Step gate and compare.</p>
+              <p className="help-links"><DocLink target={docTargets.learningPath} /></p>
+            </article>
+            <article>
+              <h3>Reading a controlled gate</h3>
+              <p>
+                <code>t&apos; = t ⊕ (A ∧ B)</code> has three roles. <strong>A</strong> and <strong>B</strong> are controls:
+                they are only read and come out unchanged. <strong>t</strong> is the target, the output workspace, and is the
+                only wire that changes: it flips when A ∧ B is 1. Start t at 0 and it ends holding A AND B.
+              </p>
+              <SelectorMapDiagram controls={[0, 1]} qubitCount={3} symbol="⊕" target={2} />
+              <p>
+                In the workbench, <strong>Control A</strong> and <strong>Control B</strong> become the dots and
+                <strong> Target particle</strong> becomes ⊕. CCNOT and AND both follow this picture; NAND, OR, and XOR
+                change only the rule applied to the target. The gate card under the selectors redraws it for your current
+                choices, and unused selectors are dimmed.
+              </p>
+            </article>
+            <article>
+              <h3>Reset state, Clear circuit, or Reset site?</h3>
+              <ul>
+                <li><strong>Reset state</strong>: run the same experiment again. Keeps every gate and start state; rewinds the quantum state.</li>
+                <li><strong>Clear circuit</strong>: delete all gates, keep the wires and start states. The protocol editor is rewritten from the empty canvas.</li>
+                <li><strong>Reset site</strong> (also <strong>Reset site completely</strong> on More): back to the first-visit builder. Custom gates and the catalog are kept.</li>
+              </ul>
+              <p>
+                None of these is the compiler&apos;s internal <code>RESET</code>. That operation is inserted by <code>SET wire 0p</code>,
+                hidden from the canvas, and forces a wire to |0⟩. Because it erases what the wire held, it is not reversible.
+                Every palette gate except M is reversible.
+              </p>
+              <p className="help-links">
+                <DocLink target={docTargets.resetButtons} />
+                <DocLink target={docTargets.resetSemantics} />
+              </p>
+            </article>
+            <article>
+              <h3>Custom gates</h3>
+              <p>
+                A custom gate is a saved process that runs its own gates on the wires you pick. Its first PARAMS input maps to
+                Control A, the second to Control B, and its first RETURNVALS output to Target particle.
+              </p>
+              <p>
+                It is reversible when every gate inside is reversible, it contains no MEASURE, it does not <code>SET</code> its
+                output (which would overwrite the target), and every helper wire is uncomputed back to 0. Quick check: place it
+                twice in a row; every wire should end where it started.
+              </p>
+              <p className="help-links"><DocLink target={docTargets.customGates} /></p>
+            </article>
+            <article>
               <h3>How circuits are built</h3>
               <p>Use the circuit builder to drag a gate onto a qubit wire, or select a gate, target, and controls from the workbench. Play Sequence advances one gate at a time at the speed meter, including Measure (M) gates. Run all skips to the finished state.</p>
               <ul>
@@ -1112,6 +1268,7 @@ function App() {
                 <li><strong>Controls</strong> must be distinct from the target and determine when controlled gates fire.</li>
                 <li><strong>Measurements</strong> collapse qubits into classical 0/1 outcomes and are recorded in the runtime log.</li>
               </ul>
+              <p className="help-links"><DocLink target={docTargets.uiReference} /></p>
             </article>
             <article>
               <h3>QPU protocol requirements</h3>

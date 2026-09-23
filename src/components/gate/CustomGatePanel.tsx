@@ -14,6 +14,7 @@ import {
 } from '../../simulator/gates/customGateEngine';
 import { refreshCustomGateRegistry } from '../../simulator/gates/registry';
 import { extractMainProcessName } from '../../simulator/compiler';
+import { docHref, docTargets } from '../../data/learning/learningHelp';
 
 type CustomGatePanelProps = {
   protocolSource: string;
@@ -68,6 +69,24 @@ export function CustomGatePanel({ protocolSource, onRegistryChange, registryVers
         <h2 id="custom-gate-title">Register custom gates from QPU processes</h2>
       </div>
       <p className="canvas-tip">{status}</p>
+      <details className="help-panel">
+        <summary>What is a custom gate, and is mine reversible?</summary>
+        <p>
+          A custom gate replays the gates of a saved process on the wires you choose. Its first PARAMS input maps to
+          Control A, the second to Control B, and its first RETURNVALS output to Target particle. Register processes with one
+          output; other tokens become extra workspace wires.
+        </p>
+        <p>
+          It is reversible when every gate inside is reversible, it has no MEASURE, it does not SET its output (that inserts a
+          hidden RESET that overwrites the target), and every helper wire returns to 0. Place it twice in a row: a reversible
+          gate leaves every wire where it started.
+        </p>
+        <p className="help-links">
+          <a className="doc-link" href={docHref(import.meta.env.BASE_URL, docTargets.customGates)} rel="noreferrer" target="_blank">
+            {docTargets.customGates.label}
+          </a>
+        </p>
+      </details>
       <div className="custom-gate-form">
         <label>
           Gate id (palette label)

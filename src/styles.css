@@ -579,3 +579,36 @@ html.embed-mode .controls {
     padding: 4rem 0.75rem 0.75rem;
   }
 }
+
+/* Beginner help: selector roles, gate cards, and expandable explanations. */
+.selector-role > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem; }
+.selector-role small { font-size: .72rem; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
+.selector-writes small { color: #fca5a5; }
+.selector-reads small { color: #7dd3fc; }
+.selector-unused { opacity: .55; }
+.selector-unused small { color: #94a3b8; text-transform: none; }
+.gate-help { display: grid; gap: .5rem; margin-top: .9rem; padding: .85rem; border: 1px solid rgba(125,211,252,.28); border-radius: .9rem; background: rgba(2,6,23,.5); color: #dbeafe; }
+.gate-help p { margin: 0; line-height: 1.45; }
+.gate-help-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; color: #e0f2fe; }
+.gate-help-heading code,
+.help-panel code { color: #bef264; background: rgba(2,6,23,.72); border-radius: .35rem; padding: .08rem .35rem; }
+.gate-help-roles { color: #a7b4cc; font-size: .9rem; }
+.doc-link { justify-self: start; width: fit-content; color: #67e8f9; font-weight: 800; text-underline-offset: .2em; }
+.help-panel { grid-column: 1 / -1; margin-top: .75rem; padding: .75rem .85rem; border: 1px solid rgba(148,163,184,.24); border-radius: .9rem; background: rgba(2,6,23,.42); color: #dbeafe; }
+.help-panel summary { cursor: pointer; font-weight: 900; color: #e0f2fe; }
+.help-panel p, .help-panel li { line-height: 1.5; }
+.help-panel ol { padding-left: 1.3rem; }
+.help-panel table { width: 100%; margin-top: .6rem; border-collapse: collapse; font-size: .88rem; }
+.help-panel th, .help-panel td { padding: .4rem .5rem; border-bottom: 1px solid rgba(148,163,184,.18); text-align: left; }
+.help-links { display: flex; flex-wrap: wrap; gap: .9rem; }
+.example-step { color: #67e8f9; font-size: .74rem; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.selector-map { width: 100%; max-width: 24rem; height: auto; }
+.selector-map-wire, .selector-map-link { stroke: #cbd5e1; stroke-width: 2; }
+.selector-map-wire-label { fill: #a7b4cc; font-size: 11px; font-weight: 700; }
+.selector-map-role { font-size: 11px; font-weight: 800; }
+.selector-map-role.reads { fill: #7dd3fc; }
+.selector-map-role.writes { fill: #fca5a5; }
+.selector-map-control { fill: #7dd3fc; }
+.selector-map-target circle, .selector-map-target rect { fill: #450a0a; stroke: #fca5a5; stroke-width: 2; }
+.selector-map-target line { stroke: #fca5a5; stroke-width: 2; }
+.selector-map-target text { fill: #fecaca; font-size: 11px; font-weight: 900; }
