@@ -19,6 +19,8 @@ CNOT -I Control -O Target
 \end{tabular}
 \end{center}
 CNOT is a reversible embedding of XOR because it preserves the control.
+In the workbench, the control comes from \textbf{Control A} and the target
+from \textbf{Target particle}; \textbf{Control B} is ignored.
 
 \GateHeading{Doubly controlled NOT / Toffoli}{CCNOT}{\DoubleControlledSegment}
 
@@ -41,6 +43,16 @@ CCNOT -I A B -O Target
 \end{tabular}
 \end{center}
 With a target initialized to zero, Toffoli computes classical AND reversibly.
+
+\begin{beginnerbox}[Controls are preserved, the target is the output]
+In the table, the $a'$ and $b'$ columns always equal $a$ and $b$: the two
+controls are only read. Only $t$ can change, and it flips exactly in the two
+rows where $a=b=1$. In the \textbf{Interactive workbench}, choose
+\textbf{CCNOT} in \textbf{Gate}, the two inputs in \textbf{Control A} and
+\textbf{Control B}, and the output wire in \textbf{Target particle}. The
+\emph{CCNOT demo} starter circuit is exactly this gate with both controls
+prepared as 1.
+\end{beginnerbox}
 
 \GateHeading{Controlled Z}{CZ}{\ControlledSegment{Z}}
 

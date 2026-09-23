@@ -118,6 +118,10 @@ button { font: inherit; }
   pointer-events: none;
   z-index: 0;
 }
+.circuit-wire.incoming,
+.circuit-wire.outgoing { width: 50%; }
+.circuit-wire.incoming { justify-self: start; }
+.circuit-wire.outgoing { justify-self: end; }
 .circuit-wire.classical {
   height: .42rem;
   background:
@@ -579,3 +583,72 @@ html.embed-mode .controls {
     padding: 4rem 0.75rem 0.75rem;
   }
 }
+
+/* Beginner help: selector roles, gate cards, and expandable explanations. */
+.selector-role > span { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem; }
+.selector-role small { font-size: .72rem; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; }
+.selector-writes small { color: #fca5a5; }
+.selector-reads small { color: #7dd3fc; }
+.selector-unused { opacity: .55; }
+.selector-unused small { color: #94a3b8; text-transform: none; }
+.workbench-docs { display: grid; grid-template-columns: minmax(0, 1fr); gap: .5rem; margin-top: .9rem; padding: .85rem; border: 1px solid rgba(125,211,252,.28); border-radius: .9rem; background: rgba(2,6,23,.5); color: #dbeafe; }
+.workbench-docs > * { min-width: 0; }
+.workbench-docs p { margin: 0; line-height: 1.45; }
+.gate-help-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .6rem; color: #e0f2fe; }
+.gate-help-heading code,
+.help-panel code { color: #bef264; background: rgba(2,6,23,.72); border-radius: .35rem; padding: .08rem .35rem; }
+.gate-help-roles { color: #a7b4cc; font-size: .9rem; }
+.doc-link { justify-self: start; width: fit-content; color: #67e8f9; font-weight: 800; text-underline-offset: .2em; }
+.help-panel { grid-column: 1 / -1; margin-top: .75rem; padding: .75rem .85rem; border: 1px solid rgba(148,163,184,.24); border-radius: .9rem; background: rgba(2,6,23,.42); color: #dbeafe; }
+.help-panel summary { cursor: pointer; font-weight: 900; color: #e0f2fe; }
+.help-panel p, .help-panel li { line-height: 1.5; }
+.help-panel ol { padding-left: 1.3rem; }
+.help-panel table { width: 100%; margin-top: .6rem; border-collapse: collapse; font-size: .88rem; }
+.help-panel th, .help-panel td { padding: .4rem .5rem; border-bottom: 1px solid rgba(148,163,184,.18); text-align: left; }
+.help-links { display: flex; flex-wrap: wrap; gap: .9rem; }
+.example-step { color: #67e8f9; font-size: .74rem; font-weight: 900; letter-spacing: .05em; text-transform: uppercase; }
+.selector-map { width: 100%; max-width: 24rem; height: auto; }
+.selector-map-wire, .selector-map-link { stroke: #cbd5e1; stroke-width: 2; }
+.selector-map-wire-label { fill: #a7b4cc; font-size: 11px; font-weight: 700; }
+.selector-map-role { font-size: 11px; font-weight: 800; }
+.selector-map-role.reads { fill: #7dd3fc; }
+.selector-map-role.writes { fill: #fca5a5; }
+.selector-map-control { fill: #7dd3fc; }
+.selector-map-target circle, .selector-map-target rect { fill: #450a0a; stroke: #fca5a5; stroke-width: 2; }
+.selector-map-target line { stroke: #fca5a5; stroke-width: 2; }
+.selector-map-target text { fill: #fecaca; font-size: 11px; font-weight: 900; }
+
+.op-xor { font-family: "DejaVu Sans", "Cambria Math", "STIX Two Math", sans-serif; font-size: .82em; font-weight: 400; vertical-align: .04em; }
+.workbench-docs-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+.workbench-docs-heading .eyebrow { margin: 0; }
+.workbench-docs-heading button { border: 1px solid rgba(125,211,252,.35); color: #67e8f9; background: transparent; border-radius: .6rem; padding: .25rem .55rem; font-weight: 800; cursor: pointer; }
+.workbench-docs h4 { margin: .35rem 0 .3rem; color: #e0f2fe; font-size: .92rem; }
+.workbench-docs small { display: block; color: #a7b4cc; line-height: 1.4; }
+.docs-badge { color: #fca5a5; font-size: .75rem; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; }
+.docs-now { display: grid; gap: .35rem; }
+.docs-now h4 { margin: 0; }
+.docs-learn-more > summary,
+.docs-child > summary,
+.docs-source > summary,
+.grouped-list-group > summary { cursor: pointer; font-weight: 900; color: #e0f2fe; }
+.docs-learn-more > summary { width: fit-content; padding: .3rem .65rem; border: 1px solid rgba(125,211,252,.35); border-radius: .6rem; color: #67e8f9; }
+.docs-learn-more[open] > summary { margin-bottom: .5rem; }
+.docs-full { display: grid; grid-template-columns: minmax(0, 1fr); gap: .55rem; }
+.docs-full > * { min-width: 0; }
+.docs-table-wrap { max-width: 100%; max-height: 24rem; overflow: auto; }
+.docs-table { border-collapse: collapse; font-size: .86rem; font-variant-numeric: tabular-nums; }
+.docs-table th, .docs-table td { padding: .26rem .55rem; border-bottom: 1px solid rgba(148,163,184,.18); text-align: center; white-space: nowrap; }
+.docs-table thead th { position: sticky; top: 0; background: #0f172a; color: #e0f2fe; }
+.docs-table .docs-output-start { border-left: 2px solid rgba(125,211,252,.5); }
+.docs-table tr.docs-row-match td { background: rgba(103,232,249,.14); color: #f8fafc; font-weight: 800; }
+.group-row th { padding: 0; text-align: left; background: rgba(2,6,23,.55); }
+.group-row button { display: flex; align-items: baseline; gap: .45rem; width: 100%; padding-block: .3rem; padding-right: .5rem; border: 0; background: transparent; color: #e0f2fe; font-weight: 800; text-align: left; cursor: pointer; }
+.group-row button small { display: inline; margin-left: auto; font-weight: 600; }
+.docs-try { padding: .1rem .3rem; }
+.docs-try button { border: 1px solid rgba(125,211,252,.3); color: #67e8f9; background: transparent; border-radius: .45rem; padding: .1rem .45rem; font-size: .78rem; font-weight: 800; cursor: pointer; }
+.docs-syntax { margin: 0; padding: .6rem .7rem; overflow-x: auto; border-radius: .6rem; background: rgba(2,6,23,.72); color: #bef264; font-size: .82rem; line-height: 1.5; }
+.docs-source .docs-syntax { margin-top: .4rem; max-height: 18rem; }
+.docs-children, .docs-children ul { display: grid; gap: .35rem; margin: 0; padding: 0; list-style: none; }
+.docs-children ul { margin-top: .35rem; padding-left: .8rem; }
+.docs-child { padding: .45rem .65rem; border: 1px solid rgba(125,211,252,.25); border-radius: .7rem; background: rgba(2,6,23,.4); }
+.docs-child[open] > summary { margin-bottom: .45rem; }

@@ -1,0 +1,132 @@
+\section{Custom gates: packaging a circuit as one block}
+\hypertarget{custom-gates}{}
+
+A custom gate is a whole QPU process saved under a short name so that it can
+be placed like any built-in block. It adds no new physics: when it runs, the
+simulator replays the process's own gates, one by one, on the wires you
+chose. Understanding a custom gate therefore means understanding the smaller
+gates inside it.
+
+\subsection{Register one in four steps}
+
+\begin{enumerate}
+  \item Paste the process below into the protocol editor in
+  \textbf{Compile text into a circuit} and choose \textbf{Compile protocol}
+  to confirm it has no errors.
+  \item In \textbf{Register custom gates from QPU processes}, type
+  \code{NOR} in \textbf{Gate id (palette label)} and leave
+  \textbf{Source process} on \emph{Current protocol editor}.
+  \item Choose \textbf{Register custom gate}. A \textbf{NOR} block appears
+  under \textbf{Custom gates} in the palette and in the workbench
+  \textbf{Gate} list.
+  \item Place it with \textbf{Control A}, \textbf{Control B}, and
+  \textbf{Target particle}, exactly like AND.
+\end{enumerate}
+
+\textbf{Complete runnable protocol}
+\begin{lstlisting}
+PARAMS: A:state B:state
+
+MAIN-PROCESS NorGate
+CREATETOKEN -I Out
+
+OR -I A B -O Out
+X -I Out -O Out
+
+RETURNVALS Out
+\end{lstlisting}
+
+\subsection{How the process maps onto wires}
+
+\begin{center}
+\begin{tikzpicture}[font=\small]
+  \foreach \y/\q in {1/q0,0/q1,-1/q2} {
+    \draw[thick] (0,\y)--(3,\y);
+    \node[left] at (0,\y) {\q};
+    \draw[thick] (5,\y)--(10,\y);
+    \node[left] at (5,\y) {\q};
+  }
+  \node[draw=QpuCyan,fill=QpuCyan!12,minimum width=1.1cm,minimum height=2.5cm,font=\bfseries] at (1.5,0) {NOR};
+  \node[font=\scriptsize,anchor=south east] at (0.92,1) {A};
+  \node[font=\scriptsize,anchor=south east] at (0.92,0) {B};
+  \node[font=\scriptsize,anchor=south east] at (0.92,-1) {Out};
+  \node at (4,0) {\Large$=$};
+  \fill[QpuNavy] (6.5,1) circle (.09);
+  \fill[QpuNavy] (6.5,0) circle (.09);
+  \draw[thick] (6.5,1)--(6.5,-1);
+  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.72cm,minimum height=.5cm,font=\scriptsize\bfseries] at (6.5,-1) {OR};
+  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.6cm,minimum height=.5cm,font=\bfseries] at (8.5,-1) {X};
+\end{tikzpicture}
+\end{center}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\bfseries}p{0.27\textwidth}X}
+\toprule
+In the process & Becomes, when the block is placed\\
+\midrule
+1st \code{PARAMS} entry & \textbf{Control A} (the lowest free wire when
+dropped on the canvas).\\
+2nd \code{PARAMS} entry & \textbf{Control B}. Further entries take the next
+free wires.\\
+1st \code{RETURNVALS} entry & \textbf{Target particle}: the only wire the
+block should change.\\
+Any other token & A fresh extra workspace wire that the block allocates for
+itself.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The palette gives every custom block exactly one target wire, so register
+processes with a single \code{RETURNVALS} output. A process with two outputs,
+such as a half-adder, compiles on its own but cannot be placed as a block; use
+it through \code{RUNCHILD} instead.
+
+\subsection{Reasoning about reversibility}
+
+A sequence of reversible gates is reversible: undo the last gate first, then
+the one before it, and so on.
+\[
+(U_k\cdots U_2U_1)^{-1}=U_1^{-1}U_2^{-1}\cdots U_k^{-1}.
+\]
+NorGate is OR followed by X. Each gate only XORs a value into Out, so the two
+gates commute and NOR undoes itself: placing the block twice in a row returns
+every wire to where it started. Two self-inverse gates in sequence are not
+self-inverse in general; the inverse of $U_2U_1$ is $U_1U_2$.
+Written as a rule, the block performs
+\[
+\mathrm{Out}'=\mathrm{Out}\oplus\neg(A\lor B),
+\]
+the same ``target XOR function'' shape as AND. That shape is always
+reversible, because applying it again XORs the same value back out.
+
+\begin{cautionbox}[Three things that make a custom gate irreversible]
+\begin{description}
+  \item[MEASURE inside the process] The block collapses its wires every time
+  it runs.
+  \item[SET on the output] \code{SET Out 0p} makes the compiler insert a
+  hidden RESET, so the block \emph{overwrites} the target
+  ($\mathrm{Out}'=f(A,B)$) instead of XORing into it. Whatever the target held
+  before is erased. NorGate deliberately has no SET: a freshly compiled wire
+  already starts at 0, so it passes the same truth table.
+  \item[Temporary wires left dirty] Helper tokens become hidden workspace
+  wires. If a helper is not returned to 0 (uncomputed), it stays entangled
+  with the inputs, and the visible wires alone no longer behave reversibly.
+\end{description}
+\end{cautionbox}
+
+\begin{beginnerbox}[A quick test you can run in the builder]
+Place your block twice on the same wires and choose \textbf{Run all}. For a
+reversible out-of-place gate, every wire ends exactly as it started. Try it
+with the target's \emph{name} start set to \code{0p} and then \code{1p}. If
+the target does not return, look for one of the three problems above.
+\end{beginnerbox}
+
+\subsection{Rules to remember}
+\begin{itemize}
+  \item The gate id must start with a letter, use only letters, digits, and
+  underscores, and cannot match a built-in gate such as \code{AND}.
+  \item Custom gates are saved for the current browser session only, not in
+  the bundled catalog. Keep the \code{.qpucir} file to recreate one later.
+  \item A custom gate can wrap a process that itself uses \code{RUNCHILD};
+  the child processes are captured when you register it.
+\end{itemize}

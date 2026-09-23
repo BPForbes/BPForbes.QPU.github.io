@@ -19,3 +19,17 @@ $\ket0$ or $\ket1$\\\bottomrule
 \end{tabular}
 \end{center}
 
+\begin{beginnerbox}[Three ways to measure in the builder]
+\begin{description}
+  \item[The \textbf{M} block] A step \emph{in the circuit}, like any other
+  gate. It runs every time the circuit runs and is saved in the protocol as
+  \code{MEASURE}.
+  \item[\textbf{Measure target}] Measures the selected \textbf{Target
+  particle} once, right now. Nothing is added to the circuit.
+  \item[\textbf{Measure all}] Measures every wire not yet measured, right now.
+\end{description}
+MEASURE, like RESET, is not reversible: once a superposition collapses, the
+lost amplitudes cannot be recovered. Choose \textbf{Reset state} to rewind and
+sample again.
+\end{beginnerbox}
+

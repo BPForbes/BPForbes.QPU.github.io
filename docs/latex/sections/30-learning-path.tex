@@ -1,0 +1,131 @@
+\section{Learning path: six steps from one qubit to multi-stage circuits}
+\hypertarget{learning-path}{}
+
+Each step below uses only ideas from the steps before it. You do not need to
+finish the theory chapters before starting: build the starter circuit first,
+predict what it should do, then read the matching explanation.
+
+\begin{center}
+\begin{tikzpicture}[font=\scriptsize,
+  rung/.style={draw=QpuBlue,fill=QpuBlue!8,rounded corners=3pt,text width=2.3cm,
+    align=center,minimum height=1.15cm,inner sep=3pt},
+  >={Latex[length=2mm]}]
+  \node[rung] (s1) at (0,0) {\textbf{1. Single}\\\textbf{qubit}\\X, H, Z, M};
+  \node[rung] (s2) at (2.95,0) {\textbf{2. Controlled}\\\textbf{gates}\\CNOT, CZ, SWAP};
+  \node[rung] (s3) at (5.9,0) {\textbf{3. Reversible}\\\textbf{logic}\\CCNOT, AND, XOR};
+  \node[rung] (s4) at (8.85,0) {\textbf{4. Entanglement}\\\strut\\Bell, kickback};
+  \node[rung] (s5) at (11.8,0) {\textbf{5. Arithmetic}\\\strut\\adders, parity};
+  \node[rung] (s6) at (14.75,0) {\textbf{6. Multi-stage}\\\textbf{circuits}\\children, oracles};
+  \foreach \a/\b in {s1/s2,s2/s3,s3/s4,s4/s5,s5/s6} \draw[->,thick,QpuNavy] (\a)--(\b);
+\end{tikzpicture}
+\end{center}
+
+\begin{beginnerbox}[How to use each step]
+\begin{enumerate}
+  \item Open \textbf{Circuit builder} and choose the starter circuit named in
+  the step from \textbf{Load a starter circuit}. Each card shows its step
+  number.
+  \item Before running it, write down what you expect to measure.
+  \item Choose \textbf{Step gate} repeatedly and watch the highlighted column
+  on the canvas and the \textbf{Execution log}.
+  \item Compare your prediction with the result, then read the listed guide
+  section.
+  \item Move on when you can answer the step's checkpoint question without
+  looking.
+\end{enumerate}
+\end{beginnerbox}
+
+\subsection{Step 1: one qubit at a time}
+
+\textbf{Learn:} a qubit starts in $\ket0$; X flips it; H creates an equal
+superposition; Z changes phase without changing immediate probabilities;
+MEASURE (the \textbf{M} block) turns a qubit into a classical 0 or 1.
+
+\textbf{Starter circuits:} \emph{Superposition coin}, then
+\emph{Phase interference (H-Z-H)}.
+
+\textbf{Read:} \emph{First circuit} and \emph{Randomness versus interference}
+in Getting Started; \emph{Single-qubit primitive gates} in the Theory Guide.
+
+\textbf{Checkpoint:} why does H followed by M give 0 or 1 at random, while
+H, Z, H followed by M always gives 1?
+
+\subsection{Step 2: controlled gates}
+
+\textbf{Learn:} a controlled gate reads one wire (the \emph{control}) and
+changes another (the \emph{target}). The control is never modified by CNOT.
+In the builder, the control comes from \textbf{Control A} and the target from
+\textbf{Target particle}.
+
+\textbf{Starter circuit:} \emph{CNOT demo}. Change \textbf{q0 start} between
+\code{0p} and \code{1p} and rerun.
+
+\textbf{Read:} \emph{Controlled and two-qubit primitive gates} in the Theory
+Guide.
+
+\textbf{Checkpoint:} in \emph{CNOT demo}, which wire can change, and under what
+condition?
+
+\subsection{Step 3: reversible Boolean logic}
+
+\textbf{Learn:} quantum gates cannot throw information away, so reversible
+logic keeps its inputs and writes the answer into a separate
+\emph{target} (also called workspace). Toffoli (CCNOT) and the derived AND gate
+both compute $t'=t\oplus(A\land B)$: A and B are read and left unchanged, and
+$t$ is the output wire. Start $t$ at 0 and it ends holding $A\land B$.
+
+\textbf{Starter circuits:} \emph{CCNOT demo}, then \emph{Half adder}.
+
+\textbf{Read:} \emph{Classical computation foundations} and \emph{Worked
+example: reversible half-adder} in Getting Started; \emph{Derived logical
+gates} in the Theory Guide.
+
+\textbf{Checkpoint:} if the target of AND starts at 1 instead of 0, what does
+it hold afterward?
+
+\subsection{Step 4: entanglement and phase}
+
+\textbf{Learn:} a controlled gate whose control is in superposition can
+correlate two wires so that neither has a separate state (a Bell state). Phase
+can also flow \emph{backward} from target to control (phase kickback).
+
+\textbf{Starter circuits:} \emph{Bell state}, then \emph{Phase kickback}.
+
+\textbf{Read:} \emph{Multiple qubits} (Entanglement) and \emph{Measurement,
+probability, and truth tables} in the Theory Guide; \emph{Phase kickback} in
+Examples and Troubleshooting.
+
+\textbf{Checkpoint:} after \emph{Bell state}, if q0 measures 1, what will q1
+measure? Why is that not the same as copying q0?
+
+\subsection{Step 5: arithmetic}
+
+\textbf{Learn:} addition is built from the step 3 pieces. Sum bits are parity
+(XOR), carry bits are majority (a combination of ANDs). A comparator or parity
+checker uses the same pieces with a different output.
+
+\textbf{Starter circuits:} \emph{Parity check}; then compile the bundled
+\code{SingleBitFullAdder} and \code{TwoBitFullAdder} buttons in
+\textbf{Compile text into a circuit}.
+
+\textbf{Read:} \emph{Advanced worked circuits} in Examples and Troubleshooting
+(full adder, two-bit adder, comparators, parity).
+
+\textbf{Checkpoint:} why does a full adder need three AND-style gates for its
+carry, but only XOR-style gates for its sum?
+
+\subsection{Step 6: multi-stage circuits}
+
+\textbf{Learn:} larger circuits are built in stages: compute a helper value,
+use it, then \emph{uncompute} it so workspace returns to 0. Child processes
+(\code{RUNCHILD}) and custom gates reuse whole circuits as single steps.
+Oracle algorithms combine all of the above.
+
+\textbf{Starter circuit:} \emph{Grover search (2 qubits)}; then the
+multi-stage listings in \emph{Advanced worked circuits}.
+
+\textbf{Read:} \emph{Process composition and return values} in the Language
+Reference; \emph{Custom gates} in Examples and Troubleshooting.
+
+\textbf{Checkpoint:} after an uncompute stage, what value should every
+temporary wire hold, and how can a truth-table test prove it?

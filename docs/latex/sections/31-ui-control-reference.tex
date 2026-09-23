@@ -1,0 +1,284 @@
+\section{Every control on screen, by its exact name}
+\hypertarget{ui-reference}{}
+
+This chapter lists each visible button, selector, and panel using the words
+printed on screen. Bold text is always an exact UI label. Use it as a map when
+a label is unfamiliar; hovering over most controls in the app also shows a
+one-line tooltip.
+
+\newcommand{\UiTable}[1]{%
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\bfseries\raggedright\arraybackslash}p{0.27\textwidth}X}
+\toprule
+\normalfont\bfseries On screen & \bfseries What it does\\
+\midrule
+#1
+\bottomrule
+\end{tabularx}
+\end{center}}
+
+\subsection{Navigation menu}
+\hypertarget{ui-navigation}{}
+
+The three-line button in the top corner (\emph{Open site navigation}) opens
+the menu. Every page listed here is part of the same browser session: nothing
+is sent to a server for simulation.
+
+\UiTable{
+Circuit builder & The main workbench: palette, canvas, run controls,
+examples, and protocol compiler.\\
+Wiki / docs & Short in-app explanations of circuit construction, reset
+buttons, the learning path, and custom gates.\\
+QPU Documentation & Opens these PDF guides inside the app.\\
+Particle visualization & Per-qubit spheres, Bloch coordinates, the execution
+timeline, final state vector, and execution log.\\
+Circuit correction lab & Tests a protocol against a truth table and helps
+repair it.\\
+Upload files / Download files & Both open the file page for moving
+\code{.qpucir} and \code{.qpuio} files.\\
+More & Quick links, including \textbf{Reset site completely}.\\
+Reset site & Returns the whole builder to its first-visit state. See
+\hyperlink{reset-buttons}{Reset buttons compared}.\\
+}
+
+\subsection{Documentation in the Interactive workbench}
+\hypertarget{ui-workbench-docs}{}
+
+The workbench explains whatever you are examining, on the wires it uses. The
+card is compact until you ask for more.
+
+\UiTable{
+Selected gate & The gate in the \textbf{Gate} selector, drawn on the wires
+\textbf{Add gate to target} would use. Its table columns are labelled with
+those wires (for example \textbf{A} on q0 and \textbf{t} on q2).\\
+Step N of M on the canvas & Shown after \textbf{Step gate}, \textbf{Play
+Sequence}, or \textbf{Run all}: the gate that just ran, on its own wires.\\
+Back to selected gate & Returns the card to the selectors. Changing any
+selector does the same.\\
+On these wires now & The truth-table row that matches the wires' values
+(the start states, or the values going into the step) and what it changes,
+such as ``q2: 0 $\rightarrow$ 1. q0 and q1 unchanged.'' A wire in
+superposition matches several rows at once.\\
+Compiled protocol & A second card for the compiled process: its inputs,
+outputs, and the row for the current start states.\\
+Learn more & Expands the full truth table (matching rows highlighted), how it
+works, the target notes, syntax, child processes, the protocol source, and
+the PDF link. Collapsed by default.\\
+Try & On a row under Learn more: sets the start states to that row's inputs
+and rewinds the circuit.\\
+Child process entries & Expand in place to read the child's own notes; their
+children expand the same way.\\
+}
+
+\paragraph{Long tables and lists.} Anything longer than 8 items is shown in
+collapsible groups of at most 8, and groups are grouped again whenever there
+would be more than 8 of them. So 1--8 rows show directly, 9--64 use one level
+of groups, 65--512 two levels, and 513--4096 three. Groups of a complete
+truth table are named by their shared leading inputs (for example
+\code{A0 A1 = 01}). The Circuit correction lab's truth table uses the same
+grouping and opens the groups that contain failing rows.
+
+\subsection{Gate palette: ``Pick up a block''}
+\hypertarget{ui-palette}{}
+
+Click a block to select it, or drag it onto a wire of the circuit canvas. The
+label printed on each block is shorter than the protocol instruction name:
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Block & Instruction & Block & Instruction\\
+\midrule
+X, Y, Z, H, S, T & same name & CX & \code{CNOT}\\
+P & \code{PHASE} & CCX & \code{CCNOT} (Toffoli)\\
+CZ, CY & same name & SW & \code{SWAP}\\
+M & \code{MEASURE} & $\neg$ & \code{NOT}\\
+AND, NAND, OR, XOR & same name & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Preconfigured} holds the built-in gates. \textbf{Custom gates} holds
+gates you registered from a process; it is empty until you register one.
+
+\subsection{Gate engine: ``Register custom gates from QPU processes''}
+\hypertarget{ui-custom-gates}{}
+
+\UiTable{
+Gate id (palette label) & The name of the new block. Must start with a letter
+and cannot reuse a built-in gate name. Leave empty to use the process name.\\
+Source process & Which process becomes the gate: \emph{Current protocol
+editor} or any process in the catalog.\\
+Color (optional --- random if empty) & Block colour, as a CSS colour or
+gradient.\\
+Register custom gate & Compiles the process and adds the block to
+\textbf{Custom gates}.\\
+Remove & Deletes that custom gate from this browser session.\\
+}
+See \emph{Custom gates} in Examples and Troubleshooting for how inputs and
+outputs map onto wires.
+
+\subsection{Circuit canvas: ``Standard circuit diagram''}
+\hypertarget{ui-canvas}{}
+
+Each row is one wire, labelled \textbf{q0}, \textbf{q1}, \ldots{} with its
+start state. Time runs left to right: every gate occupies its own column.
+\begin{itemize}
+  \item \textbf{Placing a gate:} drop a block on a row, or select a block and
+  click the row. The row you drop on becomes the \emph{target}. Controls are
+  chosen automatically from the lowest other rows; use the workbench to choose
+  them yourself.
+  \item \textbf{Removing a gate:} click the gate symbol on its target wire.
+  \item \textbf{Line styles:} a double line is a classical bit (a
+  \code{0p}/\code{1p} start or a measured wire); a single line may hold a
+  superposition. A red outline marks the step that just ran.
+\end{itemize}
+
+\subsection{Interactive workbench: ``Add particles, gates, and measurements''}
+\hypertarget{ui-workbench}{}
+
+The workbench places a gate with exactly the wires you choose.
+
+\UiTable{
+Gate & Which gate \textbf{Add gate to target} will place. Same list as the
+palette.\\
+Target particle & The wire the gate \emph{changes}. For a measurement, the
+wire \textbf{Measure target} reads.\\
+Control A & The first wire the gate \emph{reads}. Used by CNOT, CZ, CY, and as
+the first input of CCNOT, AND, NAND, OR, and XOR.\\
+Control B & The second wire the gate reads. Used by two-input gates (CCNOT,
+AND, NAND, OR, XOR) and custom gates with two or more inputs. SWAP also uses
+it as the wire to exchange with the target.\\
+Phase angle & Appears for PHASE only. Sets $\theta$ in degrees.\\
+Add gate to target & Appends the selected gate as the next column.\\
+Add particle / Remove particle & Adds or removes the last wire (up to six on
+the canvas). After a compiled protocol, adds or removes a \code{PARAMS}
+input instead; compile again afterwards.\\
+Measure target & Measures only the selected target wire now, without adding
+an \textbf{M} block to the circuit.\\
+\emph{name} start & One selector per input wire: \code{0p} ($\ket0$),
+\code{1p} ($\ket1$), or \code{sp} ($\ket+$). Changing it resets the run.\\
+}
+
+Gates that do not use a selector ignore it. Single-qubit gates use only
+\textbf{Target particle}. A control can never equal the target, so the app
+disables that choice and picks a free wire if needed.
+
+\begin{center}
+\WorkbenchControlMap{CCNOT}
+\end{center}
+\begin{beginnerbox}[Reading the picture]
+The selectors on the left produce the diagram on the right. \textbf{Control A}
+and \textbf{Control B} become the two filled dots: they are read and never
+changed. \textbf{Target particle} becomes the $\oplus$: it is the only wire
+that can change, and it changes by $t' = t\oplus(A\land B)$. The same mapping
+applies to AND. For NAND, OR, and XOR only the rule written on the target
+changes.
+\end{beginnerbox}
+
+\subsection{Run controls}
+\hypertarget{ui-run-controls}{}
+
+\UiTable{
+Play Sequence / Pause sequence & Runs one gate at a time at the chosen speed,
+so you can watch each step. At the end it replays from the start.\\
+Run all & Jumps straight to the final state. Useful once you trust the
+circuit.\\
+Step gate & Runs exactly one more gate. Disabled at the end of the
+circuit.\\
+Reset state & Rewinds the run to the start states and clears measurements.
+Keeps every gate.\\
+Measure all & Measures every unmeasured wire now.\\
+Clear circuit & Deletes every gate. Keeps the wires and their start states.\\
+Reset site & Returns the entire builder to its default state.\\
+Speed & Playback speed for \textbf{Play Sequence}.\\
+}
+The difference between the three reset-like buttons, and between them and the
+compiler's internal RESET operation, is explained in
+\hyperlink{reset-buttons}{Reset buttons compared}.
+
+\subsection{Examples: ``Load a starter circuit''}
+\hypertarget{ui-examples}{}
+
+Each card loads a small circuit onto the canvas, replacing the current gates.
+Cards are labelled with their step in the learning path, so they can be worked
+through in order.
+
+\subsection{QPU protocol compiler: ``Compile text into a circuit''}
+\hypertarget{ui-compiler}{}
+
+\UiTable{
+SingleBitFullAdder, TwoBitFullAdder, FourBitFullAdder, PhaseDemo & Load and
+compile a bundled protocol in one click.\\
+Protocol editor & The text box. Editing it does not change the canvas until
+you compile.\\
+Compile protocol & Turns the editor text into canvas gates and resets the run.
+The sentence beside the buttons summarizes the result or the error.\\
+Download as .qpucir / Download as -qpucir.txt & Saves the editor text. The
+\code{.txt} form is for devices that cannot open custom extensions.\\
+Protocol checks & Live error and warning list for the editor text, with line
+numbers and suggested fixes.\\
+Open Correction Lab for guided help & Appears when checks find a problem.\\
+Supported operations and token map & Expands to show every accepted
+instruction and which wire each token name uses.\\
+}
+
+\begin{cautionbox}[Canvas edits rewrite the editor]
+Placing, removing, or clearing gates on the canvas regenerates the protocol
+editor text from the canvas. Download a hand-written protocol before editing
+its compiled circuit visually.
+\end{cautionbox}
+
+\subsection{Particle visualization}
+\hypertarget{ui-particles}{}
+
+\UiTable{
+Qubit states and execution progress & One card per displayed wire: a sphere
+while unmeasured, the measured bit afterwards, plus its ket, $r,\theta,\phi$,
+and Bloch $x,y,z$. $\Delta$ values show the change caused by the last step.\\
+Circuit execution timeline & One tile per gate, with its \code{-I} and
+\code{-O} wires.\\
+Final state vector & Every nonzero amplitude with its basis label.\\
+Outcome truth table / probabilities & Expands to list every basis outcome
+with its amplitude and probability.\\
+Execution log & A sentence for every step, compile, and measurement.\\
+}
+
+\subsection{File upload and download}
+\hypertarget{ui-files}{}
+
+\UiTable{
+Upload files & Choose a \code{.qpucir} file, optionally together with its
+matching \code{.qpuio} truth table, in one dialog. The protocol compiles
+immediately.\\
+Download \emph{process} & Saves a bundled protocol exactly as shipped.\\
+Download current editor protocol & Saves whatever is in the protocol editor,
+even if it has not compiled.\\
+}
+
+\subsection{Circuit correction lab}
+\hypertarget{ui-correction-lab}{}
+
+\UiTable{
+Upload protocol / Upload truth table & Load a \code{.qpucir} and, optionally,
+a \code{.qpuio} table.\\
+Catalog process & Pick any compiled, uploaded, or bundled process.\\
+Infer truth table & Build an empty table whose columns match \code{PARAMS}
+and \code{RETURNVALS}.\\
+Full-adder table & Load the canonical one-bit full-adder expectations.\\
+Probe outputs & Fill the output columns with what the current circuit
+actually produces. Refused for protected bundled tables.\\
+Input columns / Output columns & Resize the table.\\
+Test circuit & Compare the circuit with every table row; failing rows are
+highlighted.\\
+Test \& correct automatically & Test, then propose gate-level fixes for
+failing rows.\\
+Download JSON / .qpuio / -qpuio.txt / .qpucir / -qpucir.txt & Save the table
+or protocol.\\
+AI model settings & Choose the browser model or an Ollama server for the
+chat.\\
+Use AI for unrecognized messages & Lets the model interpret requests the
+built-in command patterns do not recognize.\\
+Send correction & Sends the chat message, for example
+``test the circuit''.\\
+}

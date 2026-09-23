@@ -150,9 +150,59 @@
   \draw[-{Latex[length=2mm]},QpuRed,thick] (2.2,0)--(3.4,0);
 \end{tikzpicture}}
 
+% The hypertarget gives each gate a stable PDF named destination (gate-CNOT,
+% gate-H, ...) that the workbench links to with #nameddest=.
 \newcommand{\GateHeading}[3]{%
-\subsection{#1 (\code{#2})}
+\subsection{#1 (\code{#2})}\hypertarget{gate-#2}{}
 \begin{center}#3\end{center}}
+
+% Short framed callouts. The body is boxed, so it cannot contain lstlisting
+% and should stay short enough to fit on one page.
+\newsavebox{\QpuCalloutBox}
+\newenvironment{QpuCallout}[2]{%
+  \def\QpuCalloutColor{#1}%
+  \setlength{\fboxrule}{0.6pt}%
+  \par\smallskip\noindent
+  \begin{lrbox}{\QpuCalloutBox}%
+  \begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}%
+  \setlength{\parskip}{3pt}%
+  {\bfseries\color{#1}#2}\par
+}{%
+  \end{minipage}%
+  \end{lrbox}%
+  \fcolorbox{\QpuCalloutColor}{\QpuCalloutColor!6}{\usebox{\QpuCalloutBox}}%
+  \par\smallskip
+}
+\newenvironment{beginnerbox}[1][Beginner note]{\begin{QpuCallout}{QpuGreen}{#1}}{\end{QpuCallout}}
+\newenvironment{trybox}[1][Try it in the Circuit builder]{\begin{QpuCallout}{QpuBlue}{#1}}{\end{QpuCallout}}
+\newenvironment{cautionbox}[1][Watch out]{\begin{QpuCallout}{QpuAmber}{#1}}{\end{QpuCallout}}
+
+% Workbench selectors on the left, the circuit diagram they produce on the
+% right. #1 is the gate name shown in the Gate selector and on the target.
+\newcommand{\WorkbenchControlMap}[1]{%
+\begin{tikzpicture}[font=\small,>={Latex[length=2mm]}]
+  \tikzset{ui/.style={draw=##1,rounded corners=2pt,anchor=west,minimum width=3.9cm,minimum height=.55cm,inner sep=3pt}}
+  \node[ui=QpuLine,fill=CodeBg] at (0,1.75) {\textsf{Gate:} \textbf{#1}};
+  \node[ui=QpuBlue,fill=QpuBlue!8] (a) at (0,.95) {\textsf{Control A:} \textbf{q0}};
+  \node[ui=QpuBlue,fill=QpuBlue!8] (b) at (0,.15) {\textsf{Control B:} \textbf{q1}};
+  \node[ui=QpuRed,fill=QpuRed!6] (t) at (0,-.65) {\textsf{Target particle:} \textbf{q2}};
+  \node[font=\scriptsize\bfseries,color=QpuNavy,anchor=west] at (0,2.45) {Interactive workbench};
+  \node[font=\scriptsize\bfseries,color=QpuNavy] at (7.4,2.45) {Circuit canvas};
+  \foreach \y/\q in {.95/q0,.15/q1,-.65/q2} {
+    \draw[thick] (5.6,\y)--(9.2,\y);
+    \node[left,font=\scriptsize] at (5.6,\y) {\q};
+  }
+  \draw[->,dashed,QpuBlue] (a.east)--(5.05,.95);
+  \draw[->,dashed,QpuBlue] (b.east)--(5.05,.15);
+  \draw[->,dashed,QpuRed] (t.east)--(5.05,-.65);
+  \fill[QpuNavy] (7.4,.95) circle (.09);
+  \fill[QpuNavy] (7.4,.15) circle (.09);
+  \draw[thick] (7.4,.95)--(7.4,-.65);
+  \node[draw=QpuRed,fill=QpuRed!6,circle,inner sep=1.5pt,font=\bfseries] at (7.4,-.65) {$\oplus$};
+  \node[anchor=west,font=\scriptsize] at (9.3,.95) {$A$: read, left unchanged};
+  \node[anchor=west,font=\scriptsize] at (9.3,.15) {$B$: read, left unchanged};
+  \node[anchor=west,font=\scriptsize] at (9.3,-.65) {$t' = t\oplus(A\land B)$: written};
+\end{tikzpicture}}
 
 \newcommand{\QpuTitlePage}{%
 \begin{titlepage}

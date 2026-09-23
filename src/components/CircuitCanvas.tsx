@@ -8,7 +8,7 @@ import {
   MIN_SLOT_REM,
   needsConnector,
   startStateKet,
-  wireKindSegments,
+  wireKindHalves,
 } from './circuitLayout';
 
 type CircuitCanvasProps = {
@@ -41,7 +41,7 @@ export function CircuitCanvas({
   const trackingGates = (wireGates ?? gates).slice().sort((a, b) => a.step - b.step);
   const maxStep = trackingGates.reduce((highest, gate) => Math.max(highest, gate.step), -1);
   const columns = circuitColumnCount(sorted.length, maxStep);
-  const wireKinds = wireKindSegments(qubitCount, trackingGates, startStates, columns, measurements);
+  const wireKinds = wireKindHalves(qubitCount, trackingGates, startStates, columns, measurements);
   const activeGate = activeStep >= 0 ? sorted.find((gate) => gate.step === activeStep) : undefined;
 
   const handleDrop = (event: React.DragEvent, qubit: number) => {
@@ -71,14 +71,16 @@ export function CircuitCanvas({
           }}
         >
           {Array.from({ length: qubitCount }, (_, qubit) =>
-            Array.from({ length: columns }, (_, column) => (
-              <span
-                aria-hidden="true"
-                className={`circuit-wire ${wireKinds[qubit][column]}`}
-                key={`wire-${qubit}-${column}`}
-                style={{ gridColumn: column + 2, gridRow: qubit + 1 }}
-              />
-            )),
+            Array.from({ length: columns }, (_, column) =>
+              (['incoming', 'outgoing'] as const).map((half) => (
+                <span
+                  aria-hidden="true"
+                  className={`circuit-wire ${half} ${wireKinds[qubit][column][half]}`}
+                  key={`wire-${qubit}-${column}-${half}`}
+                  style={{ gridColumn: column + 2, gridRow: qubit + 1 }}
+                />
+              )),
+            ),
           )}
 
           {sorted.filter(needsConnector).map((gate) => {

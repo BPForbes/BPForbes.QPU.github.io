@@ -28,6 +28,7 @@ last row, decimal $1+1=2$, written $10_2$ in binary.
 
 \subsection{QPU protocol}
 
+\textbf{Complete runnable protocol}
 \begin{lstlisting}
 PARAMS: A:state B:state
 
@@ -83,6 +84,28 @@ RETURNVALS Carry Sum
   \draw[-{Latex[length=2mm]},QpuRed,thick] (6.55,-1.5)--(7.8,-1.5);
 \end{tikzpicture}
 \end{center}
+
+\begin{beginnerbox}[Which wires change?]
+Only the two outputs. A and B are \emph{read} by both gates and come out
+exactly as they went in. Sum and Carry are \emph{workspace}: they start at 0
+and each receives one answer. Keeping the inputs is what makes the circuit
+reversible, and it is why a quantum half-adder needs four wires where a
+classical one draws two inputs and two outputs.
+\end{beginnerbox}
+
+\subsection{Build the Carry gate in the workbench}
+
+The AND line of the protocol corresponds to these workbench choices. With A
+on q0, B on q1, and Carry on q2:
+\begin{center}
+\WorkbenchControlMap{AND}
+\end{center}
+\begin{trybox}
+Choose the \emph{Half adder} starter circuit. Set \textbf{q0 start} and
+\textbf{q1 start} to each combination of \code{0p} and \code{1p}, choose
+\textbf{Run all} each time, and check the measured Sum and Carry against the
+table above.
+\end{trybox}
 
 \subsection{Reversible state equation}
 

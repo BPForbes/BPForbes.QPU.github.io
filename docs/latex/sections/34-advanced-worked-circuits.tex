@@ -1,0 +1,303 @@
+\section{Advanced worked circuits}
+\hypertarget{advanced-circuits}{}
+
+The earlier examples use one or two gates. The circuits in this chapter show
+that the same pieces scale to arithmetic, comparison, parity, phase tricks,
+and small oracle algorithms. Every listing is a \textbf{Complete runnable
+protocol}: paste it into \textbf{Compile text into a circuit}, choose
+\textbf{Compile protocol}, then \textbf{Run all}. Circuits with \code{PARAMS}
+can also be checked row by row in the \textbf{Circuit correction lab} with
+\textbf{Infer truth table}, \textbf{Probe outputs}, and \textbf{Test circuit}.
+
+\begin{beginnerbox}[One pattern runs through this whole chapter]
+Inputs are \emph{read}, never overwritten. Each answer is written into a
+fresh output wire that starts at 0, using the rule
+$\text{target}' = \text{target}\oplus f(\text{inputs})$. When a circuit needs a
+temporary helper wire, it computes the helper, uses it, and then runs the same
+gates again to return the helper to 0 (\emph{uncomputation}).
+\end{beginnerbox}
+
+\subsection{Full adder from primitive gates}
+
+A full adder adds three bits $A$, $B$, and a carry-in $C_{\rm in}$:
+\[
+\mathrm{Sum}=A\oplus B\oplus C_{\rm in},\qquad
+C_{\rm out}=\operatorname{majority}(A,B,C_{\rm in})
+=(A\land B)\oplus(A\land C_{\rm in})\oplus(B\land C_{\rm in}).
+\]
+
+\textbf{Complete runnable protocol}
+\begin{lstlisting}
+PARAMS: A:state B:state Cin:state
+
+MAIN-PROCESS FlatFullAdder
+CREATETOKEN -I Cout Sum
+SET Cout 0p
+SET Sum 0p
+
+# Stage 1: Sum collects the parity of the three inputs.
+CNOT -I A -O Sum
+CNOT -I B -O Sum
+CNOT -I Cin -O Sum
+
+# Stage 2: Cout flips once for every pair of inputs that are both 1.
+CCNOT -I A B -O Cout
+CCNOT -I A Cin -O Cout
+CCNOT -I B Cin -O Cout
+
+MEASURE -I Cout
+MEASURE -I Sum
+RETURNVALS Cout Sum
+\end{lstlisting}
+
+\textbf{Why the carry works:} if exactly two inputs are 1, one pair is active
+and Cout flips once, to 1. If all three are 1, all three pairs are active and
+Cout flips three times, which still leaves 1. With zero or one active input no
+pair fires. That is exactly ``at least two of three'', the majority function.
+The bundled \code{SingleBitFullAdder} is the same circuit.
+
+\subsection{Two-bit adder built from a child process}
+
+Multi-bit addition chains full adders: the carry out of bit 0 becomes the
+carry in of bit 1. \code{RUNCHILD} reuses the bundled \code{SingleBitFullAdder}
+for each bit, so the parent only describes the wiring.
+
+\textbf{Complete runnable protocol}
+\begin{lstlisting}
+PARAMS: A1:state A0:state B1:state B0:state
+
+MAIN-PROCESS TwoBitRippleAdder
+DECLARECHILD SingleBitFullAdder
+CREATETOKEN -I NoCarry C0 S0 C1 S1
+SET NoCarry 0p
+
+# Bit 0: A0 + B0 with no incoming carry.
+RUNCHILD SingleBitFullAdder -I A0 B0 NoCarry -O C0 S0
+# Bit 1: A1 + B1 plus the carry from bit 0.
+RUNCHILD SingleBitFullAdder -I A1 B1 C0 -O C1 S1
+
+MEASURE -I C1
+MEASURE -I S1
+MEASURE -I S0
+RETURNVALS C1 S1 S0
+\end{lstlisting}
+
+The outputs read as a three-bit binary number $C_1S_1S_0$. For example,
+$A=11_2=3$ and $B=10_2=2$ give $C_1S_1S_0=101_2=5$. The bundled
+\code{TwoBitFullAdder} and \code{FourBitFullAdder} extend the same chain with
+an explicit carry input and more bits.
+
+\subsection{Reversible comparator: is A greater than B?}
+
+For single bits, $A>B$ exactly when $A=1$ and $B=0$, that is
+$A\land\neg B$. The circuit negates B temporarily, uses it, and restores it.
+
+\textbf{Complete runnable protocol}
+\begin{lstlisting}
+PARAMS: A:state B:state
+
+MAIN-PROCESS GreaterThan
+CREATETOKEN -I Gt
+SET Gt 0p
+
+X -I B -O B
+AND -I A B -O Gt
+X -I B -O B
+
+MEASURE -I Gt
+RETURNVALS Gt
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{cc|c}\toprule $A$&$B$&Gt\\\midrule
+0&0&0\\0&1&0\\1&0&1\\1&1&0\\\bottomrule\end{tabular}
+\end{center}
+The second X is what keeps the circuit honest: without it, B would leave the
+circuit inverted and any later gate reading B would see the wrong value.
+
+\subsection{Two-bit equality with uncomputation}
+
+Two numbers are equal when every bit agrees. This circuit writes a
+``this bit differs'' flag for each bit, combines the flags, and then cleans the
+flags up.
+
+\textbf{Complete runnable protocol}
+\begin{lstlisting}
+PARAMS: A1:state A0:state B1:state B0:state
+
+MAIN-PROCESS TwoBitEquality
+CREATETOKEN -I D1 D0 Eq
+SET D1 0p
+SET D0 0p
+SET Eq 1p
+
+# Compute: D = 1 where the bits differ.
+XOR -I A1 B1 -O D1
+XOR -I A0 B0 -O D0
+
+# Eq starts at 1 and flips if any bit differs.
+OR -I D1 D0 -O Eq
+
+# Uncompute: the same XORs return D1 and D0 to 0.
+XOR -I A1 B1 -O D1
+XOR -I A0 B0 -O D0
+
+MEASURE -I Eq
+MEASURE -I D1
+MEASURE -I D0
+RETURNVALS Eq D1 D0
+\end{lstlisting}
+
+Three ideas meet here:
+\begin{description}
+  \item[A target that starts at 1] \code{SET Eq 1p} makes
+  $\mathrm{Eq}'=1\oplus(D_1\lor D_0)=\neg(D_1\lor D_0)$. Starting a target
+  at 1 turns ``flip when true'' into ``clear when true''.
+  \item[Uncomputation] XOR is its own inverse, so repeating the two XOR lines
+  returns $D_1$ and $D_0$ to 0 for every input.
+  \item[Proof by truth table] Returning D1 and D0 lets a truth-table test
+  confirm the cleanup. In all 16 rows those two columns must be 0.
+\end{description}
+
+\subsection{Parity of four bits}
+
+Parity is 1 when an odd number of inputs are 1. Each CNOT adds one input into
+the target modulo 2.
+
+\textbf{Complete runnable protocol}
+\begin{lstlisting}
+PARAMS: A:state B:state C:state D:state
+
+MAIN-PROCESS FourBitParity
+CREATETOKEN -I P
+SET P 0p
+
+CNOT -I A -O P
+CNOT -I B -O P
+CNOT -I C -O P
+CNOT -I D -O P
+
+MEASURE -I P
+RETURNVALS P
+\end{lstlisting}
+Parity checks are how error-detecting codes notice a single flipped bit. The
+two-input \code{XOR -I A B -O P} is shorthand for the first two CNOT lines.
+
+\subsection{Phase kickback}
+\hypertarget{phase-kickback}{}
+
+A CNOT never changes its control's 0/1 value, but it \emph{can} change the
+control's phase. Put the target in $\ket-=(\ket0-\ket1)/\sqrt2$: flipping
+$\ket-$ gives $-\ket-$, so ``flip the target'' becomes ``multiply by $-1$'',
+and that sign attaches to the control's $\ket1$ branch.
+
+\textbf{Complete runnable protocol}
+\begin{lstlisting}
+MAIN-PROCESS PhaseKickback
+CREATETOKEN -I Ctrl Tgt
+SET Ctrl 0p
+SET Tgt 1p
+
+H -I Ctrl -O Ctrl
+H -I Tgt -O Tgt
+CNOT -I Ctrl -O Tgt
+H -I Ctrl -O Ctrl
+
+MEASURE -I Ctrl
+RETURNVALS Ctrl
+\end{lstlisting}
+\[
+\ket{+}\ket{-}\xrightarrow{\mathrm{CNOT}}\ket{-}\ket{-}
+\xrightarrow{H\text{ on Ctrl}}\ket{1}\ket{-}.
+\]
+Ctrl measures 1 every time. Change \code{SET Tgt 1p} to \code{SET Tgt 0p}
+and it measures 0 every time: the target's state decided the control's
+result, even though the control was never ``written''. The \emph{Phase
+kickback} starter circuit shows the same effect on the canvas.
+
+\subsection{A small oracle: finding a hidden bit string}
+
+An \emph{oracle} is a circuit treated as a black box that computes some
+$f(x)$. Here $f(x)=s\cdot x \bmod 2$ for a hidden three-bit string $s$
+(Bernstein--Vazirani). Classically, finding $s$ takes three queries. Using
+kickback, one query is enough.
+
+\textbf{Complete runnable protocol}
+\begin{lstlisting}
+MAIN-PROCESS HiddenString101
+CREATETOKEN -I In2 In1 In0 Anc
+SET In2 0p
+SET In1 0p
+SET In0 0p
+SET Anc 1p
+
+H -I In2 -O In2
+H -I In1 -O In1
+H -I In0 -O In0
+H -I Anc -O Anc
+
+# Oracle for s = 101: one CNOT for every 1 in s.
+CNOT -I In2 -O Anc
+CNOT -I In0 -O Anc
+
+H -I In2 -O In2
+H -I In1 -O In1
+H -I In0 -O In0
+
+MEASURE -I In2
+MEASURE -I In1
+MEASURE -I In0
+RETURNVALS In2 In1 In0
+\end{lstlisting}
+The measured outputs are $1,0,1$: the hidden string itself. Each oracle
+CNOT kicks a phase back onto one input wire, and the final H gates turn
+those phases into 0/1 values. Change which inputs have an oracle CNOT and the
+answer changes to match. With a single input wire this is Deutsch's
+algorithm.
+
+\subsection{Two-qubit Grover search}
+
+Grover's algorithm finds a marked input by boosting its amplitude. With two
+qubits, one round finds the answer with certainty.
+
+\textbf{Complete runnable protocol}
+\begin{lstlisting}
+MAIN-PROCESS GroverFind11
+CREATETOKEN -I A B
+SET A 0p
+SET B 0p
+
+# Equal superposition of 00, 01, 10, 11.
+H -I A -O A
+H -I B -O B
+
+# Oracle: mark 11 with a minus sign.
+CZ -I A -O B
+
+# Diffusion: reflect every amplitude about the average.
+H -I A -O A
+H -I B -O B
+X -I A -O A
+X -I B -O B
+CZ -I A -O B
+X -I A -O A
+X -I B -O B
+H -I A -O A
+H -I B -O B
+
+MEASURE -I A
+MEASURE -I B
+RETURNVALS A B
+\end{lstlisting}
+\begin{center}
+\begin{tabular}{l|cccc}\toprule
+Amplitude of & $\ket{00}$ & $\ket{01}$ & $\ket{10}$ & $\ket{11}$\\\midrule
+After H, H & $\tfrac12$ & $\tfrac12$ & $\tfrac12$ & $\tfrac12$\\
+After oracle & $\tfrac12$ & $\tfrac12$ & $\tfrac12$ & $-\tfrac12$\\
+After diffusion & 0 & 0 & 0 & $\pm1$\\\bottomrule
+\end{tabular}
+\end{center}
+The oracle does not change any probability, since every entry still has
+magnitude $\tfrac12$. The diffusion stage turns the marked sign into certainty.
+Open \textbf{Outcome truth table / probabilities} on the
+\textbf{Particle visualization} page after each \textbf{Step gate} to watch
+the amplitudes move.

@@ -4,6 +4,7 @@
  * Gate metadata comes from the registry; this component only handles rendering,
  * selection state, drag payloads, and remove affordances.
  */
+import { gateHelp } from '../../data/learning/learningHelp';
 import { getGateDefinition } from '../../simulator/gates/registry';
 import { GateType } from '../../simulator/types';
 
@@ -25,6 +26,8 @@ export function GateBlock({ type, draggable = false, selected = false, compact =
   const label = definition?.label ?? fallbackLabels[type] ?? type;
   const cssClass = definition?.cssClass ?? `gate-${String(type).toLowerCase()}`;
   const customStyle = definition?.color ? { background: definition.color } : undefined;
+  const help = gateHelp[type];
+  const title = help ? `${type} · ${help.name}: ${help.summary}` : `${type} · custom gate`;
 
   return (
     <button
@@ -36,6 +39,7 @@ export function GateBlock({ type, draggable = false, selected = false, compact =
         onDragStart?.(type);
       }}
       style={customStyle}
+      title={title}
       type="button"
       aria-label={`${type} gate`}
     >

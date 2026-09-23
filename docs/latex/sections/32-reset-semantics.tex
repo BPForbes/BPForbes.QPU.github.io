@@ -1,0 +1,103 @@
+\section{Reset: an operation that is not a gate}
+\hypertarget{reset-semantics}{}
+
+The word \emph{reset} appears in two unrelated places: the compiler's internal
+\code{RESET} operation, and three buttons in the Circuit builder. Neither is an
+ordinary quantum gate.
+
+\subsection{Reversible gates versus RESET}
+
+Every gate in the palette except \textbf{M} is \emph{reversible}: its effect
+can always be undone. X, Y, Z, H, CNOT, CCNOT, CZ, CY, SWAP, NOT, AND, NAND,
+OR, and XOR undo themselves when applied a second time. S, T, and PHASE are
+undone by the same phase with the opposite sign. Mathematically each is a
+\emph{unitary} matrix $U$, and $U^\dagger$ undoes it.
+
+\code{RESET} is different. It forces one wire to $\ket0$ whatever it held
+before:
+\[
+\ket0\mapsto\ket0,\qquad \ket1\mapsto\ket0,\qquad
+\alpha\ket0+\beta\ket1\mapsto\ket0 .
+\]
+Two different inputs, $\ket0$ and $\ket1$, give the same output, so nothing
+can tell afterwards which one was there. The information has been erased, and
+no matrix $U$ can undo that. RESET is therefore not unitary, just like
+MEASURE.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\bfseries}l X X X}
+\toprule
+& Reversible gates (X, H, CNOT, AND, \ldots) & MEASURE & RESET\\
+\midrule
+Unitary? & Yes & No & No\\
+Can be undone? & Yes, by the inverse gate & No & No\\
+Result depends on chance? & No & Yes & No\\
+Written in source? & Yes & Yes & No --- write \code{SET wire 0p}\\
+Shown on canvas? & Yes & Yes, as the meter \textbf{M} & No (hidden)\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\subsection{Where RESET comes from}
+
+You never type RESET. The compiler inserts it when a wire must start at zero:
+\begin{itemize}
+  \item \code{SET Out 0p} on a workspace wire. (\code{SET Out 1p} and
+  \code{SET Out sp} are instead prepared by applying X or H to a wire that
+  starts at 0.)
+  \item \code{INCREASECYCLE}, which zeroes pending workspace before the next
+  stage.
+  \item \code{RUNCHILD} and \code{CALL}, which zero each parent output wire
+  once before expanding the child.
+\end{itemize}
+RESET steps are hidden from the canvas and filtered from the
+\textbf{Execution log} so that the visible circuit shows only the gates you
+wrote. They still run during simulation.
+
+\begin{cautionbox}[Reset a wire only when it is not entangled]
+In this simulator, RESET keeps the part of the state in which the wire is
+already 0 and rescales it; only if that part is empty does it move the
+$\ket1$ amplitudes to $\ket0$. On a fresh wire this is exactly ``prepare
+$\ket0$''. On a wire entangled with others it also changes the other wires.
+For example, resetting one half of a Bell pair forces the other half to 0 as
+well. In multi-stage circuits, \emph{uncompute} temporary wires back to 0 with
+reversible gates instead of relying on a reset.
+\end{cautionbox}
+
+\subsection{Reset buttons compared}
+\hypertarget{reset-buttons}{}
+
+None of these buttons inserts a RESET operation into your circuit. They only
+change what the page is showing and simulating.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{>{\raggedright\arraybackslash}p{0.2\textwidth}>{\centering\arraybackslash}p{0.13\textwidth}>{\centering\arraybackslash}p{0.13\textwidth}>{\centering\arraybackslash}p{0.13\textwidth}X}
+\toprule
+Kept or cleared? & \textbf{Reset state} & \textbf{Clear circuit} & \textbf{Reset site} & Notes\\
+\midrule
+Gates on the canvas & kept & cleared & cleared & \\
+Number of wires & kept & kept & back to 3 & \\
+Start states (\emph{name} start) & kept & kept & all \code{0p} & \\
+Protocol editor text & kept & rewritten & default & Clear circuit writes an
+empty canvas protocol into the editor.\\
+Compiled PARAMS / RETURNVALS & kept & cleared & cleared & \\
+Quantum state and measurements & rewound & rewound & rewound & Back to the
+start states; log restarts.\\
+Workbench selections & kept & kept & defaults & Gate H, target q0, controls
+q1 and q2, phase 90\textdegree.\\
+Custom gates and catalog & kept & kept & kept & Nothing removes these except
+\textbf{Remove} or closing the browser session.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{beginnerbox}[Which one do I want?]
+\begin{description}
+  \item[Reset state] ``Run the same experiment again.'' Use it between
+  repeated runs of a circuit that measures, to collect several samples.
+  \item[Clear circuit] ``Keep my wires, start a new circuit.''
+  \item[Reset site] ``Put everything back the way it was when I first opened
+  the page.'' The \textbf{Reset site} entry in the navigation menu and
+  \textbf{Reset site completely} on the \textbf{More} page do the same thing.
+\end{description}
+\end{beginnerbox}

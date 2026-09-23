@@ -13,6 +13,7 @@ import {
   needsConnector,
   playDelayMs,
   startStateKet,
+  wireKindHalves,
   wireKindSegments,
 } from '../../circuitLayout';
 
@@ -138,5 +139,27 @@ describe('circuit layout helpers', () => {
     );
     expect(hiddenReset[0][1]).toBe('quantum');
     expect(hiddenReset[0][2]).toBe('classical');
+  });
+
+  it('switches wire style at the gate glyph instead of one column later', () => {
+    const measured = wireKindHalves(
+      1,
+      [gate({ type: 'H', step: 0, targets: [0] }), gate({ id: 'm', type: 'MEASURE', step: 1, targets: [0] })],
+      ['0p'],
+      4,
+    );
+    expect(measured[0][0]).toEqual({ incoming: 'classical', outgoing: 'quantum' });
+    expect(measured[0][1]).toEqual({ incoming: 'quantum', outgoing: 'classical' });
+    expect(measured[0][2]).toEqual({ incoming: 'classical', outgoing: 'classical' });
+
+    const entangled = wireKindHalves(
+      2,
+      [gate({ type: 'H', step: 0, targets: [0] }), gate({ id: 'cx', type: 'CNOT', step: 1, controls: [0], targets: [1] })],
+      ['0p', '0p'],
+      4,
+    );
+    expect(entangled[1][0]).toEqual({ incoming: 'classical', outgoing: 'classical' });
+    expect(entangled[1][1]).toEqual({ incoming: 'classical', outgoing: 'quantum' });
+    expect(entangled[1][2]).toEqual({ incoming: 'quantum', outgoing: 'quantum' });
   });
 });
