@@ -39,31 +39,44 @@ Upload files / Download files & Both open the file page for moving
 More & Quick links, including \textbf{Reset site completely}.\\
 Reset site & Returns the whole builder to its first-visit state. See
 \hyperlink{reset-buttons}{Reset buttons compared}.\\
-Docs on hover & The switch at the end of this row (also at the top of the
-Circuit builder) opens a documentation drawer at the side of the screen.\\
 }
 
-\subsection{Docs on hover drawer}
-\hypertarget{ui-docs-drawer}{}
+\subsection{Documentation in the Interactive workbench}
+\hypertarget{ui-workbench-docs}{}
 
-With \textbf{Docs on hover} switched on, rest the pointer on an item (or reach
-it with the keyboard) and its documentation appears in the drawer. Moving
-quickly across other items on the way to the drawer does not replace it.
+The workbench explains whatever you are examining, on the wires it uses. The
+card is compact until you ask for more.
 
 \UiTable{
-Gate blocks and canvas gates & Summary, rule, truth table, what happens to
-the target t, and the protocol syntax. On the canvas the drawer also says
-which role that wire plays in that step.\\
-Custom gates & The same, built from the saved process: a simulated truth
-table, which wire each input and output uses, and the \code{RUNCHILD} line.\\
-Bundled protocol buttons & The process's truth table, inputs, outputs, and
-child processes.\\
-Builder controls & What the control does and where it is documented.\\
-Hovered & The tab that follows the pointer.\\
-Keep in a tab & Copies the current entry into its own tab so it stays put.\\
-Open \dots{} in a drawer tab & Opens a child process in a new drawer tab,
-not a new browser tab. Children of children open the same way.\\
+Selected gate & The gate in the \textbf{Gate} selector, drawn on the wires
+\textbf{Add gate to target} would use. Its table columns are labelled with
+those wires (for example \textbf{A} on q0 and \textbf{t} on q2).\\
+Step N of M on the canvas & Shown after \textbf{Step gate}, \textbf{Play
+Sequence}, or \textbf{Run all}: the gate that just ran, on its own wires.\\
+Back to selected gate & Returns the card to the selectors. Changing any
+selector does the same.\\
+On these wires now & The truth-table row that matches the wires' values
+(the start states, or the values going into the step) and what it changes,
+such as ``q2: 0 $\rightarrow$ 1. q0 and q1 unchanged.'' A wire in
+superposition matches several rows at once.\\
+Compiled protocol & A second card for the compiled process: its inputs,
+outputs, and the row for the current start states.\\
+Learn more & Expands the full truth table (matching rows highlighted), how it
+works, the target notes, syntax, child processes, the protocol source, and
+the PDF link. Collapsed by default.\\
+Try & On a row under Learn more: sets the start states to that row's inputs
+and rewinds the circuit.\\
+Child process entries & Expand in place to read the child's own notes; their
+children expand the same way.\\
 }
+
+\paragraph{Long tables and lists.} Anything longer than 8 items is shown in
+collapsible groups of at most 8, and groups are grouped again whenever there
+would be more than 8 of them. So 1--8 rows show directly, 9--64 use one level
+of groups, 65--512 two levels, and 513--4096 three. Groups of a complete
+truth table are named by their shared leading inputs (for example
+\code{A0 A1 = 01}). The Circuit correction lab's truth table uses the same
+grouping and opens the groups that contain failing rows.
 
 \subsection{Gate palette: ``Pick up a block''}
 \hypertarget{ui-palette}{}
