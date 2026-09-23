@@ -1,4 +1,31 @@
 \section{Process composition and return values}
+\hypertarget{process-composition}{}
+
+\begin{beginnerbox}[Main process and child process in plain words]
+A \textbf{process} is a named list of gates with inputs (\code{PARAMS}) and
+outputs (\code{RETURNVALS}). The \textbf{main process} is the one you compile
+and run: the name after \code{MAIN-PROCESS}. A \textbf{child process} is
+another saved process that the main process borrows with \code{RUNCHILD}, the
+way a program calls a helper function.
+
+The difference from a function call is that nothing is called at run time.
+The compiler copies the child's gates into the main circuit, on the wires you
+pass: \code{-I} wires feed the child's inputs in \code{PARAMS} order, and
+\code{-O} wires receive its outputs in \code{RETURNVALS} order. The canvas
+therefore shows every gate, including the ones that came from children.
+
+``Main'' and ``child'' are roles in one compile, not kinds of file.
+\code{SingleBitFullAdder} is the main process when you run it on its own and a
+child when \code{TwoBitFullAdder} runs it twice. A custom gate is the canvas
+version of the same idea: a saved process placed on wires you choose.
+\end{beginnerbox}
+
+\begin{trybox}[Browse a process and its children]
+In the Circuit builder, switch on \textbf{Docs on hover} and rest the pointer
+on the \code{TwoBitFullAdder} protocol button. The side drawer shows its truth
+table, its inputs and outputs, and a button that opens
+\code{SingleBitFullAdder} in a drawer tab.
+\end{trybox}
 
 \subsection{\code{MAIN-PROCESS} (\implemented)}
 
