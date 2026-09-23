@@ -26,20 +26,6 @@ type CircuitCanvasProps = {
 
 const gateTouchesQubit = (gate: CircuitGate, qubit: number) => gate.targets.includes(qubit) || gate.controls.includes(qubit);
 
-const wireList = (qubits: number[]) => qubits.map((qubit) => `q${qubit}`).join(' and ');
-
-const roleNote = (gate: CircuitGate, qubit: number) => {
-  const where = `Step ${gate.step + 1}`;
-  if (gate.controls.includes(qubit)) {
-    return `${where}: q${qubit} is a control. It is only read and comes out unchanged; the target ${wireList(gate.targets)} is what changes.`;
-  }
-  if (gate.type === 'SWAP') return `${where}: q${qubit} is one of the two swapped wires (${wireList(gate.targets)}).`;
-  if (gate.type === 'MEASURE') return `${where}: q${qubit} is measured here and is a classical bit from now on.`;
-  return gate.controls.length > 0
-    ? `${where}: q${qubit} is the target t. It is the wire this gate changes, depending on ${wireList(gate.controls)}.`
-    : `${where}: q${qubit} is the target. The gate changes this wire in place.`;
-};
-
 export function CircuitCanvas({
   qubitCount,
   gates,
@@ -148,8 +134,6 @@ export function CircuitCanvas({
               return (
                 <span
                   className={`circuit-slot ${activeStep === gate.step ? 'active' : ''} ${activeStep >= gate.step ? 'done' : ''}`}
-                  data-doc={`gate:${gate.customGateId ?? gate.type}`}
-                  data-doc-note={roleNote(gate, qubit)}
                   key={`${gate.id}-${qubit}`}
                   style={{ gridColumn: gate.step + 2, gridRow: qubit + 1 }}
                 >

@@ -1,27 +1,39 @@
 /**
- * Beginner documentation for the hover docs drawer.
+ * Beginner documentation shown in the Interactive workbench.
  *
- * Elements opt in with a `data-doc` key: `gate:<ID>` for palette/canvas gates
- * (preconfigured or custom), `process:<Name>` for catalog processes (child
- * links open these as drawer tabs), and `ui:<uiTips key>` for controls.
+ * Entries are keyed `gate:<ID>` (preconfigured or custom gates),
+ * `process:<Name>` (catalog processes, used for child processes), or built
+ * from the current protocol source. Table columns carry role names (A, B, t,
+ * or PARAMS/RETURNVALS names) so the workbench can map them onto wires.
  */
 import { getCatalogEntry, getCatalogLibrarySources } from '../catalog';
 import {
   compileQpuProtocol,
+  extractMainProcessName,
   getProtocolParameterEntries,
   getReturnValTokens,
   simulateTruthTableOutputs,
   type TruthTable,
 } from '../../simulator/compiler';
 import { getCustomGateRecord, type CustomGateRecord } from '../../simulator/gates/customGateEngine';
-import { docTargets, gateDocTarget, gateHelp, uiTips, type DocTarget } from './learningHelp';
+import { docTargets, gateDocTarget, gateHelp, type DocTarget } from './learningHelp';
 
-export type DocTable = { columns: string[]; inputCount: number; rows: string[][]; note?: string };
+export type DocTable = {
+  columns: string[];
+  /** Space-separated role names per column; a column like "A t" spans two wires. */
+  roles: string[];
+  inputCount: number;
+  rows: string[][];
+  note?: string;
+};
 export type DocSection = { heading: string; body: string };
 
 export type DocEntry = {
   key: string;
-  kind: 'gate' | 'custom' | 'process' | 'control';
+  kind: 'gate' | 'custom' | 'process';
+  /** PARAMS and RETURNVALS names for processes; they map to controls and targets in order. */
+  inputs?: string[];
+  outputs?: string[];
   title: string;
   subtitle: string;
   summary: string;
@@ -34,8 +46,11 @@ export type DocEntry = {
   doc?: DocTarget;
 };
 
+const stripPrime = (column: string) => column.replace(/'/g, '');
+
 const booleanTable = (inputs: string[], outputs: string[], apply: (bits: number[]) => number[]): DocTable => ({
   columns: [...inputs, ...outputs],
+  roles: [...inputs, ...outputs].map(stripPrime),
   inputCount: inputs.length,
   rows: Array.from({ length: 2 ** inputs.length }, (_, index) => {
     const bits = inputs.map((_, bit) => (index >> (inputs.length - 1 - bit)) & 1);
@@ -44,7 +59,13 @@ const booleanTable = (inputs: string[], outputs: string[], apply: (bits: number[
   note: '0 and 1 are the basis states |0⟩ and |1⟩ (0p and 1p).',
 });
 
-const ketTable = (columns: string[], rows: string[][], note?: string): DocTable => ({ columns, inputCount: 1, rows, note });
+const ketTable = (columns: string[], rows: string[][], note?: string, roles = columns.map(stripPrime)): DocTable => ({
+  columns,
+  roles,
+  inputCount: 1,
+  rows,
+  note,
+});
 
 const singleWireTarget = 'There are no controls. The target t is both the input and the output: the gate changes t in place.';
 
@@ -101,7 +122,7 @@ export const gateDocs: Record<string, GateDoc> = {
     how: 'M reads the wire. A definite 0 or 1 is read as itself; a superposition is read as 0 or 1 at random, weighted by its amplitudes, and becomes that bit.',
     target: 'The measured wire is the target. Afterwards it is a classical bit (double line on the canvas) and the superposition is gone for good. Measuring one half of an entangled pair also fixes the other half.',
     syntax: ['MEASURE -I Q'],
-    table: ketTable(['t before', 'reading'], [['|0⟩', '0 always'], ['|1⟩', '1 always'], ['|+⟩', '0 or 1 (50% each)']]),
+    table: ketTable(['t before', 'reading'], [['|0⟩', '0 always'], ['|1⟩', '1 always'], ['|+⟩', '0 or 1 (50% each)']], undefined, ['t', 't']),
   },
   NOT: {
     how: 'NOT is the logic spelling of X: it flips the target.',
@@ -125,13 +146,13 @@ export const gateDocs: Record<string, GateDoc> = {
     how: 'CZ puts a minus sign on the |11⟩ part and changes nothing else. No bit flips, so measuring right after shows no change. Put H on the target before and after, and CZ acts like CNOT.',
     target: 'CZ is symmetric: swapping which wire is the control gives the same gate. The workbench still draws the Target particle as the boxed Z.',
     syntax: ['CZ -I A -O B'],
-    table: ketTable(['A t', 'result'], [['|00⟩', '|00⟩'], ['|01⟩', '|01⟩'], ['|10⟩', '|10⟩'], ['|11⟩', '−|11⟩']]),
+    table: ketTable(['A t', 'result'], [['|00⟩', '|00⟩'], ['|01⟩', '|01⟩'], ['|10⟩', '|10⟩'], ['|11⟩', '−|11⟩']], undefined, ['A t', 'A t']),
   },
   CY: {
     how: 'When Control A is 1 the target gets Y (a flip plus a ±i phase). When A is 0 nothing happens.',
     target: 'Only t changes, and only when A is 1. A is only read.',
     syntax: ['CY -I A -O Target'],
-    table: ketTable(['A t', 'result'], [['|00⟩', '|00⟩'], ['|01⟩', '|01⟩'], ['|10⟩', 'i|11⟩'], ['|11⟩', '−i|10⟩']]),
+    table: ketTable(['A t', 'result'], [['|00⟩', '|00⟩'], ['|01⟩', '|01⟩'], ['|10⟩', 'i|11⟩'], ['|11⟩', '−i|10⟩']], undefined, ['A t', 'A t']),
   },
   SWAP: {
     how: 'SWAP exchanges the complete states of two wires, including any superposition. Nothing is copied; the two wires trade places.',
@@ -198,13 +219,14 @@ export const childProcessNames = (source: string): string[] => {
   return [...names];
 };
 
-// 2^5 rows is still readable in a side drawer; larger processes show their .qpuio table or a note.
-const MAX_SIMULATED_INPUTS = 5;
+// Simulation runs the whole circuit once per row; wider processes rely on their .qpuio table.
+const MAX_SIMULATED_INPUTS = 6;
 
 const cellText = (cell: string) => (cell === '0p' ? '0' : cell === '1p' ? '1' : cell);
 
 const toDocTable = (table: TruthTable, note: string): DocTable => ({
   columns: [...table.inputColumns, ...table.outputColumns],
+  roles: [...table.inputColumns, ...table.outputColumns],
   inputCount: table.inputColumns.length,
   rows: table.rows.map((row) => row.map(cellText)),
   note,
@@ -283,6 +305,8 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
   return {
     key,
     kind,
+    inputs: params,
+    outputs,
     title: customGate ? `${customGate.id} · custom gate` : name,
     subtitle: customGate ? `Custom gate from process ${name}` : children.length > 0 ? 'Process · calls child processes' : 'Process',
     summary: customGate
@@ -323,45 +347,24 @@ export const catalogProcessDocEntry = (name: string): DocEntry | undefined => {
   });
 };
 
-export type UiDocKey = keyof typeof uiTips;
-
-const uiDocs: Record<UiDocKey, { title: string; doc: DocTarget; more?: string }> = {
-  gate: { title: 'Gate selector', doc: docTargets.workbench, more: 'The card below the selectors explains the chosen gate and draws it on your wires.' },
-  targetParticle: { title: 'Target particle', doc: docTargets.workbench, more: "In t' = t ⊕ (A ∧ B) this is t: the output workspace and the only wire a controlled gate changes." },
-  controlA: { title: 'Control A', doc: docTargets.workbench, more: "In t' = t ⊕ (A ∧ B) this is A. Dimmed when the selected gate does not read it." },
-  controlB: { title: 'Control B', doc: docTargets.workbench, more: "In t' = t ⊕ (A ∧ B) this is B. For SWAP it is the second wire that is exchanged." },
-  phaseAngle: { title: 'Phase angle', doc: docTargets.workbench, more: '180° is Z, 90° is S, 45° is T.' },
-  addGate: { title: 'Add gate to target', doc: docTargets.workbench },
-  addParticle: { title: 'Add particle', doc: docTargets.workbench },
-  removeParticle: { title: 'Remove particle', doc: docTargets.workbench },
-  measureTarget: { title: 'Measure target', doc: docTargets.workbench, more: 'This is a runtime action, not a gate: nothing is added to the circuit.' },
-  startState: { title: 'Start state', doc: docTargets.workbench, more: 'On the canvas 0p and 1p start as double (classical) lines and sp as a single line.' },
-  playSequence: { title: 'Play Sequence', doc: docTargets.runControls },
-  runAll: { title: 'Run all', doc: docTargets.runControls },
-  stepGate: { title: 'Step gate', doc: docTargets.runControls, more: 'Predict what the next gate will do, then step and compare.' },
-  resetState: { title: 'Reset state', doc: docTargets.resetButtons, more: 'Gates: kept. Wires and start states: kept. Protocol editor: kept.' },
-  measureAll: { title: 'Measure all', doc: docTargets.runControls },
-  clearCircuit: { title: 'Clear circuit', doc: docTargets.resetButtons, more: 'Gates: deleted. Wires and start states: kept. Protocol editor: rewritten from the empty canvas.' },
-  resetSite: { title: 'Reset site', doc: docTargets.resetButtons, more: 'Gates: deleted. Wires: back to 3 at 0p. Protocol editor: back to the default. None of the reset buttons is the compiler’s RESET operation.' },
-  speed: { title: 'Speed', doc: docTargets.runControls },
-  compileProtocol: { title: 'Compile protocol', doc: docTargets.compiler },
-  downloadQpucir: { title: 'Download as .qpucir', doc: docTargets.compiler },
-  downloadQpucirTxt: { title: 'Download as -qpucir.txt', doc: docTargets.compiler },
-  bundledProtocol: { title: 'Bundled protocol', doc: docTargets.compiler, more: 'Hover a bundled protocol button to see its truth table and child processes.' },
-};
-
-export const uiDocEntry = (key: string): DocEntry | undefined => {
-  if (!(key in uiDocs)) return undefined;
-  const info = uiDocs[key as UiDocKey];
-  return {
-    key: `ui:${key}`,
-    kind: 'control',
-    title: info.title,
-    subtitle: 'Builder control',
-    summary: uiTips[key as UiDocKey],
-    sections: info.more ? [{ heading: 'Good to know', body: info.more }] : [],
-    doc: info.doc,
-  };
+/** Entry for the protocol in the editor; bundled processes reuse their canonical .qpuio table. */
+export const protocolDocEntry = (source: string): DocEntry | undefined => {
+  try {
+    const name = extractMainProcessName(source);
+    if (!name) return undefined;
+    const catalogEntry = getCatalogEntry(name);
+    return processDocEntry({
+      key: `protocol:${name}`,
+      kind: 'process',
+      name,
+      source,
+      library: getCatalogLibrarySources(),
+      canonical: catalogEntry?.source.trim() === source.trim() ? catalogEntry.truthTable : undefined,
+    });
+  } catch {
+    // Half-typed editor text may not parse yet.
+    return undefined;
+  }
 };
 
 export const resolveDocEntry = (key: string): DocEntry | undefined => {
@@ -376,6 +379,5 @@ export const resolveDocEntry = (key: string): DocEntry | undefined => {
     return record ? customGateDocEntry(record) : undefined;
   }
   if (scope === 'process') return catalogProcessDocEntry(id);
-  if (scope === 'ui') return uiDocEntry(id);
   return undefined;
 };

@@ -8,9 +8,9 @@ import {
   childProcessNames,
   customGateDocEntry,
   gateDocs,
+  protocolDocEntry,
   resolveDocEntry,
 } from '../docEntries';
-import { uiTips } from '../learningHelp';
 
 // Wire layout matching each boolean table's column order (inputs and outputs list the same wires).
 const wiring: Record<string, Pick<CircuitGate, 'controls' | 'targets'>> = {
@@ -24,7 +24,7 @@ const wiring: Record<string, Pick<CircuitGate, 'controls' | 'targets'>> = {
   SWAP: { controls: [], targets: [0, 1] },
 };
 
-describe('hover documentation entries', () => {
+describe('workbench documentation entries', () => {
   it('documents every palette gate with a truth table, syntax, and target notes', () => {
     preconfiguredPaletteGates().forEach((gate) => {
       const entry = resolveDocEntry(`gate:${gate.id}`);
@@ -100,9 +100,15 @@ describe('hover documentation entries', () => {
       .toContain('A ← Control A; B ← Control B; Out → Target particle');
   });
 
-  it('documents every builder control that has a tooltip', () => {
-    Object.keys(uiTips).forEach((key) => {
-      expect(resolveDocEntry(`ui:${key}`)?.summary, key).toBe(uiTips[key as keyof typeof uiTips]);
-    });
+  it('documents the editor protocol, reusing the canonical table only for unedited bundled source', () => {
+    const twoBit = getCatalogEntry('TwoBitFullAdder')!;
+    const entry = protocolDocEntry(twoBit.source);
+    expect(entry?.inputs).toHaveLength(5);
+    expect(entry?.table?.rows).toEqual(twoBit.truthTable?.rows.map((row) => row.map((cell) => cell.replace(/p$/, ''))));
+    expect(entry?.table?.note).toContain('.qpuio');
+
+    const edited = protocolDocEntry(`${twoBit.source}\n# edited`);
+    expect(edited?.table?.note ?? '').not.toContain('.qpuio');
+    expect(protocolDocEntry('not a protocol')).toBeUndefined();
   });
 });
