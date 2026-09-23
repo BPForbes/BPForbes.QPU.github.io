@@ -921,6 +921,23 @@ function App() {
         />
       );
     }
+    if (docFocus === 'circuit' && activeCanvasGate) {
+      const wires = activeCanvasGate.targets.map((qubit) => `q${qubit}`).join(' and ');
+      return (
+        <aside aria-label={`About step ${cursor}`} className="workbench-docs">
+          <div className="workbench-docs-heading">
+            <p className="eyebrow">Step {cursor} of {orderedGates.length} on the canvas</p>
+            <button onClick={focusSelection} type="button">Back to selected gate</button>
+          </div>
+          <p>
+            {activeCanvasGate.type === 'RESET'
+              ? `This step is the compiler's internal RESET, inserted by SET: it forces ${wires} to |0⟩. It is hidden on the canvas and is not reversible.`
+              : `This step runs ${activeCanvasGateId} on ${wires}. There are no workbench notes for it.`}
+          </p>
+          {activeCanvasGate.type === 'RESET' ? <DocLink target={docTargets.resetSemantics} /> : null}
+        </aside>
+      );
+    }
     if (!selectedGate || !selectionDoc) return null;
     const swaps = selectedGateDefinition?.controlKind === 'swap';
     const swapPartner = secondControlQubit === selectedSimulationQubit
