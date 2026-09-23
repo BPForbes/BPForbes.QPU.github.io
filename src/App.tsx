@@ -8,6 +8,8 @@ import {
   replaceViewInLocation,
 } from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
+import { DocsDrawer } from './components/docs/DocsDrawer';
+import { TrailingToggle } from './components/docs/TrailingToggle';
 import { CustomGatePanel, GatePalette, SelectorMapDiagram } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
 import { OutputPanel } from './components/OutputPanel';
@@ -104,6 +106,24 @@ type AppView = PlaygroundViewId;
 
 const initialProtocolSource = protocolExamples[0].source;
 
+const DOCS_ON_HOVER_KEY = 'qpu-docs-on-hover-v1';
+
+const readDocsOnHover = () => {
+  try {
+    return localStorage.getItem(DOCS_ON_HOVER_KEY) === 'on';
+  } catch {
+    return false;
+  }
+};
+
+const writeDocsOnHover = (enabled: boolean) => {
+  try {
+    localStorage.setItem(DOCS_ON_HOVER_KEY, enabled ? 'on' : 'off');
+  } catch {
+    // Private browsing can block storage; the toggle still works for this visit.
+  }
+};
+
 const DocLink = ({ target, children }: { target: DocTarget; children?: ReactNode }) => (
   <a className="doc-link" href={docHref(import.meta.env.BASE_URL, target)} rel="noreferrer" target="_blank">
     {children ?? target.label}
@@ -192,6 +212,19 @@ function App() {
   const [fileStatus, setFileStatus] = useState('Upload a .qpucir file (or -qpucir.txt on restrictive file pickers), or download one of the bundled QPU circuits.');
   const [protocolMode, setProtocolMode] = useState<'canvas' | 'process'>('process');
   const [customGateRegistryVersion, setCustomGateRegistryVersion] = useState(0);
+  const [docsOnHover, setDocsOnHover] = useState(() => readDocsOnHover());
+  const updateDocsOnHover = (enabled: boolean) => {
+    setDocsOnHover(enabled);
+    writeDocsOnHover(enabled);
+  };
+  const docsToggle = (
+    <TrailingToggle
+      checked={docsOnHover}
+      description="Rest the pointer on a gate, custom gate, bundled protocol, or control to read its truth table, syntax, and notes in a side drawer."
+      label="Docs on hover"
+      onChange={updateDocsOnHover}
+    />
+  );
   const [particleSnapshots, setParticleSnapshots] = useState<ParticleSnapshot[]>([]);
   const [particleTransitions, setParticleTransitions] = useState<OperationTransition[]>([]);
   // Palette refresh bumps when custom gates register so GateBlock picks up new definitions.
@@ -869,7 +902,8 @@ function App() {
   }, []);
 
   return (
-    <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'}>
+    <main className={`${embedMode ? 'app-shell embed-shell' : 'app-shell'}${docsOnHover ? ' docs-open' : ''}`}>
+      <DocsDrawer onClose={() => updateDocsOnHover(false)} open={docsOnHover} registryVersion={customGateRegistryVersion} />
       <button
         aria-expanded={menuOpen}
         aria-label="Open site navigation"
@@ -904,6 +938,7 @@ function App() {
             </details>
             <button className={activeView === 'more' ? 'active' : ''} onClick={() => showView('more')} type="button">More</button>
             <button className="danger" onClick={resetSite} type="button">Reset site</button>
+            {docsToggle}
           </div>
         </div>
       </nav>
@@ -924,6 +959,8 @@ function App() {
           </div>
         </header>
       )}
+
+          <section className="panel settings-panel" aria-label="Learning settings">{docsToggle}</section>
 
           <section className="panel palette-panel" aria-labelledby="palette-title">
             <div className="section-heading">
@@ -957,39 +994,39 @@ function App() {
               <h2 id="workbench-title">Add particles, gates, and measurements</h2>
             </div>
             <div className="workbench-grid">
-              <label title={uiTips.gate}>
+              <label data-doc="ui:gate" title={uiTips.gate}>
                 Gate
                 <select value={selectedGate ?? ''} onChange={(event) => setSelectedGate(event.target.value as GateType)}>
                   {palette.map((gate) => <option key={gate} value={gate}>{gate}</option>)}
                 </select>
               </label>
-              <label className="selector-role selector-writes" title={uiTips.targetParticle}>
+              <label className="selector-role selector-writes" data-doc="ui:targetParticle" title={uiTips.targetParticle}>
                 <span>Target particle <small>changed</small></span>
                 <select value={selectedTarget} onChange={(event) => setTargetQubit(Number(event.target.value))}>
                   {Array.from({ length: qubitCount }, (_, qubit) => <option key={qubit} value={qubit}>q{qubit}</option>)}
                 </select>
               </label>
-              <label className={`selector-role ${selectorUse.controlA ? 'selector-reads' : 'selector-unused'}`} title={uiTips.controlA}>
+              <label className={`selector-role ${selectorUse.controlA ? 'selector-reads' : 'selector-unused'}`} data-doc="ui:controlA" title={uiTips.controlA}>
                 <span>Control A <small>{selectorUse.controlA ? 'read only' : `not used by ${selectedGate ?? 'this gate'}`}</small></span>
                 <select value={controlQubit} onChange={(event) => setControlQubit(Number(event.target.value))}>
                   {Array.from({ length: qubitCount }, (_, qubit) => <option disabled={qubit === selectedTarget} key={qubit} value={qubit}>q{qubit}</option>)}
                 </select>
               </label>
-              <label className={`selector-role ${selectorUse.controlB ? 'selector-reads' : 'selector-unused'}`} title={uiTips.controlB}>
+              <label className={`selector-role ${selectorUse.controlB ? 'selector-reads' : 'selector-unused'}`} data-doc="ui:controlB" title={uiTips.controlB}>
                 <span>Control B <small>{selectorUse.controlB ? (selectedGateDefinition?.controlKind === 'swap' ? 'swap partner' : 'read only') : `not used by ${selectedGate ?? 'this gate'}`}</small></span>
                 <select value={secondControlQubit} onChange={(event) => setSecondControlQubit(Number(event.target.value))}>
                   {Array.from({ length: qubitCount }, (_, qubit) => <option disabled={qubit === selectedTarget || qubit === controlQubit} key={qubit} value={qubit}>q{qubit}</option>)}
                 </select>
               </label>
               {selectedGateDefinition?.supportsPhase ? (
-                <label className="phase-control" title={uiTips.phaseAngle}>
+                <label className="phase-control" data-doc="ui:phaseAngle" title={uiTips.phaseAngle}>
                   Phase angle: {phaseDegrees}°
                   <input min="0" max="360" step="15" type="range" value={phaseDegrees} onChange={(event) => setPhaseDegrees(Number(event.target.value))} />
                 </label>
               ) : null}
             </div>
             {selectedGate ? (
-              <aside aria-label={`What ${selectedGate} does`} className="gate-help">
+              <aside aria-label={`What ${selectedGate} does`} className="gate-help" data-doc={`gate:${selectedGate}`}>
                 <div className="gate-help-heading">
                   <strong>{selectedGateHelp?.name ?? `Custom gate ${selectedGate}`}</strong>
                   {selectedGateHelp ? <code>{selectedGateHelp.rule}</code> : null}
@@ -1020,14 +1057,14 @@ function App() {
               </aside>
             ) : null}
             <div className="workbench-actions">
-              <button onClick={addGateFromWorkbench} title={uiTips.addGate} type="button">Add gate to target</button>
-              <button onClick={addParticle} title={uiTips.addParticle} type="button">Add particle</button>
-              <button onClick={removeParticle} title={uiTips.removeParticle} type="button">Remove particle</button>
-              <button onClick={measureSelectedQubit} title={uiTips.measureTarget} type="button">Measure target</button>
+              <button data-doc="ui:addGate" onClick={addGateFromWorkbench} title={uiTips.addGate} type="button">Add gate to target</button>
+              <button data-doc="ui:addParticle" onClick={addParticle} title={uiTips.addParticle} type="button">Add particle</button>
+              <button data-doc="ui:removeParticle" onClick={removeParticle} title={uiTips.removeParticle} type="button">Remove particle</button>
+              <button data-doc="ui:measureTarget" onClick={measureSelectedQubit} title={uiTips.measureTarget} type="button">Measure target</button>
             </div>
             <div className="start-state-picker" aria-label="Process parameter start states">
               {controllableParams.map((param) => (
-                <label key={param.name} title={uiTips.startState}>
+                <label data-doc="ui:startState" key={param.name} title={uiTips.startState}>
                   {param.name} start
                   <select value={startStates[param.qubitIndex] ?? '0p'} onChange={(event) => updateStartState(param.qubitIndex, event.target.value as ParticleStartState)}>
                     <option value="0p">0p</option>
@@ -1041,15 +1078,15 @@ function App() {
           </section>
 
           <section className="controls panel" aria-label="Run controls">
-            <button aria-pressed={playing} className={playing ? 'playing' : ''} onClick={playSequence} title={uiTips.playSequence} type="button">
+            <button aria-pressed={playing} className={playing ? 'playing' : ''} data-doc="ui:playSequence" onClick={playSequence} title={uiTips.playSequence} type="button">
               {playing ? 'Pause sequence' : 'Play Sequence'}
             </button>
-            <button onClick={run} title={uiTips.runAll} type="button">Run all</button>
-            <button disabled={playing || cursor >= orderedGates.length} onClick={step} title={uiTips.stepGate} type="button">Step gate</button>
-            <button onClick={resetCircuit} title={uiTips.resetState} type="button">Reset state</button>
-            <button onClick={measure} title={uiTips.measureAll} type="button">Measure all</button>
-            <button onClick={clearCircuit} title={uiTips.clearCircuit} type="button">Clear circuit</button>
-            <button onClick={resetSite} title={uiTips.resetSite} type="button">Reset site</button>
+            <button data-doc="ui:runAll" onClick={run} title={uiTips.runAll} type="button">Run all</button>
+            <button data-doc="ui:stepGate" disabled={playing || cursor >= orderedGates.length} onClick={step} title={uiTips.stepGate} type="button">Step gate</button>
+            <button data-doc="ui:resetState" onClick={resetCircuit} title={uiTips.resetState} type="button">Reset state</button>
+            <button data-doc="ui:measureAll" onClick={measure} title={uiTips.measureAll} type="button">Measure all</button>
+            <button data-doc="ui:clearCircuit" onClick={clearCircuit} title={uiTips.clearCircuit} type="button">Clear circuit</button>
+            <button data-doc="ui:resetSite" onClick={resetSite} title={uiTips.resetSite} type="button">Reset site</button>
             <details className="help-panel">
               <summary>What do Reset state, Clear circuit, and Reset site do?</summary>
               <table>
@@ -1072,7 +1109,7 @@ function App() {
                 <DocLink target={docTargets.resetSemantics} />
               </p>
             </details>
-            <label className="speed-control" title={uiTips.speed}>
+            <label className="speed-control" data-doc="ui:speed" title={uiTips.speed}>
               Speed {playSpeed.toFixed(2).replace(/\.00$/, '')}x
               <input
                 aria-label="Play sequence speed"
@@ -1138,6 +1175,7 @@ function App() {
                       // Compile summary and runtime log already contain the parse error.
                     }
                   }}
+                  data-doc={`process:${example.name}`}
                   title={uiTips.bundledProtocol}
                   type="button"
                 >
@@ -1152,9 +1190,9 @@ function App() {
               spellCheck={false}
             />
             <div className="compiler-footer">
-              <button onClick={compileProtocol} title={uiTips.compileProtocol} type="button">Compile protocol</button>
-              <button onClick={downloadCompiledProtocol} title={uiTips.downloadQpucir} type="button">Download as .qpucir</button>
-              <button onClick={() => downloadQpucirTxtSource(protocolSource, extractMainProcessName(protocolSource) ?? 'Compiled QPU circuit')} title={uiTips.downloadQpucirTxt} type="button">Download as -qpucir.txt</button>
+              <button data-doc="ui:compileProtocol" onClick={compileProtocol} title={uiTips.compileProtocol} type="button">Compile protocol</button>
+              <button data-doc="ui:downloadQpucir" onClick={downloadCompiledProtocol} title={uiTips.downloadQpucir} type="button">Download as .qpucir</button>
+              <button data-doc="ui:downloadQpucirTxt" onClick={() => downloadQpucirTxtSource(protocolSource, extractMainProcessName(protocolSource) ?? 'Compiled QPU circuit')} title={uiTips.downloadQpucirTxt} type="button">Download as -qpucir.txt</button>
               <span>{compileSummary}</span>
             </div>
             <section
@@ -1259,6 +1297,21 @@ function App() {
                 twice in a row; every wire should end where it started.
               </p>
               <p className="help-links"><DocLink target={docTargets.customGates} /></p>
+            </article>
+            <article data-doc="process:TwoBitFullAdder">
+              <h3>Main and child processes</h3>
+              <p>
+                A process is a named list of gates with inputs (<code>PARAMS</code>) and outputs (<code>RETURNVALS</code>). The
+                <strong> main process</strong> is the one you compile and run. A <strong>child process</strong> is another saved
+                process it borrows with <code>RUNCHILD</code>, like calling a helper function.
+              </p>
+              <p>
+                Nothing is called at run time: the compiler copies the child&apos;s gates into the main circuit, feeding
+                <code> -I</code> wires to the child&apos;s inputs and <code>-O</code> wires to its outputs, in order. TwoBitFullAdder
+                is a main process that runs SingleBitFullAdder twice as a child. With <strong>Docs on hover</strong> on, rest the
+                pointer here to browse it and open the child in a drawer tab.
+              </p>
+              <p className="help-links"><DocLink target={docTargets.processes} /></p>
             </article>
             <article>
               <h3>How circuits are built</h3>

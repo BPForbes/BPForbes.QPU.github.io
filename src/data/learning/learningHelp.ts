@@ -28,6 +28,7 @@ export const docTargets = {
   resetButtons: { file: 'QPU_Getting_Started.pdf', anchor: 'reset-buttons', label: 'Reset buttons compared (Getting Started)' },
   resetSemantics: { file: 'QPU_Theory_Guide.pdf', anchor: 'reset-semantics', label: 'Why RESET is not a gate (Theory Guide)' },
   customGates: { file: 'QPU_Examples_and_Troubleshooting.pdf', anchor: 'custom-gates', label: 'Custom gates (Examples)' },
+  processes: { file: 'QPU_Language_Reference.pdf', anchor: 'process-composition', label: 'Main and child processes (Language Reference)' },
   advancedCircuits: { file: 'QPU_Examples_and_Troubleshooting.pdf', anchor: 'advanced-circuits', label: 'Advanced worked circuits (Examples)' },
 } as const satisfies Record<string, DocTarget>;
 

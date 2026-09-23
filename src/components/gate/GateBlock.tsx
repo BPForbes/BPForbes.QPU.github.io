@@ -32,6 +32,7 @@ export function GateBlock({ type, draggable = false, selected = false, compact =
   return (
     <button
       className={`gate ${cssClass} ${selected ? 'selected' : ''} ${compact ? 'compact' : ''}`}
+      data-doc={`gate:${type}`}
       draggable={draggable}
       onClick={onClick}
       onDragStart={(event) => {

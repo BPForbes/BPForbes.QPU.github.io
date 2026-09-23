@@ -110,7 +110,7 @@ export function CustomGatePanel({ protocolSource, onRegistryChange, registryVers
       {customGates.length > 0 && (
         <ul className="custom-gate-list">
           {customGates.map((gate) => (
-            <li key={gate.id}>
+            <li data-doc={`gate:${gate.id}`} key={gate.id}>
               <span className="custom-gate-swatch" style={{ background: gate.color }} />
               <span>{gate.label}</span>
               <small>{gate.inputParamNames.join(', ')} → {gate.outputParamNames.join(', ')}</small>
