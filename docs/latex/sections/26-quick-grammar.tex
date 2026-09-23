@@ -10,9 +10,11 @@ logical-line := command | comment | blank
 command      := opcode argument*
 opcode       := supported-command
              | primitive-gate
-             | "B" primitive-gate
+             | primitive-gate ("dg" | "inv")
+             | ("dg" | "inv") primitive-gate
              | "PHASE=" angle
-             | "BPHASE=" angle
+             | "PHASE" ("dg" | "inv") "=" angle
+             | ("dg" | "inv") "PHASE=" angle
 
 gate-row     := opcode "-I" input+ "-O" output+ ["-$R"]
 measure-row  := "MEASURE" ["-I" input]

@@ -92,15 +92,38 @@ RETURNVALS R`);
   });
 });
 
-describe('inverse phase prefixes', () => {
-  it('lowers BS and BT to the negative phase gates', () => {
+describe('inverse markers', () => {
+  it('lowers dg and inv on S, T, and PHASE to the negative angle', () => {
     const compiled = compileQpuProtocol(`MAIN-PROCESS Inverse
 SET Q 0p
-BS -I Q -O Q
-BT -I Q -O Q
+Sdg -I Q -O Q
+Tinv -I Q -O Q
+dgS -I Q -O Q
+invT -I Q -O Q
+PHASEdg=pi/4 -I Q -O Q
+invPHASE=pi/2 -I Q -O Q
+Xdg -I Q -O Q
+dgCNOT -I Q -O Q
 RETURNVALS Q`);
     const phases = compiled.gates.filter((gate) => gate.type === 'PHASE').map((gate) => gate.phase);
-    expect(phases).toEqual([expect.closeTo(-Math.PI / 2, 12), expect.closeTo(-Math.PI / 4, 12)]);
+    expect(phases).toEqual([
+      expect.closeTo(-Math.PI / 2, 12),
+      expect.closeTo(-Math.PI / 4, 12),
+      expect.closeTo(-Math.PI / 2, 12),
+      expect.closeTo(-Math.PI / 4, 12),
+      expect.closeTo(-Math.PI / 4, 12),
+      expect.closeTo(-Math.PI / 2, 12),
+    ]);
+    expect(compiled.gates.filter((gate) => gate.type === 'X')).toHaveLength(1);
+    expect(compiled.gates.filter((gate) => gate.type === 'CNOT')).toHaveLength(1);
+    expect(compiled.warnings).toEqual([]);
+  });
+
+  it('rejects the retired B prefix', () => {
+    expect(() => compileQpuProtocol(`MAIN-PROCESS Old
+SET Q 0p
+BX -I Q -O Q
+RETURNVALS Q`)).toThrow(/Unknown command: BX/);
   });
 });
 

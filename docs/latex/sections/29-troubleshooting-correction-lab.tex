@@ -150,8 +150,9 @@ COMPILE\_ERROR & Syntax was readable but compilation could not complete. &
 Inspect child names, SET values, and SWAP bindings.\\
 CYCLE\_SUFFIX\_MISMATCH & An integer \code{:} suffix does not match the
 process cycle. & Move the reference or add \code{INCREASECYCLE}.\\
-INACTIVE\_REVERSE\_PREFIX & A B-prefixed gate other than S, T, or PHASE is
-not a distinct inverse. & Drop the prefix on a self-inverse gate.\\
+INACTIVE\_INVERSE\_MARKER & A dg or inv marker on a gate other than
+PHASE, S, T, or a self-inverse primitive does not invert it. & Remove the
+marker from MEASURE.\\
 MISSING\_MAIN\_PROCESS & InlineProcess fallback will be used. & Add a stable
 MAIN-PROCESS name.\\
 MISSING\_RETURN\_VALUES & No public outputs are declared. & Add RETURNVALS in

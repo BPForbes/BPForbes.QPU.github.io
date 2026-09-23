@@ -69,7 +69,7 @@ describe('rotation parameter parsing', () => {
     const source = `MAIN-PROCESS PiPhase
 SET Q0:0 0p
 PHASE=pi -I Q0:0 -O Q0:0
-BPHASE=-pi -I Q0:0 -O Q0:0
+PHASEdg=-pi -I Q0:0 -O Q0:0
 PHASE=-11pi/6 -I Q0:0 -O Q0:0
 PHASE=2*pi/3 -I Q0:0 -O Q0:0
 PHASE=7pi/2 -I Q0:0 -O Q0:0

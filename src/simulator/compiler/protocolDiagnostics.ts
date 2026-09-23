@@ -182,11 +182,11 @@ export const analyzeQpuProtocol = (
       if (command.reverse && command.op !== 'PHASE' && command.op !== 'S' && command.op !== 'T' && !SELF_INVERSE_PRIMITIVES.has(command.op)) {
         diagnostics.push({
           severity: 'warning',
-          code: 'INACTIVE_REVERSE_PREFIX',
-          message: `The B prefix on ${command.op} does not currently synthesize an inverse operation.`,
+          code: 'INACTIVE_INVERSE_MARKER',
+          message: `The dg/inv marker on ${command.op} does not synthesize an inverse operation.`,
           line: line.line,
           source: line.text,
-          suggestion: 'Remove the B prefix unless only compatibility metadata is intended.',
+          suggestion: 'Remove the dg or inv marker. Only PHASE, S, T, and the self-inverse primitives use it as an inverse.',
         });
       }
       if (command.op === 'RETURNVALS' && command.args.some((arg) => arg.startsWith('-'))) {

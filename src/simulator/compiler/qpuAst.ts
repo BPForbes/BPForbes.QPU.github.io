@@ -209,6 +209,27 @@ export const parseParameters = (line: string): ProtocolProcess['params'] => {
 };
 
 // Wrong -I/-O spans would mis-wire controls onto outputs, so each flag list ends at the next flag token.
+const INVERSE_MARKERS = ['DG', 'INV'] as const;
+
+const stripInverseMarker = (normalized: string): { opcode: string; reverse: boolean } => {
+  const equalsAt = normalized.indexOf('=');
+  const head = equalsAt === -1 ? normalized : normalized.slice(0, equalsAt);
+  const tail = equalsAt === -1 ? '' : normalized.slice(equalsAt);
+
+  for (const marker of INVERSE_MARKERS) {
+    if (head.length > marker.length && head.endsWith(marker)) {
+      const candidate = head.slice(0, -marker.length);
+      if (primitiveGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
+    }
+    if (head.length > marker.length && head.startsWith(marker)) {
+      const candidate = head.slice(marker.length);
+      if (primitiveGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
+    }
+  }
+
+  return { opcode: normalized, reverse: false };
+};
+
 const splitFlagArgs = (tokens: string[], flag: '-I' | '-O') => {
   const upper = tokens.map((token) => token.toUpperCase());
   const start = upper.indexOf(flag);
@@ -225,23 +246,13 @@ export const parseCommand = (line: string): ParsedCommand => {
   const rawOp = tokens[0];
   const upperTokens = tokens.map((token) => token.toUpperCase());
   const noParameterSubstitution = upperTokens.includes('-$R');
-  let reverse = false;
-  let normalized = rawOp.toUpperCase();
   let phase: number | undefined;
 
-  // Backward gate spellings prefix primitives with B, while PHASE embeds its rotation in the opcode token.
-  if (normalized.startsWith('B')) {
-    const candidate = normalized.slice(1).split('=', 1)[0];
-    if (primitiveGates.has(candidate)) {
-      reverse = true;
-      normalized = normalized.slice(1);
-    }
-  }
-
-  if (normalized.startsWith('BPHASE=')) {
-    reverse = true;
-    normalized = normalized.slice(1);
-  }
+  // dg (dagger) and inv (inverse) mark a primitive, either as a suffix (Sdg) or a prefix (dgS).
+  // PHASE keeps its angle on the opcode token: PHASEdg=pi/4 and dgPHASE=pi/4.
+  const marked = stripInverseMarker(rawOp.toUpperCase());
+  let normalized = marked.opcode;
+  const reverse = marked.reverse;
 
   if (normalized.includes('=')) {
     const [gate, value] = normalized.split('=', 2);

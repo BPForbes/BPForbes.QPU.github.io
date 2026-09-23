@@ -56,11 +56,11 @@ RETURNVALS Q`);
     }));
   });
 
-  it('executes join, parameter lock, and BT without inactive-syntax warnings', () => {
+  it('executes join, parameter lock, and Tdg without inactive-syntax warnings', () => {
     const report = analyzeQpuProtocol(`MAIN-PROCESS Compatibility
 JOIN -I A B -O AB
 PHASE=pi/2 -I A -O A -$R
-BT -I B -O B
+Tdg -I B -O B
 RETURNVALS A B`);
 
     expect(report.canCompile).toBe(true);
@@ -125,6 +125,20 @@ RETURNVALS Result`);
       line: 2,
       source: 'DECLARECHILD MissingChild',
       suggestion: expect.stringContaining('register'),
+    }));
+  });
+
+  it('warns when dg or inv is applied to measurement', () => {
+    const report = analyzeQpuProtocol(`MAIN-PROCESS Measured
+SET Q 0p
+MEASUREdg -I Q
+RETURNVALS Q`);
+
+    expect(report.canCompile).toBe(true);
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'warning',
+      code: 'INACTIVE_INVERSE_MARKER',
+      line: 3,
     }));
   });
 
