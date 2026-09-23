@@ -21,7 +21,10 @@ type DocsDrawerProps = {
 
 const tabLabel = (key: string) => key.slice(key.indexOf(':') + 1);
 
+const MAX_TABLE_ROWS = 64;
+
 function DocTableView({ table }: { table: NonNullable<DocEntry['table']> }) {
+  const rows = table.rows.slice(0, MAX_TABLE_ROWS);
   return (
     <div className="docs-table-wrap">
       <table className="docs-table">
@@ -35,7 +38,7 @@ function DocTableView({ table }: { table: NonNullable<DocEntry['table']> }) {
           </tr>
         </thead>
         <tbody>
-          {table.rows.map((row, rowIndex) => (
+          {rows.map((row, rowIndex) => (
             <tr key={rowIndex}>
               {row.map((cell, index) => (
                 <td className={index === table.inputCount ? 'docs-output-start' : undefined} key={index}>{cell}</td>
@@ -44,6 +47,9 @@ function DocTableView({ table }: { table: NonNullable<DocEntry['table']> }) {
           ))}
         </tbody>
       </table>
+      {table.rows.length > rows.length ? (
+        <small>Showing the first {rows.length} of {table.rows.length} rows. The Circuit correction lab shows them all.</small>
+      ) : null}
       {table.note ? <small>{table.note}</small> : null}
     </div>
   );
