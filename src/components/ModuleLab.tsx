@@ -68,6 +68,8 @@ import {
   type TruthTable,
   type TruthTableTestResult,
 } from '../simulator/moduleTestApi';
+import { GroupedTableRows } from './grouping/GroupedTableRows';
+import { binaryPrefixLabel } from './grouping/powerOfTwoGroups';
 
 type ChatMessage = {
   id: string;
@@ -80,6 +82,7 @@ const DEFAULT_OUTPUTS = ['Y'];
 const cellOptions: TruthCellValue[] = ['0p', '1p', 'sp'];
 const MAX_INPUT_COUNT = 6;
 const MAX_OUTPUT_COUNT = 4;
+const basisBit = (cell: TruthCellValue) => (cell === '0p' ? '0' : cell === '1p' ? '1' : cell);
 
 const generateId = () => {
   if (typeof crypto?.randomUUID === 'function') {
@@ -1001,17 +1004,27 @@ export const ModuleLab = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {truthTable.rows.map((row, rowIndex) => (
-                    <TruthTableRow
-                      failed={failedRowIndexes.has(rowIndex)}
-                      key={rowIndex}
-                      onCellChange={updateCell}
-                      passed={allRowsPass}
-                      readOnly={truthTableProtected}
-                      row={row}
-                      rowIndex={rowIndex}
-                    />
-                  ))}
+                  <GroupedTableRows
+                    columnCount={allColumns.length + 1}
+                    count={truthTable.rows.length}
+                    labelFor={(start, end) => binaryPrefixLabel(
+                      truthTable.inputColumns,
+                      (rowIndex) => truthTable.rows[rowIndex].slice(0, truthTable.inputColumns.length).map(basisBit),
+                      start,
+                      end,
+                    )}
+                    openIndexes={failedRowIndexes}
+                    renderRow={(rowIndex) => (
+                      <TruthTableRow
+                        failed={failedRowIndexes.has(rowIndex)}
+                        onCellChange={updateCell}
+                        passed={allRowsPass}
+                        readOnly={truthTableProtected}
+                        row={truthTable.rows[rowIndex]}
+                        rowIndex={rowIndex}
+                      />
+                    )}
+                  />
                 </tbody>
               </table>
             </div>
