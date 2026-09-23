@@ -184,6 +184,8 @@ function App() {
   const [secondControlQubit, setSecondControlQubit] = useState(2);
   const [phaseDegrees, setPhaseDegrees] = useState(90);
   const [protocolSource, setProtocolSource] = useState(protocolExamples[0].source);
+  // The protocol card describes the last circuit that compiled, not the editor text while it is being changed.
+  const [compiledSource, setCompiledSource] = useState<string | null>(null);
   const [selectedQpuDocument, setSelectedQpuDocument] = useState<QpuDocument>(QPU_DOCUMENTS[0]);
   const [compileSummary, setCompileSummary] = useState('Paste or load a QPU protocol, then compile it into visual gates.');
   const [tokenMap, setTokenMap] = useState<Record<string, number>>({});
@@ -327,6 +329,7 @@ function App() {
   // Canvas edits own the protocol text in canvas mode; compiled process metadata is cleared to avoid stale token labels.
   const syncCanvasProtocol = (nextGates: CircuitGate[], nextQubitCount = simulationQubitCount, nextStartStates = startStates) => {
     setProtocolMode('canvas');
+    setCompiledSource(null);
     setProcessParams([]);
     setReturnValues([]);
     setTokenMap({});
@@ -483,26 +486,25 @@ function App() {
 
   // Start-state edits write back into either the canvas serialization or the matching PARAMS declaration.
   const updateStartStates = (assignments: ReadonlyMap<number, ParticleStartState>) => {
-    if (assignments.size === 0) return;
+    // In a compiled process only PARAMS are start states. A return wire or a selector
+    // that is not a parameter must not become a new SET line.
+    const updates = [...assignments].flatMap(([qubit, value]) => {
+      const name = controllableParams.find((param) => param.qubitIndex === qubit)?.name;
+      if (protocolMode === 'process' && !name) return [];
+      return [{ qubit, value, name: name ?? `q${qubit}` }];
+    });
+    if (updates.length === 0) return;
+    const allowed = new Map(updates.map(({ qubit, value }) => [qubit, value]));
     const nextStartStates = Array.from(
       { length: simulationQubitCount },
-      (_, index) => assignments.get(index) ?? startStates[index] ?? '0p',
+      (_, index) => allowed.get(index) ?? startStates[index] ?? '0p',
     );
     setStartStates(nextStartStates);
-    const updates = [...assignments].map(([qubit, value]) => {
-      const paramName = controllableParams.find((param) => param.qubitIndex === qubit)?.name;
-      const declaredName = protocolMode === 'process'
-        ? getProtocolParameterEntries(protocolSource)[qubit]?.name
-        : undefined;
-      return { qubit, value, name: declaredName ?? paramName ?? `Q${qubit}` };
-    });
     setProtocolSource((current) => {
       if (protocolMode !== 'process') {
         return serializeCircuitToQpuProtocol(gates, simulationQubitCount, nextStartStates);
       }
-      return updates.reduce((source, { qubit, value, name }) => (
-        updateProtocolStartStateSet(source, getProtocolParameterEntries(source)[qubit]?.name ?? name, value)
-      ), current);
+      return updates.reduce((source, { value, name }) => updateProtocolStartStateSet(source, name, value), current);
     });
     resetRuntime(
       simulationQubitCount,
@@ -526,6 +528,7 @@ function App() {
     setSecondControlQubit(2);
     setPhaseDegrees(90);
     setProtocolSource(initialProtocolSource);
+    setCompiledSource(null);
     setCompileSummary('Paste or load a QPU protocol, then compile it into visual gates.');
     setTokenMap({});
     setProcessParams([]);
@@ -675,6 +678,7 @@ function App() {
     setSimulationQubitCount(example.qubitCount);
     setGates(example.gates);
     setProtocolMode('canvas');
+    setCompiledSource(null);
     setProtocolSource(serializeCircuitToQpuProtocol(example.gates, example.qubitCount, nextStartStates, example.name));
     setStartStates(nextStartStates);
     setTokenMap({});
@@ -692,6 +696,7 @@ function App() {
   ) => {
     try {
       const result = compileQpuProtocol(source, getCatalogLibrarySources());
+      setCompiledSource(source);
       setProtocolMode('process');
       setSimulationQubitCount(result.qubitCount);
       setQubitCount(result.logicalQubitCount);
@@ -887,8 +892,10 @@ function App() {
     [activeCanvasGateId, customGateRegistryVersion],
   );
   const protocolDoc = useMemo(
-    () => (protocolMode === 'process' && processParams.length > 0 ? protocolDocEntry(protocolSource) : undefined),
-    [protocolMode, processParams.length, protocolSource],
+    () => (protocolMode === 'process' && processParams.length > 0 && compiledSource
+      ? protocolDocEntry(compiledSource)
+      : undefined),
+    [protocolMode, processParams.length, compiledSource],
   );
   const startValue = (qubit: number) => startStateWireValue(startStates[qubit]);
   const gateSymbol = (gateId: string) => (['X', 'NOT', 'CNOT', 'CCNOT'].includes(gateId) ? '⊕' : getGateDefinition(gateId)?.label ?? gateId);
@@ -948,13 +955,15 @@ function App() {
         controls={workbenchControlsForGate(selectedGate, selectedSimulationQubit) ?? []}
         entry={selectionDoc}
         eyebrow="Selected gate · where Add gate to target will put it"
-        onTryRow={updateStartStates}
+        onTryRow={protocolMode === 'canvas' ? updateStartStates : undefined}
         qubitCount={qubitCount}
         reversible={gateHelp[selectedGate]?.reversible}
         symbol={gateSymbol(selectedGate)}
         targets={swaps ? [selectedSimulationQubit, swapPartner] : [selectedSimulationQubit]}
         valueOf={startValue}
-        valuesNote="Values from the start states. Change them below, or press Try on a row under Learn more."
+        valuesNote={protocolMode === 'canvas'
+          ? 'Values from the start states. Change them below, or press Try on a row under Learn more.'
+          : 'Values from the start states. Use Try on the compiled protocol card to load one of its input rows.'}
       />
     );
   })();

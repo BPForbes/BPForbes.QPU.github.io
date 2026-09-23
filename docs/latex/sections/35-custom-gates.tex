@@ -88,8 +88,10 @@ the one before it, and so on.
 \[
 (U_k\cdots U_2U_1)^{-1}=U_1^{-1}U_2^{-1}\cdots U_k^{-1}.
 \]
-NorGate is OR followed by X. Both undo themselves, so NOR undoes itself too:
-placing the block twice in a row returns every wire to where it started.
+NorGate is OR followed by X. Each gate only XORs a value into Out, so the two
+gates commute and NOR undoes itself: placing the block twice in a row returns
+every wire to where it started. Two self-inverse gates in sequence are not
+self-inverse in general; the inverse of $U_2U_1$ is $U_1U_2$.
 Written as a rule, the block performs
 \[
 \mathrm{Out}'=\mathrm{Out}\oplus\neg(A\lor B),

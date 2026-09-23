@@ -111,4 +111,15 @@ describe('workbench documentation entries', () => {
     expect(edited?.table?.note ?? '').not.toContain('.qpuio');
     expect(protocolDocEntry('not a protocol')).toBeUndefined();
   });
+
+  it('records a superposed output as sp instead of one measurement sample', () => {
+    const source = ['PARAMS: A:state', 'MAIN-PROCESS Coin', 'H -I A -O A', 'RETURNVALS A'].join('\n');
+    const measured = ['PARAMS: A:state', 'MAIN-PROCESS Coin', 'H -I A -O A', 'MEASURE -I A', 'RETURNVALS A'].join('\n');
+    const rows = [['0', 'sp'], ['1', 'sp']];
+    const first = protocolDocEntry(source)?.table?.rows;
+    expect(first).toEqual(rows);
+    expect(protocolDocEntry(source)?.table?.rows).toEqual(first);
+    expect(protocolDocEntry(measured)?.table?.rows).toEqual(rows);
+    expect(protocolDocEntry(measured)?.table?.note).toContain('not a definite');
+  });
 });

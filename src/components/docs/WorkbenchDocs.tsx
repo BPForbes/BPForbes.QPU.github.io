@@ -3,7 +3,7 @@
  * explains the gate or process on the wires currently being examined; Learn
  * more expands the full table, notes, syntax, and child processes in place.
  */
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { catalogProcessDocEntry, type DocEntry, type DocTable } from '../../data/learning/docEntries';
 import {
   columnWires,
@@ -93,7 +93,7 @@ function DocTableView({ table, wires, rows, highlighted, onTryRow, grouped = fal
 /** Full notes for a child process, resolved only once its disclosure is opened. */
 function ChildProcessDocs({ name }: { name: string }) {
   const [open, setOpen] = useState(false);
-  const entry = open ? catalogProcessDocEntry(name) : undefined;
+  const entry = useMemo(() => (open ? catalogProcessDocEntry(name) : undefined), [open, name]);
   return (
     <details className="docs-child" onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary>{name}</summary>

@@ -12,9 +12,11 @@ import {
   extractMainProcessName,
   getProtocolParameterEntries,
   getReturnValTokens,
-  simulateTruthTableOutputs,
   type TruthTable,
 } from '../../simulator/compiler';
+import { magnitudeSquared } from '../../simulator/complex';
+import { hasBit, runCircuit } from '../../simulator/engine';
+import type { ParticleStartState } from '../../simulator/types';
 import { getCustomGateRecord, type CustomGateRecord } from '../../simulator/gates/customGateEngine';
 import { docTargets, gateDocTarget, gateHelp, type DocTarget } from './learningHelp';
 
@@ -232,6 +234,64 @@ const toDocTable = (table: TruthTable, note: string): DocTable => ({
   note,
 });
 
+const registerQubit = (tokenMap: Record<string, number>, name: string) => {
+  const entry = Object.entries(tokenMap).find(([token]) => token === name || token.endsWith(`/${name}`));
+  if (!entry) throw new Error(`Missing register '${name}'`);
+  return entry[1];
+};
+
+const bitFromProbability = (probabilityOne: number, tolerance: number): '0' | '1' | 'sp' => {
+  if (probabilityOne <= tolerance) return '0';
+  if (probabilityOne >= 1 - tolerance) return '1';
+  return 'sp';
+};
+
+// The shared table simulator measures each row once. A teaching table must not
+// present that sample as the row, so this reads the probability instead.
+const simulateDocTable = (source: string, library: Record<string, string>): DocTable => {
+  const compiled = compileQpuProtocol(source, library);
+  const inputColumns = compiled.processParams.filter((param) => param.type === 'state').map((param) => param.name);
+  const outputColumns = compiled.returnValues.map((value) => value.name);
+  const rows = Array.from({ length: 2 ** inputColumns.length }, (_, index) => {
+    const inputs = inputColumns.map((_, bit) => ((index >> (inputColumns.length - 1 - bit)) & 1) === 1 ? '1p' : '0p') as ParticleStartState[];
+    const startStates = Array.from({ length: compiled.qubitCount }, () => '0p' as ParticleStartState);
+    inputs.forEach((value, inputIndex) => {
+      startStates[registerQubit(compiled.tokenMap, inputColumns[inputIndex])] = value;
+    });
+    const executed = runCircuit(
+      compiled.qubitCount,
+      compiled.gates,
+      startStates,
+      compiled.processParams.map((param) => param.qubitIndex),
+    );
+    const qubitCount = Math.round(Math.log2(executed.state.length));
+    const outputs = outputColumns.map((name) => {
+      const qubit = registerQubit(compiled.tokenMap, name);
+      const logged = executed.log.reduce<number | undefined>((found, line) => {
+        const match = line.match(new RegExp(`Measured q${qubit} = [01] \\(P\\(1\\)=([0-9.]+)\\)`));
+        return match ? Number(match[1]) : found;
+      }, undefined);
+      if (logged !== undefined) return bitFromProbability(logged, 5e-3);
+      const probabilityOne = executed.state.reduce(
+        (sum, amplitude, basis) => sum + (hasBit(basis, qubit, qubitCount) ? magnitudeSquared(amplitude) : 0),
+        0,
+      );
+      return bitFromProbability(probabilityOne, 1e-6);
+    });
+    return [...inputs.map((value) => (value === '1p' ? '1' : '0')), ...outputs];
+  });
+  const superposed = rows.some((row) => row.slice(inputColumns.length).includes('sp'));
+  return {
+    columns: [...inputColumns, ...outputColumns],
+    roles: [...inputColumns, ...outputColumns],
+    inputCount: inputColumns.length,
+    rows,
+    note: superposed
+      ? 'Read from the state vector. sp means that output is not a definite 0 or 1, so one measurement is not the row.'
+      : 'Read from the state vector for every basis input. Each output shown is a definite 0 or 1.',
+  };
+};
+
 const processTable = (
   source: string,
   library: Record<string, string>,
@@ -241,7 +301,7 @@ const processTable = (
   if (canonical) return toDocTable(canonical, 'From the process’s .qpuio truth table. 0 = 0p, 1 = 1p, sp = either.');
   if (inputCount > MAX_SIMULATED_INPUTS) return undefined;
   try {
-    return toDocTable(simulateTruthTableOutputs(source, library), 'Simulated by running every basis input and measuring the outputs.');
+    return simulateDocTable(source, library);
   } catch {
     return undefined;
   }
