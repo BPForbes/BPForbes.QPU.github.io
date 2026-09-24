@@ -1,0 +1,32 @@
+PARAMS: A:state B:state C:state
+MAIN-PROCESS RecursiveReversibleEcho
+TREC MAXDEPTH 8
+EXIT WHEN DEPTH == 0
+# ==============================================
+# FORWARD TRANSFORM
+# ==============================================
+H -I A -O A
+RX=pi/3 -I B -O B
+RY=pi/5 -I C -O C
+CNOT -I A -O B
+CPHASE=pi/7 -I B -O C
+T -I A -O A
+AND -I A B -O C
+SWAP -I B C -O B C
+# ==============================================
+# REVERSE / ADJOINT TRANSFORM
+# ==============================================
+SWAPdg -I B C -O B C
+ANDinv -I A B -O C
+Tdg -I A -O A
+invCPHASE=pi/7 -I B -O C
+CNOTdg -I A -O B
+RYinv=pi/5 -I C -O C
+dgRX=pi/3 -I B -O B
+Hinv -I A -O A
+# ==============================================
+# NEXT LOGICAL STAGE
+# ==============================================
+INCREASECYCLE
+RECUR -I A B C
+RETURNVALS A B C

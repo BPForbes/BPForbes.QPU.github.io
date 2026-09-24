@@ -1,11 +1,15 @@
 import { getGateDefinition } from '../../simulator/gates/registry';
 import type { CircuitGate } from '../../simulator/types';
 import { glyphKindFor, glyphLabelFor, type CircuitGlyphKind } from '../circuitLayout';
+import { conditionBadgeLabel } from './branchVisuals';
 
 type CircuitGlyphProps = {
   gate: CircuitGate;
   qubit: number;
   active?: boolean;
+  branchOutcome?: 'taken' | 'skipped' | 'pending';
+  /** Canvas-only label override (e.g. REC for collapsed multi-op recursion). */
+  labelOverride?: string;
   onRemove?: () => void;
 };
 
@@ -38,16 +42,37 @@ const glyphContent = (kind: CircuitGlyphKind, label: string) => {
   return <span>{label}</span>;
 };
 
-export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitGlyphProps) {
-  const kind = glyphKindFor(gate, qubit);
+export function CircuitGlyph({
+  gate,
+  qubit,
+  active = false,
+  branchOutcome = 'pending',
+  labelOverride,
+  onRemove,
+}: CircuitGlyphProps) {
+  const kind = labelOverride ? 'box' : glyphKindFor(gate, qubit);
   const definition = getGateDefinition(String(gate.type));
-  const forwardLabel = glyphLabelFor(gate, qubit, definition?.label ?? String(gate.type));
-  const label = gate.inverse && kind === 'box' ? `${forwardLabel}†` : forwardLabel;
-  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${gate.inverse ? ' inverse' : ''}${gate.condition ? ' conditioned' : ''}${active ? ' active' : ''}`;
+  const forwardLabel = labelOverride
+    ?? glyphLabelFor(gate, qubit, definition?.label ?? String(gate.type));
+  const label = !labelOverride && gate.inverse && kind === 'box' ? `${forwardLabel}†` : forwardLabel;
+  const badge = conditionBadgeLabel(gate);
+  const branchClass = gate.condition
+    ? branchOutcome === 'taken'
+      ? ' branch-taken'
+      : branchOutcome === 'skipped'
+        ? ' branch-skipped'
+        : ''
+    : '';
+  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${!labelOverride && gate.inverse ? ' inverse' : ''}${gate.condition ? ' conditioned' : ''}${active ? ' active' : ''}${branchClass}`;
   const conditionNote = gate.condition
     ? ` if q${gate.condition.qubit}=${gate.condition.equals}`
     : '';
-  const title = `${gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}${conditionNote}`;
+  const branchNote = gate.branch
+    ? ` (${gate.branch.kind.toUpperCase()} ${branchOutcome})`
+    : '';
+  const title = labelOverride
+    ? `${labelOverride} recursive call${conditionNote}${branchNote}`
+    : `${gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}${conditionNote}${branchNote}`;
 
   if (onRemove) {
     return (
@@ -63,9 +88,7 @@ export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitG
       >
         {glyphContent(kind, label)}
         {gate.inverse && kind !== 'box' ? <span className="glyph-dagger">†</span> : null}
-        {gate.condition && kind === 'box' ? (
-          <span className="glyph-condition">c={gate.condition.equals}</span>
-        ) : null}
+        {badge && kind === 'box' ? <span className="glyph-condition">{badge}</span> : null}
       </button>
     );
   }
@@ -74,9 +97,7 @@ export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitG
     <span className={className} title={title}>
       {glyphContent(kind, label)}
       {gate.inverse && kind !== 'box' ? <span className="glyph-dagger">†</span> : null}
-      {gate.condition && kind === 'box' ? (
-        <span className="glyph-condition">c={gate.condition.equals}</span>
-      ) : null}
+      {badge && kind === 'box' ? <span className="glyph-condition">{badge}</span> : null}
     </span>
   );
 }

@@ -76,9 +76,39 @@ describe('recursion canvas visuals', () => {
     expect(columns).toHaveLength(1);
     expect(columns[0].displayGates).toHaveLength(1);
     expect(columns[0].displayGates[0].type).toBe('H');
+    expect(columns[0].displayLabel).toBeUndefined();
     expect(columns[0].cycleGate).toBeUndefined();
     expect(columns[0].recursion?.rootDepth).toBe(4);
     expect(columns[0].coveredSteps).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('labels multi-op recursive frames as REC', () => {
+    const columns = buildVisualCircuitColumns([
+      gate({
+        id: 'h0',
+        step: 0,
+        recursion: { process: 'Echo', depth: 2, level: 0, rootDepth: 2, mode: 'tco' },
+      }),
+      gate({
+        id: 'x0',
+        type: 'X',
+        step: 1,
+        recursion: { process: 'Echo', depth: 2, level: 0, rootDepth: 2, mode: 'tco' },
+      }),
+      gate({
+        id: 'h1',
+        step: 2,
+        recursion: { process: 'Echo', depth: 1, level: 1, rootDepth: 2, mode: 'tco' },
+      }),
+      gate({
+        id: 'x1',
+        type: 'X',
+        step: 3,
+        recursion: { process: 'Echo', depth: 1, level: 1, rootDepth: 2, mode: 'tco' },
+      }),
+    ]);
+    expect(columns).toHaveLength(1);
+    expect(columns[0].displayLabel).toBe('REC');
   });
 
   it('counts D{n} down while traversing, then hides the badge', () => {

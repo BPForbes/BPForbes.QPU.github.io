@@ -1,5 +1,6 @@
 import { isKnownGateType } from '../simulator/gates/registry';
 import { CircuitGate, GateType, MeasurementMap, ParticleStartState } from '../simulator/types';
+import { branchOutcomeFor, conditionFeedLabel } from './circuit/branchVisuals';
 import { CircuitGlyph } from './circuit/CircuitGlyph';
 import {
   buildVisualCircuitColumns,
@@ -57,13 +58,21 @@ export function CircuitCanvas({
   const activeGate = activeStep >= 0 ? sorted.find((gate) => gate.step === activeStep) : undefined;
   const measureGates = sorted.filter((gate) => gate.type === 'MEASURE');
   const classicalQubits = classicalWireQubits(qubitCount, trackingGates, measurements);
-  const showClassical = classicalQubits.length > 0;
+  const conditionedSourceQubits = sorted
+    .map((gate) => gate.condition?.qubit)
+    .filter((qubit): qubit is number => qubit !== undefined && qubit >= 0 && qubit < qubitCount);
+  const classicalLaneQubits = [...new Set([...classicalQubits, ...conditionedSourceQubits])].sort((a, b) => a - b);
+  const showClassical = classicalLaneQubits.length > 0;
   const classicalRow = qubitCount + 1;
   const rowCount = qubitCount + (showClassical ? 1 : 0);
-  const measuredWithoutGate = classicalQubits.filter(
+  const measuredWithoutGate = classicalLaneQubits.filter(
     (qubit) => !measureGates.some((gate) => gate.targets.includes(qubit)),
   );
   const hasRecursion = visualColumns.some((column) => column.recursion);
+  const hasBranches = sorted.some((gate) => Boolean(gate.condition));
+  const conditionedDisplayGates = visualColumns.flatMap((column) =>
+    column.displayGates.filter((gate) => gate.condition && gate.targets.length > 0),
+  );
 
   const handleDrop = (event: React.DragEvent, qubit: number) => {
     event.preventDefault();
@@ -148,6 +157,25 @@ export function CircuitCanvas({
                 <span className="circuit-measure-bit">{qubit}</span>
               </span>
             ))}
+
+          {showClassical &&
+            conditionedDisplayGates.map((gate) => {
+              const column = visualColumnIndexForStep(visualColumns, gate.step);
+              if (column === undefined) return null;
+              const target = gate.targets[0];
+              const outcome = branchOutcomeFor(gate, measurements);
+              return (
+                <span
+                  aria-hidden="true"
+                  className={`circuit-condition-feed ${outcome}`}
+                  key={`cond-feed-${gate.id}`}
+                  style={{ gridColumn: column + 2, gridRow: `${target + 1} / ${classicalRow + 1}` }}
+                  title={conditionFeedLabel(gate)}
+                >
+                  <span className="circuit-condition-value">{conditionFeedLabel(gate)}</span>
+                </span>
+              );
+            })}
 
           {visualColumns.filter((column) => column.cycleGate).map((column) => (
             <span
@@ -234,9 +262,10 @@ export function CircuitCanvas({
               Array.from({ length: qubitCount }, (_, qubit) => {
                 if (!gateTouchesQubit(gate, qubit)) return null;
                 const isTarget = gate.targets.includes(qubit);
+                const outcome = branchOutcomeFor(gate, measurements);
                 return (
                   <span
-                    className={`circuit-slot ${active ? 'active' : ''} ${done ? 'done' : ''}`}
+                    className={`circuit-slot ${active ? 'active' : ''} ${done ? 'done' : ''} ${gate.condition ? `branch-${outcome}` : ''}`}
                     key={`${gate.id}-${qubit}`}
                     style={{ gridColumn: column.column + 2, gridRow: qubit + 1 }}
                     title={
@@ -253,7 +282,9 @@ export function CircuitCanvas({
                       ) : null}
                       <CircuitGlyph
                         active={active}
+                        branchOutcome={outcome}
                         gate={gate}
+                        labelOverride={isTarget ? column.displayLabel : undefined}
                         onRemove={isTarget ? () => removeVisualGate(gate) : undefined}
                         qubit={qubit}
                       />
@@ -268,7 +299,9 @@ export function CircuitCanvas({
       <p className="canvas-tip">
         {hasRecursion
           ? 'A recursive call draws as one gate with a light-green D{n} above it. Step through to watch DEPTH count down; when the call finishes the badge hides. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
-          : 'Qubit wires stay single, and a measured qubit can still take later gates. The double stroke down to c marks the time of that measurement and the bit where the result lands. Inverse gates wear a dagger: blue in general, purple on the active step. Active steps use a red outline; measured particles turn red on their wire.'}
+          : hasBranches
+            ? 'IF/ELSE lowers to classically conditioned gates on a linear wire. Double strokes from c mark feed-forward; taken branches stay solid and skipped branches fade. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
+            : 'Qubit wires stay single, and a measured qubit can still take later gates. The double stroke down to c marks the time of that measurement and the bit where the result lands. Inverse gates wear a dagger: blue in general, purple on the active step. Active steps use a red outline; measured particles turn red on their wire.'}
       </p>
     </section>
   );

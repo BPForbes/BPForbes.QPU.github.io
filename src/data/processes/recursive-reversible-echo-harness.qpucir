@@ -1,0 +1,29 @@
+PARAMS: A:state B:state C:state
+MAIN-PROCESS RecursiveReversibleEchoHarness
+DECLARECHILD RecursiveReversibleEcho
+SET A 1p
+SET B 0p
+SET C 1p
+# ==============================================
+# RECURSION TEST
+# ==============================================
+RUNCHILD RecursiveReversibleEcho -DEPTH 5 -I A B C -O A B C
+ACCEPTVALS A B C
+# ==============================================
+# CHECKPOINT TEST
+# ==============================================
+SAVE_STATE EchoComplete
+X -I A -O A
+LOAD_STATE EchoComplete
+# ==============================================
+# CLASSICAL BRANCH TEST
+# ==============================================
+MEASURE -I A
+IF A=1
+X -I C -O C
+ELSE
+Z -I C -O C
+ENDIF
+MEASURE -I B
+MEASURE -I C
+RETURNVALS A B C

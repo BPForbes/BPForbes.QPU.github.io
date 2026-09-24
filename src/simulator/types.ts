@@ -88,6 +88,9 @@ export type QpuOperation =
   | 'TREC'
   | 'RECUR'
   | 'EXIT'
+  | 'IF'
+  | 'ELSE'
+  | 'ENDIF'
   | DerivedGateType
   | 'MEASURE'
   | 'RETURNVALS'
@@ -129,6 +132,18 @@ export type GateCondition = {
 };
 
 /**
+ * UI metadata for structured IF/ELSE blocks.
+ * The simulator only evaluates `condition`; the canvas uses `branch` for labels
+ * and taken/skipped styling.
+ */
+export type ClassicalBranchMeta = {
+  groupId: string;
+  kind: 'if' | 'else';
+  sourceQubit: number;
+  equals: 0 | 1;
+};
+
+/**
  * Compile-time recursion frame that produced this gate.
  * REC/TREC/RECUR expand into ordinary gates; this metadata drives canvas badges.
  */
@@ -157,6 +172,8 @@ export type CircuitGate = {
   checkpoint?: string;
   /** Optional classical condition; evaluated only after the named qubit is measured. */
   condition?: GateCondition;
+  /** Structured IF/ELSE origin; absent for bare `-IF` feed-forward. */
+  branch?: ClassicalBranchMeta;
   /** Present when this gate came from a bounded REC/TREC expansion. */
   recursion?: RecursionFrameMeta;
 };

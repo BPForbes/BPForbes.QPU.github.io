@@ -24,6 +24,9 @@ Compile-time recursion & Bounded self-expansion of a child process marked REC
 or TREC. RECUR expands another frame with DEPTH$-1$; EXIT WHEN ends a frame.
 Tail-position REC auto-converts to TCO (iterative one-frame expansion, F\#-style);
 TREC requires that form. No runtime loop or recursive QPU execution is created.\\
+IF / ELSE / ENDIF & Structured classical feed-forward sugar. Compiles to flat
+gates carrying $-$IF conditions (and branch metadata for canvas taken/skipped
+styling). Never forks the quantum wire.\\
 Control & A wire whose basis condition decides whether a controlled operation
 acts on its target. The control itself is preserved by the standard controlled
 gates.\\

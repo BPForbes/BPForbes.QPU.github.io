@@ -1,7 +1,7 @@
 // QPU protocol compiler: child processes and cycles expand into flat gates so the simulator and UI share one execution model.
 import { assertGateArity } from '../gates/arity';
 import { astDerivedGateIds, astPrimitiveGateIds } from '../gates/metadata';
-import { CircuitGate, GateType, QpuOperation, RecursionFrameMeta } from '../types';
+import { CircuitGate, ClassicalBranchMeta, GateType, QpuOperation, RecursionFrameMeta } from '../types';
 import {
   analyzeRecursionForm,
   evaluateWhenClause,
@@ -85,6 +85,9 @@ export const supportedQpuOperations: QpuOperation[] = [
   'TREC',
   'RECUR',
   'EXIT',
+  'IF',
+  'ELSE',
+  'ENDIF',
   'AND',
   'NAND',
   'OR',
@@ -274,6 +277,15 @@ const parseConditionFlag = (tokens: string[]): ParsedCommand['condition'] => {
   return { token: match[1], equals: Number(match[2]) as 0 | 1 };
 };
 
+/** Parse `IF Token=0|1` structured classical branch header. */
+const parseIfHeader = (tokens: string[]): { token: string; equals: 0 | 1 } => {
+  const raw = tokens[1];
+  if (!raw) throw new Error('IF requires Token=0 or Token=1');
+  const match = raw.match(/^([A-Za-z_][\w]*)=(0|1)$/);
+  if (!match) throw new Error(`Invalid IF condition '${raw}' (expected Token=0 or Token=1)`);
+  return { token: match[1], equals: Number(match[2]) as 0 | 1 };
+};
+
 export const parseCommand = (line: string): ParsedCommand => {
   let tokens = line.trim().split(/\s+/);
   if (!tokens.length) throw new Error('Empty command');
@@ -326,6 +338,14 @@ export const parseCommand = (line: string): ParsedCommand => {
   }
   if (op === 'REC' || op === 'TREC') {
     parseRecDeclaration(tokens);
+  }
+  if (op === 'IF') {
+    parseIfHeader(tokens);
+  }
+  if (op === 'ELSE' || op === 'ENDIF') {
+    if (tokens.length > 1) {
+      throw new Error(`${op} does not take arguments`);
+    }
   }
 
   return {
@@ -473,6 +493,7 @@ const emitGate = (
   checkpoint?: string,
   inverse?: boolean,
   condition?: { qubit: number; equals: 0 | 1 },
+  branch?: ClassicalBranchMeta,
 ) => {
   state.gates.push({
     id: `${type}-${state.gates.length}-${targets.join('-')}`,
@@ -486,6 +507,7 @@ const emitGate = (
     checkpoint,
     inverse: inverse || undefined,
     condition,
+    branch,
     recursion: state.activeRecursion ? { ...state.activeRecursion } : undefined,
   });
   if (type === 'RESET') {
@@ -712,6 +734,42 @@ const executeProcess = (
   };
   syncActiveRecursion();
 
+  type ActiveBranch = {
+    groupId: string;
+    kind: 'if' | 'else';
+    token: string;
+    equals: 0 | 1;
+  };
+  const branchStack: ActiveBranch[] = [];
+  let nextBranchGroup = 0;
+
+  const resolveClassicalControl = (
+    commandCondition: ParsedCommand['condition'] | undefined,
+    line: string,
+    skipParams: boolean,
+  ): { condition?: { qubit: number; equals: 0 | 1 }; branch?: ClassicalBranchMeta } => {
+    const active = branchStack[branchStack.length - 1];
+    if (active) {
+      const qubit = resolveInputQubit(state, frame, active.token, line, parentFrame, skipParams);
+      return {
+        condition: { qubit, equals: active.equals },
+        branch: {
+          groupId: active.groupId,
+          kind: active.kind,
+          sourceQubit: qubit,
+          equals: active.equals,
+        },
+      };
+    }
+    if (!commandCondition) return {};
+    return {
+      condition: {
+        qubit: resolveInputQubit(state, frame, commandCondition.token, line, parentFrame, skipParams),
+        equals: commandCondition.equals,
+      },
+    };
+  };
+
   const depthNote = recursionState.depth !== undefined
     ? ` DEPTH=${recursionState.depth} LEVEL=${recursionState.level}${recursionState.mode ? ` mode=${recursionState.mode}` : ''}`
     : '';
@@ -757,6 +815,37 @@ const executeProcess = (
         break;
       }
       state.log.push(`EXIT WHEN ${clause.left} ${clause.operator} ${clause.right} was false; continuing.`);
+      continue;
+    }
+
+    if (command.op === 'IF') {
+      const header = parseIfHeader([command.op, ...command.args]);
+      branchStack.push({
+        groupId: `branch-${nextBranchGroup}`,
+        kind: 'if',
+        token: header.token,
+        equals: header.equals,
+      });
+      nextBranchGroup += 1;
+      state.log.push(`IF ${header.token}=${header.equals} opened classical branch.`);
+      continue;
+    }
+
+    if (command.op === 'ELSE') {
+      const active = branchStack[branchStack.length - 1];
+      if (!active || active.kind !== 'if') {
+        throw new Error(`ELSE without matching IF in '${line}'`);
+      }
+      active.kind = 'else';
+      active.equals = active.equals === 1 ? 0 : 1;
+      state.log.push(`ELSE ${active.token}=${active.equals} classical branch.`);
+      continue;
+    }
+
+    if (command.op === 'ENDIF') {
+      const active = branchStack.pop();
+      if (!active) throw new Error(`ENDIF without matching IF in '${line}'`);
+      state.log.push(`ENDIF closed classical branch ${active.groupId}.`);
       continue;
     }
 
@@ -1098,12 +1187,7 @@ const executeProcess = (
 
     if (primitiveGates.has(command.op)) {
       flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
-      const condition = command.condition
-        ? {
-            qubit: resolveInputQubit(state, frame, command.condition.token, line, parentFrame, skipParams),
-            equals: command.condition.equals,
-          }
-        : undefined;
+      const { condition, branch } = resolveClassicalControl(command.condition, line, skipParams);
       const loweredPhase = command.reverse && command.op === 'S'
         ? -Math.PI / 2
         : command.reverse && command.op === 'T'
@@ -1130,7 +1214,7 @@ const executeProcess = (
             }
           });
         }
-        emitGate(state, 'SWAP', swapQubits, [], line, undefined, undefined, command.reverse, condition);
+        emitGate(state, 'SWAP', swapQubits, [], line, undefined, undefined, command.reverse, condition, branch);
         continue;
       }
       // For primitive and derived AST gates, -O names the mutated target and -I names controls/inputs.
@@ -1140,24 +1224,19 @@ const executeProcess = (
         .map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams))
         // When -O names the mutated wire, drop it from the control list so self-controlled ops do not deadlock.
         .filter((qubit) => qubit !== target);
-      emitGate(state, loweredType, [target], controls, line, loweredPhase, undefined, command.reverse, condition);
+      emitGate(state, loweredType, [target], controls, line, loweredPhase, undefined, command.reverse, condition, branch);
       continue;
     }
 
     // Derived gates share the same -I/-O lowering as primitives; self-inverse ops keep reverse for dagger display.
     if (derivedGates.has(command.op)) {
       flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
-      const condition = command.condition
-        ? {
-            qubit: resolveInputQubit(state, frame, command.condition.token, line, parentFrame, skipParams),
-            equals: command.condition.equals,
-          }
-        : undefined;
+      const { condition, branch } = resolveClassicalControl(command.condition, line, skipParams);
       const target = resolveInputQubit(state, frame, command.outputs[0], line, parentFrame, skipParams);
       const controls = command.inputs
         .map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams))
         .filter((qubit) => qubit !== target);
-      emitGate(state, command.op as GateType, [target], controls, line, undefined, undefined, command.reverse, condition);
+      emitGate(state, command.op as GateType, [target], controls, line, undefined, undefined, command.reverse, condition, branch);
       continue;
     }
   }
@@ -1180,6 +1259,9 @@ const executeProcess = (
   }
 
   flushCycleZeros(state, `end of process ${process.name}`);
+  if (branchStack.length > 0) {
+    throw new Error(`Unclosed IF in process '${process.name}' (missing ENDIF).`);
+  }
   return returns;
   } finally {
     state.frameCycle = enclosingFrameCycle;

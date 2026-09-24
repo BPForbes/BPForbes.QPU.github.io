@@ -12,6 +12,8 @@ export type VisualCircuitColumn = {
   column: number;
   /** Gate(s) drawn in this column (template from the first recursion level). */
   displayGates: CircuitGate[];
+  /** Optional canvas label override (e.g. REC for multi-op recursive frames). */
+  displayLabel?: string;
   /** Every simulator step covered by this visual column. */
   coveredSteps: number[];
   /** Non-recursive INCREASECYCLE marker drawn as a dashed slice. */
@@ -65,6 +67,8 @@ export const buildVisualCircuitColumns = (gates: readonly CircuitGate[]): Visual
       columns.push({
         column,
         displayGates,
+        // Multi-op frames collapse to a REC box; single-op frames keep the gate letter (e.g. H).
+        displayLabel: template.length > 1 ? 'REC' : undefined,
         coveredSteps: group.map((entry) => entry.step),
         recursion: {
           process: meta.process,
