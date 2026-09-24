@@ -1,4 +1,4 @@
-import type { CircuitGate } from '../../simulator/types';
+import { conditionValueLabel, type CircuitGate } from '../../simulator/types';
 import type { WrapperDraft } from './gateWrappers';
 
 type GateWrapperModalProps = {
@@ -72,7 +72,7 @@ export function GateWrapperModal({
           <p className="wrapper-modal-note">
             {gate.branch?.kind === 'else' ? 'ELSE' : 'IF'} {draft.predicate.text}
             {draft.predicate.negate ? ' ≠ ' : ' = '}
-            {draft.predicate.expect === 's' ? 'S' : draft.predicate.expect}. This gate-expression test comes from the
+            {conditionValueLabel(draft.predicate.expect)}. This gate-expression test comes from the
             protocol text; edit it there. Untick to remove it.
           </p>
         ) : draft.branchEnabled ? (

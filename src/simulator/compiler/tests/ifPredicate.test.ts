@@ -126,8 +126,8 @@ RETURNVALS A C`);
     const { compiled } = run(branchProgram('IF (AND -I A B -O B) = 1', true), ['1p', '1p']);
     const x = compiled.gates.find((gate) => gate.branch?.kind === 'if')!;
     const z = compiled.gates.find((gate) => gate.branch?.kind === 'else')!;
-    expect(conditionFeedTest(x)).toBe('AND(A,B)=1');
-    expect(conditionFeedTest(z)).toBe('AND(A,B)≠1');
+    expect(conditionFeedTest(x)).toBe('AND(A,B)=1p');
+    expect(conditionFeedTest(z)).toBe('AND(A,B)≠1p');
 
     const text = serializeCircuitToQpuProtocol(compiled.gates, compiled.qubitCount, ['1p', '1p', '0p']);
     expect(text).toMatch(/IF \(AND -I \$Q0 \$Q1 -O \$Q1\) = 1p/);

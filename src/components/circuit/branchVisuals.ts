@@ -3,7 +3,7 @@
  * Simulator evaluates only `condition`; these helpers drive IF/ELSE labels
  * and taken/skipped styling from measurement outcomes.
  */
-import type { CircuitGate, MeasurementMap } from '../../simulator/types';
+import { conditionValueLabel, type CircuitGate, type MeasurementMap } from '../../simulator/types';
 
 export type BranchOutcome = 'taken' | 'skipped' | 'pending';
 
@@ -35,8 +35,7 @@ export const conditionFeedKeyword = (gate: CircuitGate): string => {
 export const conditionFeedTest = (gate: CircuitGate, sourceName?: string): string => {
   const predicate = gate.condition?.predicate;
   if (predicate) {
-    const value = predicate.expect === 's' ? 'S' : String(predicate.expect);
-    return `${predicate.text}${predicate.negate ? '≠' : '='}${value}`;
+    return `${predicate.text}${predicate.negate ? '≠' : '='}${conditionValueLabel(predicate.expect)}`;
   }
   const qubit = gate.condition?.qubit;
   const name = sourceName ?? (qubit !== undefined ? `q${qubit}` : 'c');

@@ -128,6 +128,10 @@ export type DerivedGateType = 'NOT' | 'AND' | 'NAND' | 'OR' | 'XOR';
 /** Value a gate predicate is compared with: definite 0, definite 1, or superposed (S). */
 export type ConditionValue = 0 | 1 | 's';
 
+/** Display/source form of a `ConditionValue`, matching the 0p/1p/sp particle-state vocabulary. */
+export const conditionValueLabel = (value: ConditionValue): '0p' | '1p' | 'sp' =>
+  (value === 's' ? 'sp' : `${value}p`);
+
 /**
  * Gate-expression test from `IF (GATE -I … -O …) = 0|1|S`.
  * The gate runs on a scratch copy of the state (the circuit is not changed)

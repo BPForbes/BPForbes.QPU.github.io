@@ -1644,9 +1644,9 @@ function App() {
                 <li>Once the bit is measured the running branch shows <strong>✓ taken</strong>; the other shows <strong>⊘ skipped</strong>
                   and fades with dashed lines.</li>
                 <li>A gate-expression test has no bit on <strong>c</strong>: its yellow line spans the wires it reads (yellow taps), and the
-                  label shows the expression, such as <code>AND(A,B) = 1</code>.</li>
+                  label shows the expression, such as <code>AND(A,B) = 1p</code>.</li>
                 <li>Registered <strong>custom gates</strong> work too: write them as a line (<code>NOR -I A B -O Out</code>) inside a branch,
-                  or as the test (<code>IF (NOR -I A B -O Out) = 1</code>). Use a custom gate instead of <code>RUNCHILD</code> inside an IF block.</li>
+                  or as the test (<code>IF (NOR -I A B -O Out) = 1p</code>). Use a custom gate instead of <code>RUNCHILD</code> inside an IF block.</li>
                 <li>Without writing text: pick the <strong>IF</strong> or <strong>ELSE</strong> wrapper in the palette, click a gate, choose the
                   classical bit and value, and Save. Click the gate again to edit or delete the wrapper.</li>
               </ul>

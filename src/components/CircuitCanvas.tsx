@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { isKnownGateType } from '../simulator/gates/registry';
 import type { ParticleSnapshot } from '../simulator/physics/particleTracking';
-import { CircuitGate, GateType, MeasurementMap, ParticleStartState } from '../simulator/types';
+import { CircuitGate, conditionValueLabel, GateType, MeasurementMap, ParticleStartState } from '../simulator/types';
 import {
   branchOutcomeFor,
   branchOutcomeNote,
@@ -248,7 +248,7 @@ export function CircuitCanvas({
                             <span className="circuit-condition-test" key={part}>{index > 0 ? `→${part}` : part}</span>
                           ))}
                           <span className="circuit-condition-test">
-                            {predicate.negate ? '≠' : '='} {predicate.expect === 's' ? 'S' : predicate.expect}
+                            {predicate.negate ? '≠' : '='} {conditionValueLabel(predicate.expect)}
                           </span>
                         </>
                       ) : (
@@ -449,7 +449,7 @@ export function CircuitCanvas({
           : hasRecursion
             ? 'A recursive call draws as one gate with a teal D{n} above it. Click a wrapped gate to edit DEPTH or IF/ELSE. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
             : hasBranches
-              ? 'IF/ELSE gates stay on their wire. A yellow double line joins each to its measured bit on c, or to the wires a gate-expression IF (GATE …) = 0|1|S reads (yellow taps). Once known, the branch shows ✓ taken or ⊘ skipped (faded, dashed). Click a wrapped gate to edit.'
+              ? 'IF/ELSE gates stay on their wire. A yellow double line joins each to its measured bit on c, or to the wires a gate-expression IF (GATE …) = 0p|1p|sp reads (yellow taps). Once known, the branch shows ✓ taken or ⊘ skipped (faded, dashed). Click a wrapped gate to edit.'
               : 'Pick REC / IF / ELSE in the palette to tag gates. Wire kets update live (|0⟩, |1⟩, |+⟩, |−⟩). Inverse gates wear a dagger: blue in general, purple on the active step.'}
       </p>
     </section>

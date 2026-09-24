@@ -6,6 +6,7 @@ import { getCustomGateRecord } from '../gates/customGateStore';
 import {
   CircuitGate,
   ClassicalBranchMeta,
+  conditionValueLabel,
   ConditionPredicate,
   ConditionValue,
   GateType,
@@ -953,7 +954,7 @@ const executeProcess = (
           equals: 1,
           predicate,
         });
-        state.log.push(`IF (${header.expression}) ${header.negate ? '!=' : '='} ${String(header.expect).toUpperCase()} opened gate-expression branch.`);
+        state.log.push(`IF (${header.expression}) ${header.negate ? '!=' : '='} ${conditionValueLabel(header.expect)} opened gate-expression branch.`);
       } else {
         branchStack.push({
           groupId: `branch-${nextBranchGroup}`,
@@ -975,7 +976,7 @@ const executeProcess = (
       active.kind = 'else';
       if (active.predicate) {
         active.predicate = { ...active.predicate, negate: !active.predicate.negate };
-        state.log.push(`ELSE ${active.token} ${active.predicate.negate ? '!=' : '='} ${String(active.predicate.expect).toUpperCase()} branch.`);
+        state.log.push(`ELSE ${active.token} ${active.predicate.negate ? '!=' : '='} ${conditionValueLabel(active.predicate.expect)} branch.`);
       } else {
         active.equals = active.equals === 1 ? 0 : 1;
         state.log.push(`ELSE ${active.token}=${active.equals} classical branch.`);
