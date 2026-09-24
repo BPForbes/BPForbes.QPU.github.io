@@ -1,4 +1,5 @@
 \section{Measurement gate}
+\hypertarget{measure-collapse}{}
 
 \GateHeading{Measurement}{MEASURE}{\MeasureSegment}
 
@@ -32,6 +33,10 @@ $\ket0$ or $\ket1$\\\bottomrule
 \end{description}
 MEASURE, like RESET, is not reversible: once a superposition collapses, the
 lost amplitudes cannot be recovered. Choose \textbf{Reset state} to rewind and
-sample again.
+sample again. This is the \emph{isolation from measurement} requirement for a
+reversible gate: MEASURE is not linear and has no inverse matrix, so it sits
+outside the closed-system unitary evolution the other three requirements
+assume (\emph{Requirements for a reversible gate} in the Theory Guide's
+mathematical foundations chapter).
 \end{beginnerbox}
 
