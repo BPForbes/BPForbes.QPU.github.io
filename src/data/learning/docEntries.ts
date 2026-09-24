@@ -419,8 +419,9 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
       heading: 'Bounded recursion and TCO',
       body: `${name} uses ${form}${recursion.maxDepth !== undefined ? ` with MAXDEPTH ${recursion.maxDepth}` : ''}. `
         + 'Root self-recursion is banned; only a child may expand itself. DEPTH, LEVEL, and ROOTDEPTH are read-only compile-time values for EXIT WHEN. '
-        + 'The canvas never shows a loop: RECUR unrolls into ordinary gates. Tail form reuses one compiler frame (TCO); non-tail REC nests scopes. '
-        + 'Compile RecursiveHParent (or any parent with RUNCHILD … -DEPTH N) to see L# / TCO badges on the cycle columns.',
+        + 'The canvas never shows a loop: a recursive call draws as one gate with a light-green D{n} badge that counts down as you step. '
+        + 'Tail form reuses one compiler frame (TCO); non-tail REC nests scopes. '
+        + 'Compile RecursiveHParent (or any parent with RUNCHILD … -DEPTH N) to see D{n} above the gate.',
     });
   }
 

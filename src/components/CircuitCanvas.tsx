@@ -2,10 +2,13 @@ import { isKnownGateType } from '../simulator/gates/registry';
 import { CircuitGate, GateType, MeasurementMap, ParticleStartState } from '../simulator/types';
 import { CircuitGlyph } from './circuit/CircuitGlyph';
 import {
-  describeRecursionExpansion,
-  recursionCycleLabel,
-  recursionCycleTitle,
-  recursionExpansionSummary,
+  buildVisualCircuitColumns,
+  columnIsActive,
+  columnIsDone,
+  recursionDepthForColumn,
+  recursionDepthLabel,
+  recursionDepthTitle,
+  visualColumnIndexForStep,
 } from './circuit/recursionVisuals';
 import {
   circuitColumnCount,
@@ -45,8 +48,9 @@ export function CircuitCanvas({
 }: CircuitCanvasProps) {
   const sorted = gates.slice().sort((a, b) => a.step - b.step);
   const trackingGates = (wireGates ?? gates).slice().sort((a, b) => a.step - b.step);
-  const maxStep = trackingGates.reduce((highest, gate) => Math.max(highest, gate.step), -1);
-  const columns = circuitColumnCount(sorted.length, maxStep);
+  const visualColumns = buildVisualCircuitColumns(sorted);
+  const maxVisualColumn = visualColumns.reduce((highest, column) => Math.max(highest, column.column), -1);
+  const columns = circuitColumnCount(visualColumns.length, maxVisualColumn);
   const activeGate = activeStep >= 0 ? sorted.find((gate) => gate.step === activeStep) : undefined;
   const measureGates = sorted.filter((gate) => gate.type === 'MEASURE');
   const classicalQubits = classicalWireQubits(qubitCount, trackingGates, measurements);
@@ -56,7 +60,7 @@ export function CircuitCanvas({
   const measuredWithoutGate = classicalQubits.filter(
     (qubit) => !measureGates.some((gate) => gate.targets.includes(qubit)),
   );
-  const recursionSummary = recursionExpansionSummary(sorted);
+  const hasRecursion = visualColumns.some((column) => column.recursion);
 
   const handleDrop = (event: React.DragEvent, qubit: number) => {
     event.preventDefault();
@@ -68,28 +72,16 @@ export function CircuitCanvas({
     if (selectedGate) onDropGate(selectedGate, qubit);
   };
 
+  const removeVisualGate = (displayGate: CircuitGate) => {
+    onRemoveGate(displayGate.id);
+  };
+
   return (
     <section className="panel circuit-panel" aria-labelledby="circuit-title">
       <div className="section-heading">
         <p className="eyebrow">Circuit canvas</p>
         <h2 id="circuit-title">Standard circuit diagram</h2>
       </div>
-      {recursionSummary ? (
-        <p className={`circuit-recursion-banner ${recursionSummary.mode}`} title={describeRecursionExpansion(recursionSummary)}>
-          <strong>{recursionSummary.mode === 'tco' ? 'TCO expansion' : 'Stacked REC expansion'}</strong>
-          {' · '}
-          {recursionSummary.process}
-          {' −DEPTH '}
-          {recursionSummary.rootDepth}
-          {' → '}
-          {recursionSummary.stages}
-          {' stage'}
-          {recursionSummary.stages === 1 ? '' : 's'}
-          {' (L'}
-          {recursionSummary.levels.join(', L')}
-          {')'}
-        </p>
-      ) : null}
       <div className="canvas-scroll">
         <div
           className="circuit-board"
@@ -127,18 +119,20 @@ export function CircuitCanvas({
             )}
 
           {showClassical &&
-            measureGates.flatMap((gate) =>
-              gate.targets.map((qubit) => (
+            measureGates.flatMap((gate) => {
+              const column = visualColumnIndexForStep(visualColumns, gate.step);
+              if (column === undefined) return [];
+              return gate.targets.map((qubit) => (
                 <span
                   aria-hidden="true"
                   className="circuit-measure-drop"
                   key={`drop-${gate.id}-${qubit}`}
-                  style={{ gridColumn: gate.step + 2, gridRow: `${qubit + 1} / ${classicalRow + 1}` }}
+                  style={{ gridColumn: column + 2, gridRow: `${qubit + 1} / ${classicalRow + 1}` }}
                 >
                   <span className="circuit-measure-bit">{qubit}</span>
                 </span>
-              )),
-            )}
+              ));
+            })}
 
           {showClassical &&
             measuredWithoutGate.map((qubit) => (
@@ -152,44 +146,43 @@ export function CircuitCanvas({
               </span>
             ))}
 
-          {sorted.filter((gate) => gate.type === 'CYCLE').map((gate) => (
+          {visualColumns.filter((column) => column.cycleGate).map((column) => (
             <span
-              className={[
-                'circuit-cycle-slice',
-                gate.recursion ? `recursion-${gate.recursion.mode}` : '',
-                activeStep === gate.step ? 'active' : '',
-              ].filter(Boolean).join(' ')}
-              key={gate.id}
-              style={{ gridColumn: gate.step + 2, gridRow: `1 / ${rowCount + 1}` }}
-              title={recursionCycleTitle(gate)}
+              className={`circuit-cycle-slice ${columnIsActive(column, activeStep) ? 'active' : ''}`}
+              key={column.cycleGate!.id}
+              style={{ gridColumn: column.column + 2, gridRow: `1 / ${rowCount + 1}` }}
+              title={`Logical cycle ${column.cycleGate!.cycle ?? ''} (INCREASECYCLE advances the stage; it does not loop)`}
             >
-              {recursionCycleLabel(gate).split('\n').map((line) => (
-                <span className="circuit-cycle-line" key={line}>{line}</span>
-              ))}
+              {column.cycleGate!.cycle ?? ''}
             </span>
           ))}
 
-          {sorted.filter((gate) => gate.type === 'SAVE_STATE' || gate.type === 'LOAD_STATE').map((gate) => (
-            <span
-              className="circuit-checkpoint"
-              key={gate.id}
-              style={{ gridColumn: gate.step + 2, gridRow: 1 }}
-            >
-              {gate.type === 'SAVE_STATE' ? 'save' : 'load'}
-            </span>
-          ))}
+          {visualColumns.flatMap((column) =>
+            column.displayGates
+              .filter((gate) => gate.type === 'SAVE_STATE' || gate.type === 'LOAD_STATE')
+              .map((gate) => (
+                <span
+                  className="circuit-checkpoint"
+                  key={gate.id}
+                  style={{ gridColumn: column.column + 2, gridRow: 1 }}
+                >
+                  {gate.type === 'SAVE_STATE' ? 'save' : 'load'}
+                </span>
+              )),
+          )}
 
-          {sorted.filter(needsConnector).map((gate) => {
-            const { min, max } = gateSpanQubits(gate);
-            // Row span covers the outer lanes; CSS margin-block insets to wire centers.
-            return (
-              <span
-                className={`circuit-connector ${activeStep === gate.step ? 'active' : ''}`}
-                key={`link-${gate.id}`}
-                style={{ gridColumn: gate.step + 2, gridRow: `${min + 1} / ${max + 2}` }}
-              />
-            );
-          })}
+          {visualColumns.flatMap((column) =>
+            column.displayGates.filter(needsConnector).map((gate) => {
+              const { min, max } = gateSpanQubits(gate);
+              return (
+                <span
+                  className={`circuit-connector ${columnIsActive(column, activeStep) ? 'active' : ''}`}
+                  key={`link-${gate.id}`}
+                  style={{ gridColumn: column.column + 2, gridRow: `${min + 1} / ${max + 2}` }}
+                />
+              );
+            }),
+          )}
 
           {Array.from({ length: qubitCount }, (_, qubit) => {
             const measured = measurements[qubit] !== undefined;
@@ -230,32 +223,46 @@ export function CircuitCanvas({
             ))}
           </div>
 
-          {sorted.map((gate) =>
-            Array.from({ length: qubitCount }, (_, qubit) => {
-              if (!gateTouchesQubit(gate, qubit)) return null;
-              const isTarget = gate.targets.includes(qubit);
-              return (
-                <span
-                  className={`circuit-slot ${activeStep === gate.step ? 'active' : ''} ${activeStep >= gate.step ? 'done' : ''} ${gate.recursion ? `recursion-${gate.recursion.mode}` : ''}`}
-                  key={`${gate.id}-${qubit}`}
-                  style={{ gridColumn: gate.step + 2, gridRow: qubit + 1 }}
-                  title={gate.recursion ? recursionCycleTitle({ ...gate, type: 'CYCLE' }) : undefined}
-                >
-                  <CircuitGlyph
-                    active={activeStep === gate.step}
-                    gate={gate}
-                    onRemove={isTarget ? () => onRemoveGate(gate.id) : undefined}
-                    qubit={qubit}
-                  />
-                </span>
-              );
-            }),
-          )}
+          {visualColumns.flatMap((column) => {
+            const depth = recursionDepthForColumn(column, activeStep);
+            const active = columnIsActive(column, activeStep);
+            const done = columnIsDone(column, activeStep);
+            return column.displayGates.flatMap((gate) =>
+              Array.from({ length: qubitCount }, (_, qubit) => {
+                if (!gateTouchesQubit(gate, qubit)) return null;
+                const isTarget = gate.targets.includes(qubit);
+                return (
+                  <span
+                    className={`circuit-slot ${active ? 'active' : ''} ${done ? 'done' : ''}`}
+                    key={`${gate.id}-${qubit}`}
+                    style={{ gridColumn: column.column + 2, gridRow: qubit + 1 }}
+                    title={
+                      depth !== undefined && column.recursion
+                        ? recursionDepthTitle(column, depth)
+                        : undefined
+                    }
+                  >
+                    {isTarget && depth !== undefined ? (
+                      <span aria-hidden="true" className="circuit-depth-badge">
+                        {recursionDepthLabel(depth)}
+                      </span>
+                    ) : null}
+                    <CircuitGlyph
+                      active={active}
+                      gate={gate}
+                      onRemove={isTarget ? () => removeVisualGate(gate) : undefined}
+                      qubit={qubit}
+                    />
+                  </span>
+                );
+              }),
+            );
+          })}
         </div>
       </div>
       <p className="canvas-tip">
-        {recursionSummary
-          ? describeRecursionExpansion(recursionSummary)
+        {hasRecursion
+          ? 'A recursive call draws as one gate with a light-green D{n} above it. Step through to watch DEPTH count down; when the call finishes the badge hides. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
           : 'Qubit wires stay single, and a measured qubit can still take later gates. The double stroke down to c marks the time of that measurement and the bit where the result lands. Inverse gates wear a dagger: blue in general, purple on the active step. Active steps use a red outline; measured particles turn red on their wire.'}
       </p>
     </section>

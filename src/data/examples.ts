@@ -223,7 +223,7 @@ export const examples: ExampleCircuit[] = [
   {
     name: 'Recursive H (TCO expanded)',
     description:
-      'What RecursiveHParent looks like after compile: four Hadamards separated by INCREASECYCLE, tagged as TCO LEVEL 0…3. Compile RecursiveHParent from the protocol list for the live log; this canvas starter shows the badges without editing text.',
+      'What RecursiveHParent looks like after compile: one H with a light-green D4 badge. Step through to watch D4 → D3 → D2 → D1, then the badge hides. Compile RecursiveHParent from the protocol list for the live log.',
     step: 6,
     qubitCount: 1,
     gates: [

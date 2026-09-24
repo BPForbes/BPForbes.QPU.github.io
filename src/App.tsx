@@ -18,11 +18,6 @@ import {
   type PlaygroundViewId,
 } from './components/PlaygroundScrubber';
 import { MAX_PLAY_SPEED, MIN_PLAY_SPEED, playDelayMs } from './components/circuitLayout';
-import {
-  describeRecursionExpansion,
-  recursionCycleTitle,
-  recursionExpansionSummary,
-} from './components/circuit/recursionVisuals';
 import { examples, learningSteps } from './data/examples';
 import {
   docHref,
@@ -415,8 +410,17 @@ function App() {
   };
 
   // Steps are renumbered after removal so the canvas column layout stays contiguous.
+  // Removing the visible recursive gate drops the whole collapsed expansion.
   const removeGate = (gateId: string) => {
-    const nextGates = gates.filter((gate) => gate.id !== gateId).map((gate, step) => ({ ...gate, step }));
+    const target = gates.find((gate) => gate.id === gateId);
+    const nextSource = target?.recursion
+      ? gates.filter((gate) => !(
+        gate.recursion
+        && gate.recursion.process === target.recursion!.process
+        && gate.recursion.rootDepth === target.recursion!.rootDepth
+      ))
+      : gates.filter((gate) => gate.id !== gateId);
+    const nextGates = nextSource.map((gate, step) => ({ ...gate, step }));
     setGates(nextGates);
     syncCanvasProtocol(nextGates);
     resetRuntime();
@@ -986,12 +990,16 @@ function App() {
     }
     if (docFocus === 'circuit' && activeCanvasGate) {
       const wires = activeCanvasGate.targets.map((qubit) => `q${qubit}`).join(' and ');
-      const recursionNote = activeCanvasGate.recursion
-        ? recursionCycleTitle({ ...activeCanvasGate, type: 'CYCLE' })
+      const recursion = activeCanvasGate.recursion;
+      const recursionNote = recursion
+        ? `Recursive ${recursion.process} call · DEPTH ${recursion.depth} of ${recursion.rootDepth}. `
+          + 'The canvas shows one gate with a light-green D{n} badge; n counts down as you step, then hides when the call finishes.'
         : undefined;
-      const cycleNote = activeCanvasGate.type === 'CYCLE'
-        ? (recursionNote ?? `Logical cycle ${activeCanvasGate.cycle ?? ''} boundary from INCREASECYCLE. This advances the stage; it does not loop.`)
-        : undefined;
+      const cycleNote = activeCanvasGate.type === 'CYCLE' && !recursion
+        ? `Logical cycle ${activeCanvasGate.cycle ?? ''} boundary from INCREASECYCLE. This advances the stage; it does not loop.`
+        : activeCanvasGate.type === 'CYCLE' && recursion
+          ? recursionNote
+          : undefined;
       return (
         <aside aria-label={`About step ${cursor}`} className="workbench-docs">
           <div className="workbench-docs-heading">
@@ -1008,7 +1016,7 @@ function App() {
                   : `This step runs ${activeCanvasGateId} on ${wires}. There are no workbench notes for it.`}
           </p>
           {activeCanvasGate.type === 'RESET' ? <DocLink target={docTargets.resetSemantics} /> : null}
-          {activeCanvasGate.recursion ? <DocLink target={docTargets.processes} /> : null}
+          {recursion ? <DocLink target={docTargets.processes} /> : null}
         </aside>
       );
     }
@@ -1034,7 +1042,6 @@ function App() {
       />
     );
   })();
-  const recursionSummary = recursionExpansionSummary(orderedGates);
 
   return (
     <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'}>
@@ -1156,13 +1163,6 @@ function App() {
                 </label>
               ) : null}
             </div>
-            {recursionSummary ? (
-              <p className={`circuit-recursion-banner ${recursionSummary.mode}`} title={uiTips.recursionDepth}>
-                <strong>{recursionSummary.mode === 'tco' ? 'TCO on canvas' : 'Stacked REC on canvas'}</strong>
-                {' · '}
-                {describeRecursionExpansion(recursionSummary)}
-              </p>
-            ) : null}
             {workbenchDocs}
             {protocolDoc ? (
               <WorkbenchDocs
@@ -1457,14 +1457,14 @@ function App() {
               <h3>Bounded recursion and TCO</h3>
               <p>
                 Child processes may declare <code>REC</code> or <code>TREC</code> and call <code>RECUR</code> (or self-
-                <code>RUNCHILD</code>). The parent must pass <code>-DEPTH N</code>. Expansion is compile-time only: the canvas
-                shows ordinary gates, with green <strong>TCO</strong> or amber <strong>REC</strong> cycle badges labeled
-                <code>L#</code> for LEVEL.
+                <code>RUNCHILD</code>). The parent must pass <code>-DEPTH N</code>. Expansion is compile-time only. On the
+                canvas a recursive call appears as <strong>one gate</strong> with a light-green <code>D{'{n}'}</code> badge;
+                step through to watch DEPTH count down, then the badge hides.
               </p>
               <ul>
                 <li><strong>REC</strong> auto-converts to TCO when every recursive call is in tail position (F#-style).</li>
                 <li><strong>TREC</strong> requires that tail form and always uses iterative frame rewind.</li>
-                <li>Non-tail <code>REC</code> keeps stacked nested scopes; gate count is still O(DEPTH).</li>
+                <li>Non-tail <code>REC</code> keeps stacked nested scopes; the simulator gate list is still O(DEPTH).</li>
                 <li><code>EXIT WHEN DEPTH|LEVEL|ROOTDEPTH …</code> is a compile-time base case, not a runtime loop.</li>
               </ul>
               <p>

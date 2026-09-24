@@ -101,7 +101,7 @@ button { font: inherit; }
   color: #111;
   border: 1px solid #cbd5e1;
   border-radius: 1rem;
-  padding: .55rem .7rem .7rem;
+  padding: .95rem .7rem .7rem;
 }
 .circuit-wire-layer {
   position: absolute;
@@ -145,26 +145,6 @@ button { font: inherit; }
   z-index: 1;
 }
 .circuit-connector.active { background: #dc2626; }
-.circuit-recursion-banner {
-  margin: 0 0 .65rem;
-  padding: .55rem .75rem;
-  border-radius: .7rem;
-  border: 1px solid rgba(125, 211, 252, .35);
-  background: rgba(8, 47, 73, .55);
-  color: #e0f2fe;
-  font-size: .82rem;
-  line-height: 1.4;
-}
-.circuit-recursion-banner.tco {
-  border-color: rgba(52, 211, 153, .45);
-  background: rgba(6, 78, 59, .45);
-  color: #d1fae5;
-}
-.circuit-recursion-banner.stack {
-  border-color: rgba(251, 191, 36, .45);
-  background: rgba(78, 50, 6, .4);
-  color: #fef3c7;
-}
 .circuit-cycle-slice {
   justify-self: center;
   display: flex;
@@ -175,33 +155,29 @@ button { font: inherit; }
   pointer-events: none;
   z-index: 1;
   color: #64748b;
-  font-size: .58rem;
+  font-size: .62rem;
   font-weight: 800;
   padding-top: .1rem;
-  white-space: pre-line;
   text-align: center;
   line-height: 1.1;
-}
-.circuit-cycle-slice .circuit-cycle-line { display: block; }
-.circuit-cycle-slice.recursion-tco {
-  border-left-color: #34d399;
-  color: #6ee7b7;
-}
-.circuit-cycle-slice.recursion-stack {
-  border-left-color: #fbbf24;
-  color: #fcd34d;
 }
 .circuit-cycle-slice.active {
   color: #f87171;
   border-left-color: #f87171;
 }
-.circuit-slot.recursion-tco .circuit-glyph,
-.circuit-slot.recursion-tco {
-  box-shadow: inset 0 0 0 1px rgba(52, 211, 153, .35);
-}
-.circuit-slot.recursion-stack .circuit-glyph,
-.circuit-slot.recursion-stack {
-  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, .35);
+.circuit-depth-badge {
+  position: absolute;
+  top: -.95rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  color: #6ee7b7;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+  line-height: 1;
+  pointer-events: none;
+  white-space: nowrap;
 }
 .circuit-checkpoint {
   justify-self: center;
@@ -287,6 +263,7 @@ button { font: inherit; }
   place-items: center;
   z-index: 3;
   pointer-events: none;
+  overflow: visible;
 }
 .circuit-glyph {
   pointer-events: auto;
