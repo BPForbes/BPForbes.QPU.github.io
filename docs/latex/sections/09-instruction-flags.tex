@@ -35,9 +35,14 @@ A gate may carry a forward-only classical condition after a prior MEASURE:
 X -I Bob -O Bob -IF Alice=1
 Z -I Bob -O Bob -IF M0=1
 \end{lstlisting}
-The named token must already have been measured. If the classical bit does not
-match, the gate is skipped and execution continues. There is no \code{IF}/\code{ENDIF}
-block and no backward edge---the circuit remains a finite ordered list.
+The named token must already have been measured; running a conditioned gate
+before its MEASURE is a runtime error. If the classical bit does not match,
+the gate is skipped and execution continues. The skipped gate stays in the
+circuit. To condition several gates, or to pair a gate with an alternative,
+use the structured \code{IF} / \code{ELSE} / \code{ENDIF} block described in
+\hyperlink{if-else-blocks}{Structured classical branches}; it lowers to the
+same \code{-IF} conditions. Either way there is no backward edge---the circuit
+remains a finite ordered list.
 
 \subsection{Where a flag list ends}
 

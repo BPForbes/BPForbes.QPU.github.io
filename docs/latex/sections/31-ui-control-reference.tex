@@ -61,6 +61,15 @@ such as ``q2: 0 $\rightarrow$ 1. q0 and q1 unchanged.'' A wire in
 superposition matches several rows at once.\\
 Compiled protocol & A second card for the compiled process: its inputs,
 outputs, and the row for the current start states.\\
+Recursive frame & Shown while the step being examined is inside a recursive
+call. Draws the frame being run with its heading (\texttt{DEPTH $d$ $\cdot$
+LEVEL $\ell$ $\cdot$ TCO}), forward gates over a \texttt{forward
+$\rightarrow$} rule, their inverses over a \texttt{$\leftarrow$ inverse}
+rule, the frame's \textbf{IC} cycle line, and \texttt{RECUR $\downarrow$
+D$(d-1)$} for the next frame. The current gate is highlighted.\\
+Expand \ldots{} first frame & The same drawing, collapsed, whenever the
+circuit has a recursive call but the playhead is outside it. Click to open
+the first frame.\\
 Learn more & Expands the full truth table (matching rows highlighted), how it
 works, the target notes, syntax, child processes, the protocol source, and
 the PDF link. Collapsed by default.\\
@@ -108,6 +117,50 @@ and SWAP are their own inverses, so the dagger does not change the matrix.
 MEASURE and the derived gates do not take the toggle. The same spelling in
 source is \code{dg} or \code{inv}, as in \code{Hdg} or \code{invH}.
 
+\textbf{Wrappers} holds three tools that tag a gate already on the canvas
+instead of placing a new one:
+\UiTable{
+REC & Recursive wrapper. Pick it, then click a gate: the wrapper dialog opens
+with \textbf{Recursive wrapper} ticked so you can set its depth.\\
+IF & Pick it, then click a gate: the dialog opens with \textbf{IF / ELSE
+wrapper} ticked, \textbf{Kind} set to IF, and \textbf{Equals} set to 1.\\
+ELSE & The same, with \textbf{Kind} set to ELSE and \textbf{Equals} set
+to 0.\\
+}
+While a wrapper tool is selected the tip under the canvas says so. Clicking the
+same wrapper again cancels it. Picking an ordinary gate block also cancels it.
+
+\subsection{Wrapper dialog: ``Gate wrappers''}
+\hypertarget{ui-wrapper-dialog}{}
+
+The dialog opens from a wrapper tool, or by clicking any gate that already
+carries a wrapper. Its heading names the gate and its target wire.
+\UiTable{
+Recursive wrapper & Tags the gate as a recursive call.\\
+Depth & The DEPTH shown in the teal badge above the gate (at least 1).\\
+IF / ELSE wrapper & Makes the gate conditional on a measured bit.\\
+Kind & \textbf{IF} or \textbf{ELSE}. Choosing ELSE sets \textbf{Equals} to
+0; choosing IF sets it to 1. Either can then be changed.\\
+Classical bit & Which measured wire the condition reads, shown as
+\textbf{q$n$ $\rightarrow$ c}. That wire needs a MEASURE (\textbf{M}) before
+this gate.\\
+Equals & The value that makes the gate run: 1 or 0.\\
+Save & Applies the ticked wrappers and rewinds the run.\\
+Cancel & Closes the dialog without changes.\\
+Delete wrappers & Removes both wrappers and keeps the gate.\\
+}
+
+\begin{cautionbox}[What each wrapper changes]
+The \textbf{IF / ELSE} wrapper changes the run: the gate is skipped when the
+bit does not match. It is written to the protocol editor as a \code{-IF}
+condition, such as \code{Z -I $Q2:0 -O $Q2:0 -IF Q0=0}. The \textbf{REC} wrapper
+only labels the gate with a depth badge. The gate still runs once, and the tag
+is not written to the protocol text. To repeat gates DEPTH times, write a child
+process with \code{REC} or \code{TREC} and call it with
+\code{RUNCHILD} \ldots{} \code{-DEPTH} $n$; see bounded recursion in the Language
+Reference.
+\end{cautionbox}
+
 \subsection{Gate engine: ``Register custom gates from QPU processes''}
 \hypertarget{ui-custom-gates}{}
 
@@ -140,13 +193,35 @@ with no measurement has no \textbf{c} lane.
   Controls are chosen automatically from the lowest other qubit rows; use the
   workbench to choose them yourself. The \textbf{c} lane cannot be targeted.
   \item \textbf{Removing a gate:} click the gate symbol. Clicking the meter
-  removes that measurement step. Later gates on the same qubit stay.
-  \item \textbf{Line styles:} every qubit wire is a single line. \textbf{c}
-  is the only double line. A double stroke, not an arrow, drops from the
-  meter to \textbf{c} at that column. The number beside the stroke is the
-  bit whose reading happened at that time.
+  removes that measurement step. Later gates on the same qubit stay. A gate
+  that carries a REC or IF/ELSE wrapper opens the wrapper dialog instead;
+  use \textbf{Delete wrappers} there first.
+  \item \textbf{Wire labels:} after compiling a protocol, each wire also
+  shows its parameter name (for example \textbf{A} under \textbf{q0}).
+  \item \textbf{Line styles:} every qubit wire is a single line.
+  \textbf{c} is the classical lane. A black double stroke, not an arrow,
+  drops from the meter to \textbf{c} at that column. The number beside the
+  stroke is the bit whose reading happened at that time.
+  \item \textbf{IF / ELSE:} a conditioned gate stays on its own wire. A yellow
+  double line joins it to \textbf{c}, and a label under \textbf{c} names the
+  branch and its test (\textbf{IF} \texttt{A=1}, \textbf{ELSE}
+  \texttt{A=0}). After the bit is measured the branch that runs shows
+  \texttt{$\checkmark$ taken}; the other shows \texttt{$\oslash$ skipped}
+  and fades with dashed lines. Skipped gates are never removed.
+  \item \textbf{Recursive call:} drawn once, not once per frame. A teal
+  \textbf{D$n$} badge above it shows the current DEPTH and counts down as you
+  step, then hides when the call is finished. A multi-gate recursive child is
+  one \textbf{REC} box spanning its wires, captioned with the child name and
+  depth range (for example \texttt{D5 $\rightarrow$ D1}).
+  \item \textbf{Dashed markers:} a dashed vertical line across all wires is a
+  whole-circuit marker, not a gate. \textbf{IC$n$} is an
+  \code{INCREASECYCLE} boundary into cycle $n$. \textbf{S} and \textbf{L}
+  are \code{SAVE_STATE} and \code{LOAD_STATE}, with the checkpoint name above
+  the letter. The active marker turns red.
   \item \textbf{Outlines:} the step that just ran is red on a forward gate.
-  An inverse gate is blue. The active inverse step is purple.
+  An inverse gate is blue. The active inverse step is purple, including its
+  connecting line. A collapsed REC box is red while a forward gate of the
+  frame runs and purple while an inverse one runs.
   \item \textbf{Dagger:} an inverse gate prints $\dagger$ on its symbol
   (\code{H} becomes H$\dagger$). The forward gate keeps the plain symbol.
 \end{itemize}

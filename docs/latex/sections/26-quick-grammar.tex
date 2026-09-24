@@ -17,11 +17,20 @@ opcode       := supported-command
              | ("dg" | "inv") "PHASE=" angle
 
 gate-row     := opcode "-I" input+ "-O" output+ ["-$R"]
+                ["-IF" name "=" ("0" | "1")]
 measure-row  := "MEASURE" ["-I" input]
 set-row      := "SET" target value
 process-row  := "MAIN-PROCESS" name
-child-row    := ("RUNCHILD" | "CALL") name
+child-row    := ("RUNCHILD" | "CALL") name ["-DEPTH" integer]
                 ["-I" argument*] ["-O" argument*]
+rec-row      := ("REC" | "TREC") ["MAXDEPTH" integer]
+exit-row     := "EXIT" "WHEN" ("DEPTH" | "LEVEL" | "ROOTDEPTH")
+                ("==" | "!=" | "<" | "<=" | ">" | ">=") integer
+recur-row    := "RECUR" "-I" argument+ ["-O" argument*]
+if-block     := "IF" name "=" ("0" | "1")
+                logical-line*
+                ["ELSE" logical-line*]
+                "ENDIF"
 returns-row  := "RETURNVALS" token*
 accept-row   := "ACCEPTVALS" token*
 
@@ -36,3 +45,8 @@ angle        := rational
 but \code{PHASE = pi/2} is not. Operations and flags are case-insensitive;
 names, types, and positional values are otherwise retained.
 
+\textbf{Block and recursion detail:} \code{-DEPTH} is required when the child
+declares \code{REC} or \code{TREC}. \code{RECUR}, \code{REC}, \code{TREC},
+and \code{EXIT WHEN} are only meaningful inside a child process. An
+\code{if-block} lowers each inner gate to a \code{-IF} condition; see
+\hyperlink{if-else-blocks}{Structured classical branches}.

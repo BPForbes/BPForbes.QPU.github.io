@@ -119,16 +119,25 @@ carry, but only XOR-style gates for its sum?
 \textbf{Learn:} larger circuits are built in stages: compute a helper value,
 use it, then \emph{uncompute} it so workspace returns to 0. Child processes
 (\code{RUNCHILD}) and custom gates reuse whole circuits as single steps.
-Oracle algorithms combine all of the above.
+A recursive child (\code{REC}/\code{TREC} with \code{-DEPTH}) repeats a
+stage a fixed number of times at compile time. After a measurement,
+\code{IF}/\code{ELSE} blocks choose which later gate runs. Oracle algorithms
+combine all of the above.
 
 \textbf{Starter circuits:} \emph{Grover search (2 qubits)},
-\emph{T state transition across cycles}, and
+\emph{T state transition across cycles},
+\emph{Recursive H (TCO expanded)} (one gate with a counting D$n$ badge), and
 \emph{Quantum teleportation} (uses forward classical \code{-IF} conditions).
+In the protocol list, compile \textbf{RecursiveReversibleEchoHarness} to see
+recursion, measurement, and an IF/ELSE pair in one circuit.
 
 \textbf{Read:} \emph{Process composition and return values} and
-\emph{Cycle-based state evolution} in the Language Reference;
+\emph{Cycle-based state evolution}, \emph{Bounded child-process recursion},
+and \emph{Structured classical branches} in the Language Reference;
 \emph{Custom gates} in Examples and Troubleshooting.
 
 \textbf{Checkpoint:} after an uncompute stage, what value should every
 temporary wire hold, and how can a truth-table test prove it?
-Why is \code{INCREASECYCLE} not a loop?
+Why is \code{INCREASECYCLE} not a loop? After \code{IF A=1} \ldots{}
+\code{ELSE} \ldots{} \code{ENDIF}, which gates are still in the circuit when
+A measures 0?

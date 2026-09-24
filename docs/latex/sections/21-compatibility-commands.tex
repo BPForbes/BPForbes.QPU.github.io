@@ -37,3 +37,9 @@ LOAD_STATE checkpointA
 the named checkpoint. A missing name is an error. Later gates continue from
 the restored amplitudes.
 
+On the canvas neither instruction is a gate box. Each is a dashed vertical
+line across every wire and the \textbf{c} lane, labelled \textbf{S} (save) or
+\textbf{L} (load) with the checkpoint name above the letter. Gates between a
+matching S and L still run, but their effect is discarded when the checkpoint
+is loaded.
+

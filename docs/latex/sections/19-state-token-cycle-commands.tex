@@ -68,7 +68,11 @@ operations. Cycle suffixes on tokens do not create separate visual wires.
 Cycles organize protocol stages. They are not wall-clock timing guarantees and
 do not cause gates to execute concurrently. The final circuit is still an
 ordered gate sequence. Each emitted gate records the timeline cycle, and the
-canvas draws a dashed slice at \code{INCREASECYCLE}. An integer suffix such as
+canvas draws a dashed vertical line across every wire at
+\code{INCREASECYCLE}, labelled \textbf{IC} with the new cycle number
+(\texttt{IC1}, \texttt{IC2}, \ldots). The line turns red while that step is
+active. Inside a collapsed recursive call these markers are not drawn; the
+teal depth badge replaces them. An integer suffix such as
 \code{Q:1} must match this process's cycle. A child process starts again at
 cycle 0, so its own \code{:0} labels stay valid after the parent advances.
 Non-numeric suffixes stay labels. The suffix does not allocate another wire.

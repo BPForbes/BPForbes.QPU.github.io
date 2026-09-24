@@ -249,6 +249,12 @@
 \nopagecolor
 }
 
+% Widen the TOC number column so two-digit subsections (13.10) keep a gap before the title.
+\makeatletter
+\renewcommand*\l@subsection{\@dottedtocline{2}{1.5em}{2.8em}}
+\renewcommand*\l@subsubsection{\@dottedtocline{3}{4.3em}{3.6em}}
+\makeatother
+
 \newcommand{\QpuContents}{%
 \pagenumbering{roman}
 \tableofcontents
