@@ -2,8 +2,8 @@ import { compileQpuProtocol } from '../compiler/qpuAst';
 import type { CircuitGate, ExecutionResult, MeasurementMap } from '../types';
 import type { GateDefinition } from './types';
 import { gateIoArity } from './types';
-import { hasBit, padStateVector } from './operations';
-import { magnitudeSquared, ONE, ZERO } from '../complex';
+import { padStateVector } from './operations';
+import { checkCustomGateReversibility, REVERSIBILITY_CHECK_VERSION } from './customGateReversibility';
 import { preconfiguredGateMap } from './preconfigured';
 import { conditionSatisfied, remapConditionWires } from './conditions';
 import {
@@ -26,67 +26,6 @@ const assertCustomGateIdAvailable = (trimmedId: string) => {
 };
 
 
-const NON_REVERSIBLE_TYPES = new Set([
-  'MEASURE',
-  'RESET',
-  'SAVE_STATE',
-  'LOAD_STATE',
-]);
-
-const MAX_WORKSPACE_CHECK_INPUTS = 10;
-
-/**
- * A dagger runs on fresh |0⟩ workspace, so the inverse only undoes the gate when every
- * internal wire (neither a param nor a return) ends back at |0⟩. Checking each basis input
- * is enough: by linearity that covers every input state.
- */
-const workspaceReturnsToZero = (compiled: ReturnType<typeof compileQpuProtocol>): boolean => {
-  const { qubitCount, gates } = compiled;
-  const inputs = compiled.processParams.map((param) => param.qubitIndex);
-  const visible = new Set([...inputs, ...compiled.returnValues.map((value) => value.qubitIndex)]);
-  const workspace = Array.from({ length: qubitCount }, (_, qubit) => qubit).filter((qubit) => !visible.has(qubit));
-  if (workspace.length === 0) return true;
-  if (inputs.length > MAX_WORKSPACE_CHECK_INPUTS) return false;
-
-  const runBuiltIn = (
-    inner: CircuitGate,
-    innerState: import('../complex').Complex[],
-    innerQubitCount: number,
-    innerMeasurements: MeasurementMap,
-  ): ExecutionResult => {
-    const builtIn = preconfiguredGateMap[inner.type];
-    if (!builtIn) throw new Error(`Unknown gate '${inner.type}'.`);
-    return applyInverseAwareDefinition(builtIn, innerState, innerQubitCount, inner, innerMeasurements, {});
-  };
-
-  for (let bits = 0; bits < 2 ** inputs.length; bits += 1) {
-    const start = inputs.reduce((index, qubit, position) => (
-      bits & (1 << position) ? index | (1 << (qubitCount - qubit - 1)) : index
-    ), 0);
-    let state = Array.from({ length: 2 ** qubitCount }, (_, index) => (index === start ? ONE : ZERO));
-    let measurements: MeasurementMap = {};
-    for (const gate of gates) {
-      if (gate.type === 'CYCLE') continue;
-      if (!conditionSatisfied(gate, measurements, state, qubitCount, runBuiltIn)) continue;
-      const result = runBuiltIn(gate, state, qubitCount, measurements);
-      state = result.state;
-      measurements = result.measurements;
-    }
-    const dirty = state.some((amplitude, index) => (
-      magnitudeSquared(amplitude) > 1e-9 && workspace.some((qubit) => hasBit(index, qubit, qubitCount))
-    ));
-    if (dirty) return false;
-  }
-  return true;
-};
-
-const analyzeReversibility = (compiled: ReturnType<typeof compileQpuProtocol>): boolean =>
-  compiled.gates.every((gate) => {
-    if (gate.type === 'CYCLE') return true;
-    if (NON_REVERSIBLE_TYPES.has(String(gate.type))) return false;
-    return preconfiguredGateMap[String(gate.type)]?.supportsReverse ?? false;
-  }) && workspaceReturnsToZero(compiled);
-
 const PRECONFIGURED_HUES = [0, 25, 195, 260, 290, 120, 84, 205, 270, 142, 158, 228, 45, 315];
 
 const randomCustomColor = (usedColors: Set<string>) => {
@@ -105,6 +44,15 @@ export type RegisterCustomGateInput = {
   librarySources?: Record<string, string>;
   color?: string;
   label?: string;
+};
+
+const reversibilityFields = (compiled: ReturnType<typeof compileQpuProtocol>) => {
+  const result = checkCustomGateReversibility(compiled);
+  return {
+    reversible: result.reversible,
+    reversibilityIssue: result.reversible ? undefined : result.reason,
+    reversibilityCheckVersion: REVERSIBILITY_CHECK_VERSION,
+  };
 };
 
 // Registration compiles once up front to validate arity and capture any library sources needed by child processes.
@@ -137,7 +85,7 @@ export const registerCustomGate = ({
     inputParamNames: compiled.processParams.map((param) => param.name),
     outputParamNames: compiled.returnValues.map((value) => value.name),
     createdAt: new Date().toISOString(),
-    reversible: analyzeReversibility(compiled),
+    ...reversibilityFields(compiled),
   };
 
   const next = readStore().filter((existing) => existing.id.toLowerCase() !== trimmedId.toLowerCase());
@@ -253,7 +201,7 @@ const expandCustomGate = (
   let nextMeasurements = { ...measurements };
   const forwardSteps = compiled.gates;
   if (gate.inverse && !record.reversible) {
-    throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted.`);
+    throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted.${record.reversibilityIssue ? ` ${record.reversibilityIssue}` : ''}`);
   }
   const steps = gate.inverse && record.reversible
     ? forwardSteps.slice().reverse().map(invertCircuitGate)
@@ -321,5 +269,25 @@ export const customGateToDefinition = (record: CustomGateRecord): GateDefinition
     applyCustomGateProcess(state, qubitCount, gate, measurements, record, librarySources),
 });
 
+/** Re-check records saved under older reversibility rules so a stale flag cannot allow a wrong dagger. */
+const refreshStaleReversibility = (records: CustomGateRecord[]): CustomGateRecord[] => {
+  if (records.every((record) => record.reversibilityCheckVersion === REVERSIBILITY_CHECK_VERSION)) return records;
+  const next = records.map((record) => {
+    if (record.reversibilityCheckVersion === REVERSIBILITY_CHECK_VERSION) return record;
+    try {
+      return { ...record, ...reversibilityFields(compileQpuProtocol(record.source, record.librarySources)) };
+    } catch (error) {
+      return {
+        ...record,
+        reversible: false,
+        reversibilityIssue: `Could not re-check reversibility: ${(error as Error).message}`,
+        reversibilityCheckVersion: REVERSIBILITY_CHECK_VERSION,
+      };
+    }
+  });
+  writeStore(next);
+  return next;
+};
+
 export const buildCustomGateDefinitions = () =>
-  readStore().map((record) => customGateToDefinition(record));
+  refreshStaleReversibility(readStore()).map((record) => customGateToDefinition(record));

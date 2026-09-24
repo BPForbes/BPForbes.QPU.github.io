@@ -371,7 +371,7 @@ export const parseCommand = (line: string): ParsedCommand => {
     customGateId = record.id;
     customReverse = record.id.toLowerCase() !== bare.toLowerCase();
     if (customReverse && !record.reversible) {
-      throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted in '${line}'`);
+      throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted in '${line}'.${record.reversibilityIssue ? ` ${record.reversibilityIssue}` : ''}`);
     }
     if (inputs.length !== record.inputParamNames.length) {
       throw new Error(`${record.id} takes ${record.inputParamNames.length} -I input(s) (${record.inputParamNames.join(' ')}), got ${inputs.length}`);

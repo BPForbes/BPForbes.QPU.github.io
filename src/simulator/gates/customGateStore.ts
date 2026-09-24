@@ -12,8 +12,12 @@ export type CustomGateRecord = {
   inputParamNames: string[];
   outputParamNames: string[];
   createdAt: string;
-  /** True when every compiled step is reversible (no MEASURE/RESET/SAVE/LOAD). */
+  /** True only when the gate passes all four checks in customGateReversibility.ts. */
   reversible: boolean;
+  /** Why the gate failed the check, when it did. */
+  reversibilityIssue?: string;
+  /** Rules version `reversible` was computed under; older records are re-checked on load. */
+  reversibilityCheckVersion?: number;
 };
 
 const STORAGE_KEY = 'qpu-custom-gates-v1';
