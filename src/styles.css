@@ -101,7 +101,7 @@ button { font: inherit; }
   color: #111;
   border: 1px solid #cbd5e1;
   border-radius: 1rem;
-  padding: .95rem .7rem .7rem;
+  padding: .7rem .7rem .7rem;
 }
 .circuit-wire-layer {
   position: absolute;
@@ -165,10 +165,15 @@ button { font: inherit; }
   color: #f87171;
   border-left-color: #f87171;
 }
+.circuit-gate-stack {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
 .circuit-depth-badge {
   position: absolute;
-  top: -.95rem;
   left: 50%;
+  bottom: calc(100% + 0.08rem);
   transform: translateX(-50%);
   z-index: 5;
   color: #6ee7b7;

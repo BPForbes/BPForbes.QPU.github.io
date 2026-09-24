@@ -242,17 +242,19 @@ export function CircuitCanvas({
                         : undefined
                     }
                   >
-                    {isTarget && depth !== undefined ? (
-                      <span aria-hidden="true" className="circuit-depth-badge">
-                        {recursionDepthLabel(depth)}
-                      </span>
-                    ) : null}
-                    <CircuitGlyph
-                      active={active}
-                      gate={gate}
-                      onRemove={isTarget ? () => removeVisualGate(gate) : undefined}
-                      qubit={qubit}
-                    />
+                    <span className="circuit-gate-stack">
+                      {isTarget && depth !== undefined ? (
+                        <span aria-hidden="true" className="circuit-depth-badge">
+                          {recursionDepthLabel(depth)}
+                        </span>
+                      ) : null}
+                      <CircuitGlyph
+                        active={active}
+                        gate={gate}
+                        onRemove={isTarget ? () => removeVisualGate(gate) : undefined}
+                        qubit={qubit}
+                      />
+                    </span>
                   </span>
                 );
               }),
