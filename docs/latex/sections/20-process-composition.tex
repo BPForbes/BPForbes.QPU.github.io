@@ -217,12 +217,17 @@ Rules (summary):
   \item Root $\rightarrow$ root is forbidden.
   \item Child $\rightarrow$ same child is allowed when bounded.
   \item Mutual recursion ($A\rightarrow B\rightarrow A$) is rejected.
-  \item \code{RECUR} requires \code{REC}; the initial \code{RUNCHILD} requires
-  \code{-DEPTH}.
+  \item \code{RECUR} requires \code{REC} or \code{TREC}; the initial
+  \code{RUNCHILD} requires \code{-DEPTH}.
   \item \code{DEPTH}, \code{LEVEL}, and \code{ROOTDEPTH} are read-only.
-  \item Absolute compiler limit: 64; optional \code{REC MAXDEPTH $n$} is lower.
+  \item Absolute compiler limit: 64; optional \code{REC}/\code{TREC}
+  \code{MAXDEPTH $n$} is lower.
   \item In-place \code{-I} (same wire returned) is not zero-prepared between
   recursive frames.
+  \item \textbf{TCO (F\#-style):} if every \code{RECUR} is in tail position,
+  \code{REC} automatically expands iteratively in one compile-time frame
+  (looping rewind). Explicit \code{TREC} asserts the same form and errors if
+  post-\code{RECUR} work exists. Non-tail \code{REC} keeps stacked frames.
 \end{itemize}
 
 Keep these concepts distinct:
@@ -232,6 +237,8 @@ Keep these concepts distinct:
 Construct & Meaning\\\midrule
 \code{RUNCHILD} & Compose another process\\
 \code{RECUR} & Expand this child again with DEPTH$-1$\\
+\code{REC} & Allow recursion; auto-TCO when tail\\
+\code{TREC} & Require tail form; always TCO\\
 \code{INCREASECYCLE} & Next logical circuit stage (not a loop)\\
 \code{WHEN} & Compile-time condition on DEPTH/LEVEL/ROOTDEPTH\\
 \code{-IF} & Runtime classical feed-forward after MEASURE\\\bottomrule

@@ -3,13 +3,13 @@ import { assertGateArity } from '../gates/arity';
 import { astDerivedGateIds, astPrimitiveGateIds } from '../gates/metadata';
 import { CircuitGate, GateType, QpuOperation } from '../types';
 import {
+  analyzeRecursionForm,
   evaluateWhenClause,
   parseDepthFlag,
   parseRecDeclaration,
   parseWhenClause,
   planRecursionExpansion,
-  processDeclaresRecursion,
-  processMaxDepth,
+  resolveRecursionMode,
   type ProcessExecutionContext,
 } from './recursion';
 
@@ -82,6 +82,7 @@ export const supportedQpuOperations: QpuOperation[] = [
   'DECLARECHILD',
   'RUNCHILD',
   'REC',
+  'TREC',
   'RECUR',
   'EXIT',
   'AND',
@@ -323,7 +324,7 @@ export const parseCommand = (line: string): ParsedCommand => {
   if (op === 'EXIT') {
     parseWhenClause(tokens.slice(1));
   }
-  if (op === 'REC') {
+  if (op === 'REC' || op === 'TREC') {
     parseRecDeclaration(tokens);
   }
 
@@ -362,9 +363,11 @@ type Frame = {
   released: Set<string>;
   masterTokens: Array<{ name: string; line: string }>;
   returnBases: string[];
-  /** Set by REC — required before RECUR / self-RUNCHILD expansion. */
+  /** Set by REC/TREC — required before RECUR / self-RUNCHILD expansion. */
   allowsRecursion: boolean;
   maxDepth?: number;
+  /** Explicit TREC (or REC auto-TCO once analyzed). */
+  prefersTco?: boolean;
 };
 
 type CompilerState = {
@@ -683,16 +686,26 @@ const executeProcess = (
     ...context,
     callStack: [...context.callStack, process.name],
   };
+  // Mutable recursion registers so TCO can rewind this frame like a loop (F#-style).
+  const recursionState = {
+    depth: frameContext.recursionDepth,
+    rootDepth: frameContext.rootDepth,
+    level: frameContext.level ?? 0,
+    mode: frameContext.recursionMode,
+  };
 
-  const depthNote = frameContext.recursionDepth !== undefined
-    ? ` DEPTH=${frameContext.recursionDepth} LEVEL=${frameContext.level ?? 0}`
+  const depthNote = recursionState.depth !== undefined
+    ? ` DEPTH=${recursionState.depth} LEVEL=${recursionState.level}${recursionState.mode ? ` mode=${recursionState.mode}` : ''}`
     : '';
   state.log.push(`MAIN-PROCESS ${process.name} compiled in scope ${scope}.${depthNote}`);
   state.frameCycle = 0;
 
   // Line dispatch is ordered: workspace/cycle ops run before gates so pending RESETs flush at INCREASECYCLE and primitives.
   try {
-  for (const line of process.lines) {
+  let lineIndex = 0;
+  while (lineIndex < process.lines.length) {
+    const line = process.lines[lineIndex];
+    lineIndex += 1;
     const command = parseCommand(line);
     const skipParams = command.noParameterSubstitution;
     state.parsed.push(command);
@@ -703,25 +716,25 @@ const executeProcess = (
       continue;
     }
 
-    if (command.op === 'REC') {
+    if (command.op === 'REC' || command.op === 'TREC') {
       if (process.name === frameContext.rootProcess && !parentFrame) {
-        // REC may appear in a file that is sometimes a child; only reject RECUR at the root.
-        state.log.push(`REC noted on '${process.name}' (valid when this process is expanded as a child).`);
+        state.log.push(`${command.op} noted on '${process.name}' (valid when this process is expanded as a child).`);
       }
       const meta = parseRecDeclaration(line.trim().split(/\s+/));
       frame.allowsRecursion = true;
       frame.maxDepth = meta.maxDepth;
+      frame.prefersTco = meta.requiresTail;
       state.log.push(
         meta.maxDepth === undefined
-          ? `REC enables bounded self-recursion for '${process.name}'.`
-          : `REC MAXDEPTH ${meta.maxDepth} enables bounded self-recursion for '${process.name}'.`,
+          ? `${command.op} enables bounded self-recursion for '${process.name}'.`
+          : `${command.op} MAXDEPTH ${meta.maxDepth} enables bounded self-recursion for '${process.name}'.`,
       );
       continue;
     }
 
     if (command.op === 'EXIT') {
       const clause = parseWhenClause(command.args);
-      if (evaluateWhenClause(clause, frameContext)) {
+      if (evaluateWhenClause(clause, recursionState)) {
         state.log.push(`EXIT WHEN ${clause.left} ${clause.operator} ${clause.right} ended frame ${scope}.`);
         break;
       }
@@ -828,21 +841,52 @@ const executeProcess = (
         : frame.declaredChildren.get(childName) ?? library.get(childName);
       if (!child) throw new Error(`Unknown child process '${childName}'`);
 
-      const childIsRecursive = processDeclaresRecursion(child);
-      const childCap = processMaxDepth(child) ?? frame.maxDepth;
+      const childAnalysis = analyzeRecursionForm(child);
+      const childRecursionMode = childAnalysis.allowsRecursion
+        ? resolveRecursionMode(childAnalysis)
+        : undefined;
+      const liveContext: ProcessExecutionContext = {
+        ...frameContext,
+        recursionDepth: recursionState.depth,
+        rootDepth: recursionState.rootDepth,
+        level: recursionState.level,
+        recursionMode: recursionState.mode,
+      };
       const plan = planRecursionExpansion({
         childName,
         currentProcessName: process.name,
-        context: frameContext,
+        context: liveContext,
         requestedDepth: command.depth,
-        childIsRecursive: isRecur ? true : childIsRecursive,
-        childMaxDepth: childCap,
+        childIsRecursive: isRecur ? true : childAnalysis.allowsRecursion,
+        childMaxDepth: childAnalysis.maxDepth ?? frame.maxDepth,
         isExplicitRecur: isRecur,
         frameAllowsRecursion: frame.allowsRecursion,
+        childRecursionMode,
       });
 
       if (plan.kind === 'stop') {
         state.log.push(plan.reason);
+        continue;
+      }
+
+      // Tail REC/TREC: rewind this frame (TCO) instead of nesting another executeProcess.
+      const selfCall = isRecur || childName === process.name;
+      if (selfCall && plan.kind === 'expand' && (recursionState.mode === 'tco' || plan.recursionMode === 'tco')) {
+        command.inputs.forEach((input, index) => {
+          const param = process.params[index];
+          if (!param) return;
+          const resolved = scopedName(state, frame, input, line, parentFrame, skipParams);
+          params.set(param.name, resolved);
+        });
+        recursionState.depth = plan.recursionDepth;
+        recursionState.rootDepth = plan.rootDepth;
+        recursionState.level = plan.level;
+        recursionState.mode = 'tco';
+        state.frameCycle = 0;
+        lineIndex = 0;
+        state.log.push(
+          `TCO rewind '${process.name}' → DEPTH=${plan.recursionDepth} LEVEL=${plan.level} (iterative expansion).`,
+        );
         continue;
       }
 
@@ -888,11 +932,19 @@ const executeProcess = (
             rootDepth: plan.rootDepth,
             level: plan.level,
             callStack: frameContext.callStack,
+            recursionMode: plan.recursionMode,
           }
         : {
             rootProcess: frameContext.rootProcess,
             callStack: frameContext.callStack,
           };
+
+      if (plan.kind === 'expand' && plan.recursionMode === 'tco') {
+        state.log.push(
+          `TCO: expanding '${childName}' iteratively (DEPTH=${plan.recursionDepth}`
+          + `${childAnalysis.declaredTrec ? '; TREC' : '; REC auto-converted'}).`,
+        );
+      }
 
       const childReturns = executeProcess(
         child,

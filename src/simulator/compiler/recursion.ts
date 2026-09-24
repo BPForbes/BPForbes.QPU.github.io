@@ -1,12 +1,14 @@
 /**
  * Compile-time bounded child-process recursion helpers.
  *
- * REC / RECUR / DEPTH / EXIT WHEN expand during compilation only. The simulator
- * still receives a flat finite gate list — never a runtime loop or recursive
- * execution edge.
+ * REC / TREC / RECUR / DEPTH / EXIT WHEN expand during compilation only.
+ * Tail-position REC (and explicit TREC) use TCO: iterative frame reuse, O(1)
+ * compiler stack — like F# converting tail recursion into a loop.
  */
 
 export const MAX_COMPILER_RECURSION_DEPTH = 64;
+
+export type RecursionMode = 'tco' | 'stack';
 
 export type ProcessExecutionContext = {
   rootProcess: string;
@@ -20,6 +22,8 @@ export type ProcessExecutionContext = {
   level?: number;
   /** Active process names from root to current frame (for mutual-recursion checks). */
   callStack: string[];
+  /** How this recursive child expands: TCO loop vs stacked frames. */
+  recursionMode?: RecursionMode;
 };
 
 export type WhenOperator = '==' | '!=' | '<' | '<=' | '>' | '>=';
@@ -32,7 +36,21 @@ export type WhenClause = {
 
 export type RecursionMeta = {
   allowsRecursion: boolean;
+  /** Explicit TREC declaration (must be tail form). */
+  requiresTail: boolean;
   maxDepth?: number;
+};
+
+export type RecursionFormAnalysis = {
+  allowsRecursion: boolean;
+  declaredRec: boolean;
+  declaredTrec: boolean;
+  hasRecur: boolean;
+  /** Every RECUR / self-RUNCHILD is followed only by RETURNVALS. */
+  isTail: boolean;
+  maxDepth?: number;
+  /** Reason when isTail is false (for TREC diagnostics). */
+  nonTailReason?: string;
 };
 
 type ProcessLike = {
@@ -42,8 +60,9 @@ type ProcessLike = {
 
 const WHEN_OPS: WhenOperator[] = ['==', '!=', '<=', '>=', '<', '>'];
 
+const lineOpcode = (line: string) => line.trim().split(/\s+/)[0]?.toUpperCase() ?? '';
+
 export const parseWhenClause = (tokens: string[]): WhenClause => {
-  // EXIT WHEN DEPTH == 0  → tokens after EXIT (or including WHEN…)
   const upper = tokens.map((token) => token.toUpperCase());
   const whenAt = upper.indexOf('WHEN');
   if (whenAt === -1) {
@@ -67,11 +86,11 @@ export const parseWhenClause = (tokens: string[]): WhenClause => {
 
 export const evaluateWhenClause = (
   clause: WhenClause,
-  context: ProcessExecutionContext | undefined,
+  values: { depth?: number; rootDepth?: number; level?: number },
 ): boolean => {
-  const depth = context?.recursionDepth;
-  const rootDepth = context?.rootDepth;
-  const level = context?.level ?? (
+  const depth = values.depth;
+  const rootDepth = values.rootDepth;
+  const level = values.level ?? (
     rootDepth !== undefined && depth !== undefined ? rootDepth - depth : undefined
   );
   const value = clause.left === 'DEPTH'
@@ -80,9 +99,7 @@ export const evaluateWhenClause = (
       ? level
       : rootDepth;
   if (value === undefined) {
-    // Outside a recursive child frame these metadata values are unset. Treat the
-    // comparison as false so EXIT WHEN DEPTH == 0 does not fire when a recursive
-    // process file is compiled as the root (RECUR still rejects at the root).
+    // Outside a recursive child frame these metadata values are unset.
     return false;
   }
   switch (clause.operator) {
@@ -111,36 +128,109 @@ export const parseDepthFlag = (tokens: string[]): number | undefined => {
 };
 
 export const parseRecDeclaration = (tokens: string[]): RecursionMeta => {
-  // REC  or  REC MAXDEPTH 16
+  // REC | TREC  or  REC MAXDEPTH 16 | TREC MAXDEPTH 16
+  const head = tokens[0]?.toUpperCase();
+  const requiresTail = head === 'TREC';
+  if (head !== 'REC' && head !== 'TREC') {
+    throw new Error(`Expected REC or TREC (got '${tokens[0] ?? ''}')`);
+  }
   const upper = tokens.map((token) => token.toUpperCase());
   const maxAt = upper.indexOf('MAXDEPTH');
-  if (maxAt === -1) return { allowsRecursion: true };
+  if (maxAt === -1) return { allowsRecursion: true, requiresTail };
   const raw = tokens[maxAt + 1];
   const maxDepth = Number(raw);
   if (!Number.isInteger(maxDepth) || maxDepth < 1) {
-    throw new Error(`REC MAXDEPTH requires a positive integer (got '${raw ?? ''}')`);
+    throw new Error(`${head} MAXDEPTH requires a positive integer (got '${raw ?? ''}')`);
   }
   if (maxDepth > MAX_COMPILER_RECURSION_DEPTH) {
-    throw new Error(`REC MAXDEPTH ${maxDepth} exceeds compiler limit ${MAX_COMPILER_RECURSION_DEPTH}`);
+    throw new Error(`${head} MAXDEPTH ${maxDepth} exceeds compiler limit ${MAX_COMPILER_RECURSION_DEPTH}`);
   }
-  return { allowsRecursion: true, maxDepth };
+  return { allowsRecursion: true, requiresTail, maxDepth };
 };
 
-/** True when the process body declares REC or contains RECUR. */
-export const processDeclaresRecursion = (process: ProcessLike): boolean =>
-  process.lines.some((line) => {
-    const head = line.trim().split(/\s+/)[0]?.toUpperCase();
-    return head === 'REC' || head === 'RECUR';
+const isSelfRecurLine = (line: string, processName: string) => {
+  const tokens = line.trim().split(/\s+/);
+  const op = tokens[0]?.toUpperCase();
+  if (op === 'RECUR') return true;
+  if (op === 'RUNCHILD' || op === 'CALL') {
+    return tokens[1] === processName;
+  }
+  return false;
+};
+
+const isTailFollower = (line: string) => {
+  const op = lineOpcode(line);
+  return op === 'RETURNVALS' || op === '';
+};
+
+/**
+ * F#-style analysis: REC may auto-TCO when every recursive call is in tail position.
+ * TREC requires that form and errors if it is not.
+ */
+export const analyzeRecursionForm = (process: ProcessLike): RecursionFormAnalysis => {
+  let declaredRec = false;
+  let declaredTrec = false;
+  let maxDepth: number | undefined;
+  let hasRecur = false;
+  let isTail = true;
+  let nonTailReason: string | undefined;
+
+  for (const line of process.lines) {
+    const op = lineOpcode(line);
+    if (op === 'REC' || op === 'TREC') {
+      const meta = parseRecDeclaration(line.trim().split(/\s+/));
+      if (op === 'TREC') declaredTrec = true;
+      else declaredRec = true;
+      if (meta.maxDepth !== undefined) maxDepth = meta.maxDepth;
+    }
+  }
+
+  process.lines.forEach((line, index) => {
+    if (!isSelfRecurLine(line, process.name)) return;
+    hasRecur = true;
+    const followers = process.lines.slice(index + 1).filter((entry) => lineOpcode(entry) !== '');
+    const bad = followers.find((entry) => !isTailFollower(entry));
+    if (bad) {
+      isTail = false;
+      nonTailReason = `operations appear after recursive call before RETURNVALS ('${bad.trim()}')`;
+    }
   });
 
-export const processMaxDepth = (process: ProcessLike): number | undefined => {
-  for (const line of process.lines) {
-    const tokens = line.trim().split(/\s+/);
-    if (tokens[0]?.toUpperCase() !== 'REC') continue;
-    return parseRecDeclaration(tokens).maxDepth;
+  if (!hasRecur) {
+    isTail = false;
   }
-  return undefined;
+
+  const allowsRecursion = declaredRec || declaredTrec || hasRecur;
+  return {
+    allowsRecursion,
+    declaredRec,
+    declaredTrec,
+    hasRecur,
+    isTail: Boolean(hasRecur && isTail),
+    maxDepth,
+    nonTailReason,
+  };
 };
+
+/** Prefer TCO when tail (REC auto or TREC). Non-tail REC stays stacked. */
+export const resolveRecursionMode = (analysis: RecursionFormAnalysis): RecursionMode | undefined => {
+  if (!analysis.allowsRecursion || !analysis.hasRecur) return undefined;
+  if (analysis.declaredTrec && !analysis.isTail) {
+    throw new Error(
+      `TREC process requires tail form: ${analysis.nonTailReason ?? 'RECUR is not in tail position'}. `
+      + 'Use REC for non-tail recursion, or move post-RECUR work into the next frame.',
+    );
+  }
+  if (analysis.isTail) return 'tco';
+  return 'stack';
+};
+
+/** True when the process body declares REC/TREC or contains RECUR. */
+export const processDeclaresRecursion = (process: ProcessLike): boolean =>
+  analyzeRecursionForm(process).allowsRecursion;
+
+export const processMaxDepth = (process: ProcessLike): number | undefined =>
+  analyzeRecursionForm(process).maxDepth;
 
 export type RecursionExpansionPlan =
   | { kind: 'compose' }
@@ -151,6 +241,7 @@ export type RecursionExpansionPlan =
       recursionDepth: number;
       rootDepth: number;
       level: number;
+      recursionMode: RecursionMode;
     };
 
 /**
@@ -158,6 +249,7 @@ export type RecursionExpansionPlan =
  * - Root cannot appear as a recursive target.
  * - Only self-recursion of one child chain is allowed (no mutual recursion).
  * - First entry into a recursive child requires -DEPTH.
+ * - Tail REC/TREC expand with recursionMode: 'tco'.
  */
 export const planRecursionExpansion = ({
   childName,
@@ -168,6 +260,7 @@ export const planRecursionExpansion = ({
   childMaxDepth,
   isExplicitRecur,
   frameAllowsRecursion,
+  childRecursionMode,
 }: {
   childName: string;
   currentProcessName: string;
@@ -177,6 +270,7 @@ export const planRecursionExpansion = ({
   childMaxDepth?: number;
   isExplicitRecur: boolean;
   frameAllowsRecursion: boolean;
+  childRecursionMode?: RecursionMode;
 }): RecursionExpansionPlan => {
   const selfRecursive = isExplicitRecur || childName === currentProcessName;
 
@@ -194,11 +288,10 @@ export const planRecursionExpansion = ({
 
   if (selfRecursive && !frameAllowsRecursion) {
     throw new Error(
-      `RECUR requires REC in process '${currentProcessName}'.`,
+      `RECUR requires REC or TREC in process '${currentProcessName}'.`,
     );
   }
 
-  // Mutual recursion: calling a different process that is already on the stack.
   if (
     context.callStack.includes(childName)
     && !(selfRecursive && (context.recursionProcess === childName || context.recursionProcess === currentProcessName))
@@ -223,6 +316,7 @@ export const planRecursionExpansion = ({
       recursionDepth: remaining,
       rootDepth,
       level: (context.level ?? 0) + 1,
+      recursionMode: context.recursionMode ?? childRecursionMode ?? 'stack',
     };
   }
 
@@ -232,7 +326,7 @@ export const planRecursionExpansion = ({
 
   if (requestedDepth === undefined) {
     throw new Error(
-      `RUNCHILD ${childName} requires -DEPTH because '${childName}' is recursive (REC/RECUR).`,
+      `RUNCHILD ${childName} requires -DEPTH because '${childName}' is recursive (REC/TREC/RECUR).`,
     );
   }
   if (requestedDepth > MAX_COMPILER_RECURSION_DEPTH) {
@@ -252,5 +346,6 @@ export const planRecursionExpansion = ({
     recursionDepth: requestedDepth,
     rootDepth: requestedDepth,
     level: 0,
+    recursionMode: childRecursionMode ?? 'stack',
   };
 };

@@ -20,9 +20,10 @@ Child process & A separately named protocol expanded into a parent through
 RUNCHILD or CALL.\\
 Combinational logic & A classical circuit whose output depends only on current
 inputs, not stored history.\\
-Compile-time recursion & Bounded self-expansion of a child process marked REC.
-RECUR expands another frame with DEPTH$-1$; EXIT WHEN ends a frame. No runtime
-loop or recursive QPU execution is created.\\
+Compile-time recursion & Bounded self-expansion of a child process marked REC
+or TREC. RECUR expands another frame with DEPTH$-1$; EXIT WHEN ends a frame.
+Tail-position REC auto-converts to TCO (iterative one-frame expansion, F\#-style);
+TREC requires that form. No runtime loop or recursive QPU execution is created.\\
 Control & A wire whose basis condition decides whether a controlled operation
 acts on its target. The control itself is preserved by the standard controlled
 gates.\\

@@ -85,6 +85,7 @@ export type QpuOperation =
   | 'DECLARECHILD'
   | 'RUNCHILD'
   | 'REC'
+  | 'TREC'
   | 'RECUR'
   | 'EXIT'
   | DerivedGateType

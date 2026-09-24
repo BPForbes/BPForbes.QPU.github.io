@@ -26,6 +26,8 @@ describe('bounded child-process recursion', () => {
     expect(visible.filter((gate) => gate.type === 'H')).toHaveLength(3);
     expect(visible.filter((gate) => gate.type === 'CYCLE')).toHaveLength(3);
     expect(compiled.log.some((line) => /reached its base depth/i.test(line))).toBe(true);
+    expect(compiled.log.some((line) => /TCO:.*REC auto-converted/i.test(line))).toBe(true);
+    expect(compiled.log.some((line) => /TCO rewind/i.test(line))).toBe(true);
     expect(compiled.gates.every((gate) => gate.type !== 'REC' && gate.type !== 'RECUR' && gate.type !== 'EXIT')).toBe(true);
   });
 
@@ -139,5 +141,67 @@ SET DEPTH 99
 RECUR -I Q
 RETURNVALS Q`,
     })).toThrow(/read-only/i);
+  });
+
+  it('auto-converts tail REC to TCO and accepts explicit TREC', () => {
+    const withTrec = recursiveH.replace('REC MAXDEPTH 16', 'TREC MAXDEPTH 16');
+    const compiled = compileQpuProtocol(parent.replace('-DEPTH 3', '-DEPTH 4'), { RecursiveH: withTrec });
+    expect(compiled.log.some((line) => /TCO:.*TREC/i.test(line))).toBe(true);
+    expect(visibleCircuitGates(compiled.gates).filter((gate) => gate.type === 'H')).toHaveLength(4);
+  });
+
+  it('keeps non-tail REC on the stacked expansion path', () => {
+    const nonTail = `PARAMS: Q:state
+MAIN-PROCESS NonTail
+REC
+EXIT WHEN DEPTH == 0
+H -I Q -O Q
+RECUR -I Q
+X -I Q -O Q
+RETURNVALS Q`;
+    const compiled = compileQpuProtocol(`PARAMS: Q:state
+MAIN-PROCESS Parent
+DECLARECHILD NonTail
+RUNCHILD NonTail -DEPTH 2 -I Q
+RETURNVALS Q`, { NonTail: nonTail });
+    expect(compiled.log.some((line) => /TCO:/i.test(line))).toBe(false);
+    expect(compiled.log.filter((line) => /MAIN-PROCESS NonTail compiled in scope/.test(line)).length).toBeGreaterThan(1);
+    expect(visibleCircuitGates(compiled.gates).filter((gate) => gate.type === 'H')).toHaveLength(2);
+    expect(visibleCircuitGates(compiled.gates).filter((gate) => gate.type === 'X')).toHaveLength(2);
+  });
+
+  it('rejects TREC when RECUR is not in tail position', () => {
+    expect(() => compileQpuProtocol(`PARAMS: Q:state
+MAIN-PROCESS Parent
+DECLARECHILD BadTail
+RUNCHILD BadTail -DEPTH 2 -I Q
+RETURNVALS Q`, {
+      BadTail: `PARAMS: Q:state
+MAIN-PROCESS BadTail
+TREC
+H -I Q -O Q
+RECUR -I Q
+X -I Q -O Q
+RETURNVALS Q`,
+    })).toThrow(/TREC process requires tail form/i);
+  });
+
+  it('compiles a deep TCO expansion without nested scopes per depth', () => {
+    const compiled = compileQpuProtocol(`PARAMS: Q:state
+MAIN-PROCESS Parent
+DECLARECHILD RecursiveH
+RUNCHILD RecursiveH -DEPTH 40 -I Q
+RETURNVALS Q`, {
+      RecursiveH: `PARAMS: Q:state
+MAIN-PROCESS RecursiveH
+REC
+EXIT WHEN DEPTH == 0
+H -I Q -O Q
+RECUR -I Q
+RETURNVALS Q`,
+    });
+    expect(visibleCircuitGates(compiled.gates).filter((gate) => gate.type === 'H')).toHaveLength(40);
+    // One child scope plus TCO rewinds — not 40 nested NonTail-style scopes.
+    expect(compiled.log.filter((line) => /MAIN-PROCESS RecursiveH compiled in scope/.test(line))).toHaveLength(1);
   });
 });
