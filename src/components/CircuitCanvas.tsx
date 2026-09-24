@@ -253,7 +253,7 @@ export function CircuitCanvas({
               const { min, max } = gateSpanQubits(gate);
               return (
                 <span
-                  className={`circuit-connector ${columnIsActive(column, activeStep) ? 'active' : ''}`}
+                  className={`circuit-connector ${columnIsActive(column, activeStep) ? 'active' : ''} ${gate.inverse ? 'inverse' : ''}`}
                   key={`link-${gate.id}`}
                   style={{ gridColumn: column.column + 2, gridRow: `${min + 1} / ${max + 2}` }}
                 />

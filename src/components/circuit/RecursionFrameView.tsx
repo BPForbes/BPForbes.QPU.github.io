@@ -73,7 +73,7 @@ export function RecursionFrameView({ frame, activeStep, qubitNames = [] }: Recur
             const { min, max } = gateSpanQubits(gate);
             return (
               <span
-                className={`circuit-connector ${gate.step === activeStep ? 'active' : ''}`}
+                className={`circuit-connector ${gate.step === activeStep ? 'active' : ''} ${gate.inverse ? 'inverse' : ''}`}
                 key={`link-${gate.id}`}
                 style={{ gridColumn: column + 2, gridRow: `${rowOf(min)} / ${rowOf(max) + 1}` }}
               />

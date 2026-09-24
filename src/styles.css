@@ -151,6 +151,8 @@ button { font: inherit; }
   z-index: 1;
 }
 .circuit-connector.active { background: #dc2626; }
+/* Active inverse keeps the purple of its dagger glyphs. */
+.circuit-connector.active.inverse { background: #7c3aed; }
 .circuit-gate-stack {
   position: relative;
   display: grid;
