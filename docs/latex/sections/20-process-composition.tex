@@ -153,3 +153,311 @@ $A$&$B$&$C_{\rm in}$&$C_{\rm out}$&Sum\\\midrule
 \end{tabular}
 \end{center}
 
+\subsection{Bounded child-process recursion (\implemented)}
+\hypertarget{bounded-child-recursion}{}
+
+The QPU protocol does not support runtime loops or recursive execution of the
+compilation root. A child marked \code{REC} may recursively expand itself during
+compilation only. The parent supplies a finite \code{-DEPTH}; each
+\code{RECUR} creates another compile-time frame with $\mathrm{DEPTH}-1$.
+\code{EXIT WHEN ...} is the compile-time base case. After expansion the
+simulator still receives a flat ordered gate list.
+
+\begin{lstlisting}
+# recursive-h.qpucir
+PARAMS: Q:state
+MAIN-PROCESS RecursiveH
+REC MAXDEPTH 16
+EXIT WHEN DEPTH == 0
+H -I Q -O Q
+INCREASECYCLE
+RECUR -I Q
+RETURNVALS Q
+\end{lstlisting}
+
+\begin{lstlisting}
+# parent
+PARAMS: Q:state
+MAIN-PROCESS Parent
+DECLARECHILD RecursiveH
+RUNCHILD RecursiveH -DEPTH 4 -I Q
+RETURNVALS Q
+\end{lstlisting}
+
+Compiler structure:
+
+\begin{center}
+\texttt{Parent}
+$\rightarrow$
+\texttt{RecursiveH} DEPTH 4
+$\rightarrow$
+DEPTH 3
+$\rightarrow$
+DEPTH 2
+$\rightarrow$
+DEPTH 1
+$\rightarrow$ stop
+\end{center}
+
+Emitted circuit (no recursion metadata remains):
+
+\begin{lstlisting}
+H
+INCREASECYCLE
+H
+INCREASECYCLE
+H
+INCREASECYCLE
+H
+INCREASECYCLE
+\end{lstlisting}
+
+Rules (summary):
+\begin{itemize}
+  \item Root $\rightarrow$ root is forbidden.
+  \item Child $\rightarrow$ same child is allowed when bounded.
+  \item Mutual recursion ($A\rightarrow B\rightarrow A$) is rejected.
+  \item \code{RECUR} requires \code{REC} or \code{TREC}; the initial
+  \code{RUNCHILD} requires \code{-DEPTH}.
+  \item \code{DEPTH}, \code{LEVEL}, and \code{ROOTDEPTH} are read-only.
+  \item Absolute compiler limit: 64; optional \code{REC}/\code{TREC}
+  \code{MAXDEPTH} $n$ is lower.
+  \item In-place \code{-I} (same wire returned) is not zero-prepared between
+  recursive frames.
+  \item \textbf{TCO (F\#-style):} if every \code{RECUR} is in tail position,
+  \code{REC} automatically expands iteratively in one compile-time frame
+  (looping rewind). Explicit \code{TREC} asserts the same form and errors if
+  post-\code{RECUR} work exists. Non-tail \code{REC} keeps stacked frames.
+\end{itemize}
+
+Keep these concepts distinct:
+
+\begin{center}
+\begin{tabular}{ll}\toprule
+Construct & Meaning\\\midrule
+\code{RUNCHILD} & Compose another process\\
+\code{RECUR} & Expand this child again with DEPTH$-1$\\
+\code{REC} & Allow recursion; auto-TCO when tail\\
+\code{TREC} & Require tail form; always TCO\\
+\code{INCREASECYCLE} & Next logical circuit stage (not a loop)\\
+\code{WHEN} & Compile-time condition on DEPTH/LEVEL/ROOTDEPTH\\
+\code{-IF} & Runtime classical feed-forward after MEASURE\\
+\code{IF}/\code{ELSE}/\code{ENDIF} & Block form of \code{-IF} with an
+alternative branch\\\bottomrule
+\end{tabular}
+\end{center}
+
+The existing bit adders remain the teaching example of explicit hierarchical
+composition. Recursion is a circuit-\emph{construction} abstraction for
+repeated stages; it never introduces a backward execution edge.
+
+\subsubsection{Recursion on the circuit canvas}
+
+The compiled gate list holds every unrolled frame, but the canvas draws each
+recursive call once:
+\begin{itemize}
+  \item A single-gate body (such as \code{RecursiveH}) keeps its own symbol.
+  A body with several gates collapses to one \textbf{REC} box that spans every
+  wire the body touches. Above the box, a caption gives the child name and the
+  depth range, for example \texttt{RecursiveReversibleEcho}, \texttt{D5 $\rightarrow$ D1}.
+  \item A teal \textbf{D$n$} badge above the gate shows the current DEPTH. It
+  reads the root depth before the call, counts down (\texttt{D5}, \texttt{D4},
+  \ldots) as \textbf{Step gate} walks through the frames, and hides once the
+  call has finished.
+  \item The REC box follows the usual colours: red while a forward gate of the
+  frame is running, purple while an inverse (\code{dg}/\code{inv}) gate is
+  running.
+  \item The \code{INCREASECYCLE} markers inside the expansion are not drawn on
+  the canvas; the badge replaces them.
+\end{itemize}
+
+While the playhead is inside a recursive call, the Interactive workbench shows
+a \textbf{Recursive frame} card. It draws the level being executed with the
+same gate symbols as the canvas: the heading gives
+\texttt{DEPTH $d$ $\cdot$ LEVEL $\ell$ $\cdot$ TCO} (or \texttt{STACK}), the forward
+gates sit above a \texttt{forward $\rightarrow$} rule and the adjoint gates above a
+\texttt{$\leftarrow$ inverse} rule, the frame's \code{INCREASECYCLE} is a dashed line
+labelled \texttt{IC$n$}, and the frame ends in \texttt{RECUR $\downarrow$ D$(d-1)$}
+(\texttt{D0 exit} on the last frame). The current gate is highlighted. When the
+playhead is elsewhere the card is collapsed as \emph{Expand \ldots{} first
+frame}. The downward arrow is deliberate: the next frame is the next block of
+the finite circuit, not a jump back to an earlier column.
+
+\subsection{Structured classical branches: \code{IF} / \code{ELSE} / \code{ENDIF} (\implemented)}
+\hypertarget{if-else-blocks}{}
+
+A block conditions every gate inside it on one measured bit, with an optional
+alternative:
+\begin{lstlisting}
+MEASURE -I A
+IF A=1
+X -I C -O C
+ELSE
+Z -I C -O C
+ENDIF
+\end{lstlisting}
+The compiler removes \code{IF}, \code{ELSE}, and \code{ENDIF} and emits
+ordinary gates. Each gate in the \code{IF} part carries the condition
+\code{A=1}; each gate in the \code{ELSE} part carries the opposite value,
+\code{A=0}. The example above compiles exactly as
+\begin{lstlisting}
+MEASURE -I A
+X -I C -O C -IF A=1
+Z -I C -O C -IF A=0
+\end{lstlisting}
+plus canvas metadata that records which gates came from the \code{IF} part
+and which from the \code{ELSE} part.
+
+Rules:
+\begin{itemize}
+  \item The header is \code{IF Token=0} or \code{IF Token=1}, with no spaces
+  around \code{=}. The token may be a parameter or any name that is in scope.
+  \item \code{ELSE} is optional and takes no arguments. It flips the value for
+  the gates after it. \code{ENDIF} is required and takes no arguments.
+  \item \code{ELSE} or \code{ENDIF} without a matching \code{IF}, or an
+  \code{IF} left open at the end of the process, is a compile error.
+  \item The token must be measured before the first conditioned gate runs;
+  otherwise the simulator stops with ``requires q$n$ to be measured first''.
+  \item A gate carries exactly one condition, so these forms are compile
+  errors rather than silently dropping a test: an \code{IF} inside another
+  open \code{IF}; a gate with its own \code{-IF} inside a block; and
+  \code{RUNCHILD}, \code{CALL}, or \code{RECUR} inside a block (the child's
+  gates would not inherit the condition). Close the block with \code{ENDIF}
+  first, condition the child's gates inside the child, or register the child
+  as a custom gate and use that gate inside the block.
+  \item Conditions inside a custom gate's process are evaluated the same way
+  when the custom gate runs.
+  \item Both branches remain in the compiled forward sequence. At run time the
+  gate whose condition fails is skipped (the run log says ``skipped because
+  classical condition was false''); nothing is removed and nothing forks.
+\end{itemize}
+
+\subsubsection{Gate-expression conditions: \texttt{IF (GATE \ldots) = V}}
+\hypertarget{if-gate-expression}{}
+
+Instead of one measured bit, the header can test the result of any gate. This
+is how conditions are joined: where another language writes \texttt{A \&\& B},
+QPU writes the AND gate.
+\begin{lstlisting}
+IF (AND -I A B -O B) = 1p      # A AND B
+IF (OR -I A B -O B) = 1        # A OR B
+IF (CNOT -I A -O B) = 1        # A XOR B (B is the CNOT target)
+IF (NAND -I A B -O B) != 0p    # != also accepted
+IF (H -I A -O A) = S           # would H leave A in superposition?
+\end{lstlisting}
+The value after \code{=} or \code{!=} is \code{0}/\code{0p},
+\code{1}/\code{1p}, or \code{S}/\code{sp} (any case).
+
+How it is evaluated:
+\begin{itemize}
+  \item Just before each conditioned gate runs, the simulator applies the
+  expression gate to a \emph{scratch copy} of the current state. The circuit's
+  own wires are not changed by the test.
+  \item The gate is read exactly like a circuit line: \code{-O} names the
+  result wire, and \code{-I} wires are its inputs. So \code{X -I A -O C} flips
+  C and tests C; it does not copy A.
+  \item One exception makes Boolean joins read naturally: when AND, NAND, OR,
+  or XOR names one of its own inputs as \code{-O} (as in
+  \code{AND -I A B -O B}), all inputs stay operands and the result is written
+  to a fresh wire that starts at $\ket0$. The test is therefore $A \wedge B$.
+  \item The result wire is classified by its probability of reading 1: 0
+  (definitely $\ket0$), 1 (definitely $\ket1$), or S (anything in between,
+  including entangled wires). \code{sp} means ``superposed'', not only
+  $\ket{+}$.
+  \item \code{ELSE} runs its gates when the test is false (for \code{= 1}
+  that means 0 or S).
+  \item The expression must be a single gate with one result wire. Built-in
+  gates and registered custom gates with one \code{RETURNVALS} value both
+  work; a custom gate keeps its own wiring and reads its \code{-O} wire.
+  \code{MEASURE}, \code{RESET}, \code{SWAP}, and \code{RUNCHILD} are
+  rejected, as is a \code{-IF} inside the expression. Blocks still cannot be
+  nested.
+  \item Custom gates can also sit inside the branch bodies, where the whole
+  gate runs or is skipped as one step. See \emph{Custom gates} for the
+  syntax.
+\end{itemize}
+
+\begin{cautionbox}[Simulator-only test]
+A measured-bit \code{IF A=1} is ordinary feed-forward and can run on
+hardware. A gate-expression test reads amplitudes without measuring, which a
+simulator can do but a real quantum processor cannot. Nothing collapses, and
+the S result in particular has no physical equivalent. Use it to explore and
+teach logic, and use \code{MEASURE} plus \code{IF Token=0|1} when a protocol
+must be physically realistic.
+\end{cautionbox}
+
+\subsubsection{IF / ELSE on the circuit canvas}
+
+The quantum wire stays a single straight line. The branch gates are drawn one
+after another on that wire, never as a fork:
+\begin{itemize}
+  \item A yellow double line drops from each conditioned gate to the
+  classical \textbf{c} lane. It passes behind any gate it crosses.
+  \item Under the \textbf{c} lane each branch is labelled with its keyword and
+  test, for example \textbf{IF} \texttt{A=1} and \textbf{ELSE} \texttt{A=0}.
+  Compiled protocols use the parameter name; canvas circuits use
+  \texttt{q$n$}.
+  \item Before the bit is measured both branches are drawn normally. After the
+  measurement the branch that runs shows \texttt{$\checkmark$ taken}; the other shows
+  \texttt{$\oslash$ skipped}, and its gate, feed line, and label fade and turn dashed.
+  If the measured value changes, the two swap.
+  \item A gate-expression test has no bit on \textbf{c}. Its yellow double
+  line instead spans the wires the expression reads, with a small yellow tap on
+  each, and the label shows the expression, for example \textbf{IF}
+  \texttt{AND(A,B) = 1p} (always the 0p/1p/sp form, whichever way the source
+  wrote it). Taken/skipped appears once the simulator has evaluated it.
+\end{itemize}
+
+\subsection{Worked example: recursion, measurement, and IF / ELSE together}
+
+The bundled \textbf{RecursiveReversibleEchoHarness} protocol combines both
+features. Its child applies a forward block and then the adjoints of that block
+in reverse order, so each frame returns the wires to where they started:
+\begin{lstlisting}
+# recursive-reversible-echo.qpucir (abridged)
+PARAMS: A:state B:state C:state
+MAIN-PROCESS RecursiveReversibleEcho
+TREC MAXDEPTH 8
+EXIT WHEN DEPTH == 0
+H -I A -O A
+RX=pi/3 -I B -O B
+RY=pi/5 -I C -O C
+CNOT -I A -O B
+CPHASE=pi/7 -I B -O C
+T -I A -O A
+AND -I A B -O C
+SWAP -I B C -O B C
+SWAPdg -I B C -O B C
+ANDinv -I A B -O C
+Tdg -I A -O A
+invCPHASE=pi/7 -I B -O C
+CNOTdg -I A -O B
+RYinv=pi/5 -I C -O C
+dgRX=pi/3 -I B -O B
+Hinv -I A -O A
+INCREASECYCLE
+RECUR -I A B C
+RETURNVALS A B C
+\end{lstlisting}
+The harness prepares $\ket{101}$, runs the child with \code{-DEPTH 5}, and then
+branches on the measured value of A:
+\begin{lstlisting}
+X -I A -O A
+X -I C -O C
+RUNCHILD RecursiveReversibleEcho -DEPTH 5 -I A B C -O A B C
+ACCEPTVALS A B C
+MEASURE -I A
+IF A=1
+X -I C -O C
+ELSE
+Z -I C -O C
+ENDIF
+MEASURE -I B
+MEASURE -I C
+\end{lstlisting}
+Because every frame undoes itself, A is still 1 after the echo, so the
+\code{IF} branch runs: C flips to 0 and the final reading is A=1, B=0, C=0.
+On the canvas the call is one REC box whose badge counts D5 $\rightarrow$ D1; the
+\code{X} on C shows \texttt{$\checkmark$ taken} and the \code{Z} shows
+\texttt{$\oslash$ skipped}.
+

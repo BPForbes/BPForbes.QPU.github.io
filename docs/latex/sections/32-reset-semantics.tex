@@ -22,7 +22,10 @@ before:
 Two different inputs, $\ket0$ and $\ket1$, give the same output, so nothing
 can tell afterwards which one was there. The information has been erased, and
 no matrix $U$ can undo that. RESET is therefore not unitary, just like
-MEASURE.
+MEASURE. \emph{Requirements for a reversible gate}, in the Theory Guide's
+mathematical foundations chapter, states all four conditions a gate must meet
+to be reversible; RESET and MEASURE are the only two operations in QPU that
+fail them.
 
 \begin{center}
 \begin{tabularx}{\textwidth}{>{\bfseries}l X X X}

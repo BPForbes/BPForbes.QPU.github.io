@@ -20,9 +20,24 @@ Child process & A separately named protocol expanded into a parent through
 RUNCHILD or CALL.\\
 Combinational logic & A classical circuit whose output depends only on current
 inputs, not stored history.\\
+Compile-time recursion & Bounded self-expansion of a child process marked REC
+or TREC. RECUR expands another frame with DEPTH$-1$; EXIT WHEN ends a frame.
+Tail-position REC auto-converts to TCO (iterative one-frame expansion, F\#-style);
+TREC requires that form. No runtime loop or recursive QPU execution is created.\\
+IF / ELSE / ENDIF & Structured classical feed-forward sugar. Compiles to flat
+gates carrying $-$IF conditions (ELSE gates get the opposite value) and branch
+metadata for the canvas labels. The header is either a measured bit
+(IF A=1) or a gate expression evaluated on a scratch copy, such as
+IF (AND -I A B -O B) = 1p. Both branches stay in the circuit; the one whose
+test fails is skipped and drawn faded as ``skipped''. Never forks the quantum
+wire.\\
 Control & A wire whose basis condition decides whether a controlled operation
 acts on its target. The control itself is preserved by the standard controlled
 gates.\\
+DEPTH & Read-only remaining recursive expansions for the current child frame.
+Supplied by RUNCHILD -DEPTH and decremented by RECUR.\\
+D$n$ badge & Teal label above a recursive call on the canvas showing the
+current DEPTH; counts down while stepping and hides when the call ends.\\
 Entanglement & A joint multi-qubit state that cannot be written as a tensor
 product of independent qubit states.\\
 Fan-out & Sending one classical value to multiple destinations. Unknown quantum

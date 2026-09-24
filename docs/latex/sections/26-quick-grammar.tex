@@ -12,16 +12,29 @@ opcode       := supported-command
              | primitive-gate
              | primitive-gate ("dg" | "inv")
              | ("dg" | "inv") primitive-gate
-             | "PHASE=" angle
-             | "PHASE" ("dg" | "inv") "=" angle
-             | ("dg" | "inv") "PHASE=" angle
+             | angle-gate "=" angle
+             | angle-gate ("dg" | "inv") "=" angle
+             | ("dg" | "inv") angle-gate "=" angle
+angle-gate   := "PHASE" | "RX" | "RY" | "RZ" | "CPHASE"
 
 gate-row     := opcode "-I" input+ "-O" output+ ["-$R"]
+                ["-IF" name "=" ("0" | "1")]
 measure-row  := "MEASURE" ["-I" input]
 set-row      := "SET" target value
 process-row  := "MAIN-PROCESS" name
-child-row    := ("RUNCHILD" | "CALL") name
+child-row    := ("RUNCHILD" | "CALL") name ["-DEPTH" integer]
                 ["-I" argument*] ["-O" argument*]
+rec-row      := ("REC" | "TREC") ["MAXDEPTH" integer]
+exit-row     := "EXIT" "WHEN" ("DEPTH" | "LEVEL" | "ROOTDEPTH")
+                ("==" | "!=" | "<" | "<=" | ">" | ">=") integer
+recur-row    := "RECUR" "-I" argument+ ["-O" argument*]
+if-block     := "IF" (if-bit | if-expression)
+                logical-line*
+                ["ELSE" logical-line*]
+                "ENDIF"
+if-bit       := name "=" ("0" | "1")
+if-expression:= "(" gate-row ")" ("=" | "!=") if-value
+if-value     := "0" | "1" | "S" | "0p" | "1p" | "sp"
 returns-row  := "RETURNVALS" token*
 accept-row   := "ACCEPTVALS" token*
 
@@ -36,3 +49,10 @@ angle        := rational
 but \code{PHASE = pi/2} is not. Operations and flags are case-insensitive;
 names, types, and positional values are otherwise retained.
 
+\textbf{Block and recursion detail:} \code{-DEPTH} is required when the child
+declares \code{REC} or \code{TREC}. \code{RECUR}, \code{REC}, \code{TREC},
+and \code{EXIT WHEN} are only meaningful inside a child process. An
+\code{if-block} lowers each inner gate to a \code{-IF} condition. A
+registered custom gate is written like \code{gate-row} (its id as the
+opcode) and may appear in an \code{if-block} or an \code{if-expression}; see
+\hyperlink{if-else-blocks}{Structured classical branches}.

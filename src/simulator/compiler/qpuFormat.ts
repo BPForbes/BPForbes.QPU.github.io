@@ -240,6 +240,18 @@ export const updateProtocolStartStateSet = (source: string, paramName: string, s
 // Canvas wires use $Qn refs so serialized protocols do not clash with user-named PARAMS registers.
 const canvasParamRef = (qubit: number) => `$Q${qubit}`;
 
+const PARAMETERIZED_ANGLE_GATES = new Set(['PHASE', 'RX', 'RY', 'RZ', 'CPHASE', 'CP']);
+
+const serializeGateOpcode = (gate: CircuitGate) => {
+  if (PARAMETERIZED_ANGLE_GATES.has(String(gate.type))) {
+    const angle = gate.inverse ? -(gate.phase ?? 0) : gate.phase ?? 0;
+    return `${gate.type}${gate.inverse ? 'dg' : ''}=${angle}`;
+  }
+  if (!gate.inverse) return String(gate.type);
+  // Self-inverse gates still emit dg so canvas inverse mode round-trips through the protocol text.
+  return `${gate.type}dg`;
+};
+
 // Canvas serialization emits a minimal MAIN-PROCESS that the parser/compiler can immediately load again.
 export const serializeCircuitToQpuProtocol = (
   gates: CircuitGate[],
@@ -284,14 +296,32 @@ export const serializeCircuitToQpuProtocol = (
 
       const target = `${canvasParamRef(gate.targets[0])}:${cycle}`;
       const controls = gate.controls.map((control) => `${canvasParamRef(control)}:${cycle}`);
+      const op = serializeGateOpcode(gate);
       if (gate.type === 'MEASURE') {
         lines.push(`MEASURE -I ${canvasParamRef(gate.targets[0])}`);
         return;
       }
+      // A gate-expression condition has no inline -IF form, so it round-trips as its own IF … ENDIF block.
+      const predicate = gate.condition?.predicate;
+      if (predicate) {
+        const predicateOp = serializeGateOpcode({ ...gate, type: predicate.type, phase: predicate.phase, inverse: predicate.inverse });
+        const value = predicate.expect === 's' ? 'sp' : `${predicate.expect}p`;
+        lines.push(
+          `IF (${predicateOp} -I ${predicate.inputs.map(canvasParamRef).join(' ')} -O ${canvasParamRef(predicate.output)})`
+          + ` ${predicate.negate ? '!=' : '='} ${value}`,
+        );
+      }
+      const pushGateLine = (text: string) => {
+        lines.push(text);
+        if (predicate) lines.push('ENDIF');
+      };
+      const conditionSuffix = gate.condition && !predicate
+        ? ` -IF ${canvasParamRef(gate.condition.qubit).replace(/^\$/, '')}=${gate.condition.equals}`
+        : '';
       if (gate.type === 'SWAP') {
         if (gate.targets.length < 2) return;
         const [first, second] = gate.targets;
-        lines.push(`SWAP -I ${canvasParamRef(first)}:${cycle} ${canvasParamRef(second)}:${cycle} -O ${canvasParamRef(first)}:${cycle} ${canvasParamRef(second)}:${cycle}`);
+        pushGateLine(`${op} -I ${canvasParamRef(first)}:${cycle} ${canvasParamRef(second)}:${cycle} -O ${canvasParamRef(first)}:${cycle} ${canvasParamRef(second)}:${cycle}${conditionSuffix}`);
         return;
       }
       if (
@@ -303,14 +333,20 @@ export const serializeCircuitToQpuProtocol = (
         || gate.type === 'T'
         || gate.type === 'PHASE'
         || gate.type === 'NOT'
+        || gate.type === 'RX'
+        || gate.type === 'RY'
+        || gate.type === 'RZ'
       ) {
-        const op = gate.type === 'PHASE'
-          ? `${gate.inverse ? 'PHASEdg' : 'PHASE'}=${gate.inverse ? -(gate.phase ?? 0) : gate.phase ?? 0}`
-          : `${gate.type}${gate.inverse && gate.type !== 'NOT' ? 'dg' : ''}`;
-        lines.push(`${op} -I ${target} -O ${target}`);
+        pushGateLine(`${op} -I ${target} -O ${target}${conditionSuffix}`);
         return;
       }
-      lines.push(`${gate.type} -I ${controls.join(' ')} -O ${target}`);
+      // Custom gates bind -I to PARAMS and -O to every RETURNVAL, in order.
+      if (gate.customGateId) {
+        const outputs = gate.targets.map((qubit) => `${canvasParamRef(qubit)}:${cycle}`);
+        pushGateLine(`${op} -I ${controls.join(' ')} -O ${outputs.join(' ')}${conditionSuffix}`);
+        return;
+      }
+      pushGateLine(`${op} -I ${controls.join(' ')} -O ${target}${conditionSuffix}`);
     });
 
   lines.push(`RETURNVALS ${Array.from({ length: qubitCount }, (_, qubit) => canvasParamRef(qubit)).join(' ')}`);

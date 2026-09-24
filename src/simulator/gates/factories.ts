@@ -114,7 +114,7 @@ export const createControlledXFamilyGate = ({
   inPalette: true,
   isAstPrimitive: !isAstDerived,
   isAstDerived,
-  supportsReverse: !isAstDerived,
+  supportsReverse: true,
   supportsPhase: false,
   cssClass,
   apply: ({ state, qubitCount, gate, measurements }): ExecutionResult => {

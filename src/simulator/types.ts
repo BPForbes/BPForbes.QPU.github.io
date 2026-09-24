@@ -14,10 +14,14 @@ export type PreconfiguredGateType =
   | 'H'
   | 'S'
   | 'T'
+  | 'RX'
+  | 'RY'
+  | 'RZ'
   | 'CNOT'
   | 'CCNOT'
   | 'CZ'
   | 'CY'
+  | 'CPHASE'
   | 'SWAP'
   | 'PHASE'
   | 'MEASURE'
@@ -40,10 +44,14 @@ export const preconfiguredGateTypes = [
   'H',
   'S',
   'T',
+  'RX',
+  'RY',
+  'RZ',
   'CNOT',
   'CCNOT',
   'CZ',
   'CY',
+  'CPHASE',
   'SWAP',
   'PHASE',
   'MEASURE',
@@ -76,6 +84,13 @@ export type QpuOperation =
   | 'CALL'
   | 'DECLARECHILD'
   | 'RUNCHILD'
+  | 'REC'
+  | 'TREC'
+  | 'RECUR'
+  | 'EXIT'
+  | 'IF'
+  | 'ELSE'
+  | 'ENDIF'
   | DerivedGateType
   | 'MEASURE'
   | 'RETURNVALS'
@@ -95,16 +110,93 @@ export type PrimitiveGateType =
   | 'H'
   | 'S'
   | 'T'
+  | 'RX'
+  | 'RY'
+  | 'RZ'
   | 'CNOT'
   | 'CCNOT'
   | 'CZ'
   | 'CY'
+  | 'CPHASE'
   | 'SWAP'
   | 'PHASE'
   | 'MEASURE'
   | 'RESET';
 
 export type DerivedGateType = 'NOT' | 'AND' | 'NAND' | 'OR' | 'XOR';
+
+/** Value a gate predicate is compared with: definite 0, definite 1, or superposed (S). */
+export type ConditionValue = 0 | 1 | 's';
+
+/** Display/source form of a `ConditionValue`, matching the 0p/1p/sp particle-state vocabulary. */
+export const conditionValueLabel = (value: ConditionValue): '0p' | '1p' | 'sp' =>
+  (value === 's' ? 'sp' : `${value}p`);
+
+/**
+ * Gate-expression test from `IF (GATE -I … -O …) = 0|1|S`.
+ * The gate runs on a scratch copy of the state (the circuit is not changed)
+ * and the result wire is classified as 0, 1, or S.
+ */
+export type ConditionPredicate = {
+  type: GateType;
+  /** Every -I wire, in source order. */
+  inputs: number[];
+  /** The -O wire. */
+  output: number;
+  /**
+   * True when a multi-input Boolean gate names one of its inputs as -O
+   * (e.g. AND -I A B -O B): the result goes to a fresh |0⟩ wire so all
+   * inputs stay as operands.
+   */
+  scratch: boolean;
+  phase?: number;
+  inverse?: boolean;
+  expect: ConditionValue;
+  /** `!=` in source, or the ELSE half of the block. */
+  negate: boolean;
+  /** Compact label for the canvas, e.g. AND(A,B). */
+  text: string;
+};
+
+/**
+ * Classical feed-forward condition. Without `predicate` it checks a prior
+ * measurement (`qubit` = `equals`). With `predicate` it evaluates a gate
+ * expression; `qubit` is then the wire the result is read from.
+ */
+export type GateCondition = {
+  qubit: number;
+  equals: 0 | 1;
+  predicate?: ConditionPredicate;
+};
+
+/**
+ * UI metadata for structured IF/ELSE blocks.
+ * The simulator only evaluates `condition`; the canvas uses `branch` for labels
+ * and taken/skipped styling.
+ */
+export type ClassicalBranchMeta = {
+  groupId: string;
+  kind: 'if' | 'else';
+  sourceQubit: number;
+  equals: 0 | 1;
+};
+
+/**
+ * Compile-time recursion frame that produced this gate.
+ * REC/TREC/RECUR expand into ordinary gates; this metadata drives canvas badges.
+ */
+export type RecursionFrameMeta = {
+  process: string;
+  depth: number;
+  level: number;
+  rootDepth: number;
+  mode: 'tco' | 'stack';
+  /**
+   * Unique per call site that starts a recursion chain, so two calls to the
+   * same child with the same DEPTH stay separate on the canvas.
+   */
+  invocation?: string;
+};
 
 export type CircuitGate = {
   id: string;
@@ -121,6 +213,12 @@ export type CircuitGate = {
   cycle?: number;
   /** Named simulator checkpoint for SAVE_STATE and LOAD_STATE. */
   checkpoint?: string;
+  /** Optional classical condition; evaluated only after the named qubit is measured. */
+  condition?: GateCondition;
+  /** Structured IF/ELSE origin; absent for bare `-IF` feed-forward. */
+  branch?: ClassicalBranchMeta;
+  /** Present when this gate came from a bounded REC/TREC expansion. */
+  recursion?: RecursionFrameMeta;
 };
 
 export type MeasurementMap = Record<number, 0 | 1>;
@@ -147,4 +245,6 @@ export type ExecutionResult = {
   particles?: import('./physics/particleTracking').ParticleSnapshot[];
   transitions?: import('./physics/particleTracking').OperationTransition[];
   checkpoints?: Record<string, StateCheckpoint>;
+  /** Result of each evaluated condition, by gate id (true = ran, false = skipped). */
+  conditionOutcomes?: Record<string, boolean>;
 };

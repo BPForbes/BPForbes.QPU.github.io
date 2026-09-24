@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { createInitialState, runCircuit } from '../../../simulator/engine';
+import { snapshotParticle } from '../../../simulator/physics/particleTracking';
 import type { CircuitGate } from '../../../simulator/types';
 import {
   applyGateToWireKind,
@@ -13,7 +15,9 @@ import {
   MIN_SLOT_REM,
   needsConnector,
   playDelayMs,
+  snapshotWireKet,
   startStateKet,
+  wireKetLabel,
   wireKindHalves,
   wireKindSegments,
 } from '../../circuitLayout';
@@ -41,6 +45,24 @@ describe('circuit layout helpers', () => {
     expect(startStateKet('1p')).toBe('|1⟩');
     expect(startStateKet('sp')).toBe('|+⟩');
     expect(startStateKet()).toBe('|0⟩');
+  });
+
+  it('prefers live particle snapshots for wire kets including |+⟩ and |−⟩', () => {
+    expect(wireKetLabel(undefined, '0p')).toBe('|0⟩');
+    expect(wireKetLabel(undefined, 'sp')).toBe('|+⟩');
+
+    const plus = snapshotParticle(createInitialState(1, ['sp']), 1, 0);
+    expect(snapshotWireKet(plus)).toBe('|+⟩');
+    expect(wireKetLabel(plus, '0p')).toBe('|+⟩');
+
+    const minus = snapshotParticle(runCircuit(1, [gate({ type: 'H', step: 0, targets: [0] })], ['1p']).state, 1, 0);
+    expect(snapshotWireKet(minus)).toBe('|−⟩');
+
+    const zero = snapshotParticle(createInitialState(1, ['0p']), 1, 0);
+    expect(snapshotWireKet(zero)).toBe('|0⟩');
+
+    const one = snapshotParticle(createInitialState(1, ['1p']), 1, 0);
+    expect(snapshotWireKet(one)).toBe('|1⟩');
   });
 
   it('uses standard circuit glyphs for controls, plus targets, swap, and measure', () => {

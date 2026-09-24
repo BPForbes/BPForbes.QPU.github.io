@@ -1,3 +1,4 @@
+import type { ParticleSnapshot } from '../simulator/physics/particleTracking';
 import type { CircuitGate, MeasurementMap, ParticleStartState } from '../simulator/types';
 
 export const MIN_CIRCUIT_COLUMNS = 6;
@@ -6,6 +7,9 @@ export const MAX_SLOT_REM = 2.7;
 export const PLAY_DELAY_BASE_MS = 800;
 export const MIN_PLAY_SPEED = 0.25;
 export const MAX_PLAY_SPEED = 3;
+
+/** Angular tolerance when classifying a Bloch vector as a textbook ket. */
+const KET_ANGLE_TOL = 0.28;
 
 export const circuitColumnCount = (gateCount: number, maxStep = -1, minColumns = MIN_CIRCUIT_COLUMNS) =>
   Math.max(minColumns, gateCount + 2, maxStep + 3);
@@ -20,6 +24,42 @@ export const startStateKet = (state?: ParticleStartState) => {
   if (state === 'sp') return '|+⟩';
   return '|0⟩';
 };
+
+const wrapPhi = (phi: number) => {
+  const twoPi = Math.PI * 2;
+  let value = phi % twoPi;
+  if (value < 0) value += twoPi;
+  return value;
+};
+
+/**
+ * Compact wire-label ket from a live particle snapshot.
+ * Recognizes |0⟩, |1⟩, |+⟩, and |−⟩; otherwise falls back to |ψ⟩.
+ */
+export const snapshotWireKet = (snapshot: ParticleSnapshot): string => {
+  if (snapshot.measured === 0) return '|0⟩';
+  if (snapshot.measured === 1) return '|1⟩';
+
+  const { r, theta, phi } = snapshot.spherical;
+  if (r < 0.55) return '|ψ⟩';
+
+  if (theta < KET_ANGLE_TOL) return '|0⟩';
+  if (Math.abs(theta - Math.PI) < KET_ANGLE_TOL) return '|1⟩';
+
+  if (Math.abs(theta - Math.PI / 2) < KET_ANGLE_TOL) {
+    const azimuth = wrapPhi(phi);
+    if (azimuth < KET_ANGLE_TOL || azimuth > Math.PI * 2 - KET_ANGLE_TOL) return '|+⟩';
+    if (Math.abs(azimuth - Math.PI) < KET_ANGLE_TOL) return '|−⟩';
+  }
+
+  return '|ψ⟩';
+};
+
+/** Prefer live particle ket; fall back to the configured start-state ket. */
+export const wireKetLabel = (
+  snapshot: ParticleSnapshot | undefined,
+  startState?: ParticleStartState,
+): string => (snapshot ? snapshotWireKet(snapshot) : startStateKet(startState));
 
 /** One classical wire per measured qubit, in qubit order. Unmeasured circuits have none. */
 export const classicalWireQubits = (
@@ -51,7 +91,8 @@ export const gateSpanQubits = (gate: CircuitGate) => {
 export type CircuitGlyphKind = 'box' | 'control' | 'plus' | 'swap' | 'measure';
 
 export const glyphKindFor = (gate: CircuitGate, qubit: number): CircuitGlyphKind => {
-  if (gate.controls.includes(qubit)) return 'control';
+  // Custom gates list an in-place wire as both PARAM input and RETURNVAL output; draw it as the target.
+  if (gate.controls.includes(qubit) && !gate.targets.includes(qubit)) return 'control';
   if (gate.type === 'CNOT' || gate.type === 'CCNOT') return 'plus';
   if (gate.type === 'SWAP') return 'swap';
   if (gate.type === 'MEASURE') return 'measure';
@@ -60,7 +101,7 @@ export const glyphKindFor = (gate: CircuitGate, qubit: number): CircuitGlyphKind
 
 /** CZ/CY show a boxed Pauli letter on the target, not the two-letter gate id. CX keeps the plus. */
 export const glyphLabelFor = (gate: CircuitGate, qubit: number, fallback: string): string => {
-  if (gate.controls.includes(qubit)) return fallback;
+  if (gate.controls.includes(qubit) && !gate.targets.includes(qubit)) return fallback;
   if (gate.type === 'CZ') return 'Z';
   if (gate.type === 'CY') return 'Y';
   return fallback;

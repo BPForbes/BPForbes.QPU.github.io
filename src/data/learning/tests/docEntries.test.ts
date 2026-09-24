@@ -8,7 +8,9 @@ import {
   childProcessNames,
   customGateDocEntry,
   gateDocs,
+  protocolBranchInfo,
   protocolDocEntry,
+  protocolRecursionInfo,
   resolveDocEntry,
 } from '../docEntries';
 
@@ -66,6 +68,31 @@ describe('workbench documentation entries', () => {
     expect(resolveDocEntry('process:NoSuchProcess')).toBeUndefined();
   });
 
+  it('documents bounded REC/TREC and parent −DEPTH expansion', () => {
+    const recursive = resolveDocEntry('process:RecursiveH');
+    expect(recursive?.subtitle).toMatch(/bounded REC/i);
+    expect(recursive?.sections.some((section) => section.heading === 'Bounded recursion and TCO')).toBe(true);
+    expect(recursive?.syntax?.some((line) => /REC MAXDEPTH|RECUR/.test(line))).toBe(true);
+
+    const parent = resolveDocEntry('process:RecursiveHParent');
+    expect(parent?.subtitle).toMatch(/−DEPTH|DEPTH/i);
+    expect(parent?.sections.some((section) => section.heading === 'Bounded recursion and TCO')).toBe(true);
+    expect(parent?.syntax?.some((line) => /-DEPTH/.test(line))).toBe(true);
+  });
+
+  it('documents IF / ELSE blocks and inline -IF conditions', () => {
+    const harness = resolveDocEntry('process:RecursiveReversibleEchoHarness');
+    const branch = harness?.sections.find((section) => section.heading === 'Classical IF / ELSE');
+    expect(branch?.body).toMatch(/1 IF block \(1 with ELSE\)/);
+    expect(harness?.sections.some((section) => section.heading === 'Bounded recursion and TCO')).toBe(true);
+
+    expect(protocolBranchInfo('MEASURE -I A\n# IF A=1 in a comment\nX -I B -O B -IF A=1')).toEqual({
+      blocks: 0,
+      elses: 0,
+      inlineConditions: 1,
+    });
+  });
+
   it('builds a custom gate entry with a simulated truth table and usage syntax', () => {
     const source = [
       'PARAMS: A:state B:state',
@@ -121,5 +148,11 @@ describe('workbench documentation entries', () => {
     expect(protocolDocEntry(source)?.table?.rows).toEqual(first);
     expect(protocolDocEntry(measured)?.table?.rows).toEqual(rows);
     expect(protocolDocEntry(measured)?.table?.note).toContain('not a definite');
+  });
+
+  it('does not treat RECUR or other REC-prefixed words as a REC declaration', () => {
+    const info = protocolRecursionInfo('TREC MAXDEPTH 8\nRECUR -I A');
+    expect(info.declared).toBe('TREC');
+    expect(info.maxDepth).toBe(8);
   });
 });

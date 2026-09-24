@@ -8,6 +8,23 @@ import {
   replaceViewInLocation,
 } from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
+import { GateWrapperModal } from './components/circuit/GateWrapperModal';
+import { RecursionFrameView } from './components/circuit/RecursionFrameView';
+import { branchOutcomeFor, branchOutcomeNote, conditionFeedLabel } from './components/circuit/branchVisuals';
+import {
+  buildVisualCircuitColumns,
+  recursionFrameForColumn,
+  recursionFrameForStep,
+  sameExpansion,
+} from './components/circuit/recursionVisuals';
+import {
+  applyWrappersToGateList,
+  draftFromGate,
+  gateHasWrappers,
+  stripWrappersFromGateList,
+  type GateWrapperTool,
+  type WrapperDraft,
+} from './components/circuit/gateWrappers';
 import { WorkbenchDocs } from './components/docs/WorkbenchDocs';
 import { CustomGatePanel, GatePalette, SelectorMapDiagram } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
@@ -27,6 +44,12 @@ import {
   workbenchSelectorUse,
   type DocTarget,
 } from './data/learning/learningHelp';
+import {
+  readLearningProgress,
+  suggestNextLearningStep,
+  toggleLearningStep,
+  type LearningProgress,
+} from './data/learning/learningProgress';
 import { protocolDocEntry, resolveDocEntry } from './data/learning/docEntries';
 import { startStateWireValue, wireValuesFromState } from './data/learning/docContext';
 import {
@@ -67,6 +90,7 @@ import {
 } from './simulator/compiler';
 import { controlsForGateType, getGateDefinition, paletteGateIds } from './simulator/gates/registry';
 import type { OperationTransition, ParticleSnapshot } from './simulator/physics';
+import { snapshotAllParticles } from './simulator/physics';
 import { CircuitGate, GateType, MeasurementMap, ParticleStartState, StateCheckpoint } from './simulator/types';
 import { Complex } from './simulator/complex';
 import './styles.css';
@@ -176,12 +200,20 @@ function App() {
   const [startStates, setStartStates] = useState<ParticleStartState[]>(() => Array.from({ length: QUBIT_COUNT }, () => '0p'));
   const [state, setState] = useState<Complex[]>(() => createInitialState(QUBIT_COUNT));
   const [measurements, setMeasurements] = useState<MeasurementMap>({});
+  // Gate-expression IF results by gate id; measured-bit IFs are read from `measurements` instead.
+  const [conditionOutcomes, setConditionOutcomes] = useState<Record<string, boolean>>({});
   const [log, setLog] = useState<string[]>(['Initialized |000⟩.']);
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
   const [selectedGate, setSelectedGate] = useState<GateType | null>('H');
+  const [selectedWrapper, setSelectedWrapper] = useState<GateWrapperTool | null>(null);
+  const [wrapperModal, setWrapperModal] = useState<{
+    gateId: string;
+    draft: WrapperDraft;
+  } | null>(null);
   const [inverseMode, setInverseMode] = useState(false);
+  const [learningProgress, setLearningProgress] = useState<LearningProgress>(() => readLearningProgress());
   const [targetQubit, setTargetQubit] = useState(0);
   const [controlQubit, setControlQubit] = useState(1);
   const [secondControlQubit, setSecondControlQubit] = useState(2);
@@ -239,6 +271,14 @@ function App() {
     if (inRange.length > 0) return inRange;
     return Array.from({ length: qubitCount }, (_, qubit) => ({ name: `q${qubit}`, type: '1', qubitIndex: qubit }));
   }, [processParams, qubitCount, simulationQubitCount]);
+  // Compiled protocol names (A, B, C…) per simulator wire; canvas mode has none.
+  const wireParamNames = useMemo(() => {
+    const names: (string | undefined)[] = [];
+    processParams.forEach((param) => {
+      if (param.qubitIndex >= 0) names[param.qubitIndex] = param.name;
+    });
+    return names;
+  }, [processParams]);
   const paramQubitIndices = useMemo(() => controllableParams.map((param) => param.qubitIndex), [controllableParams]);
   // Compiled processes can use hidden workspace qubits, so result panels project the full state down to RETURNVALS or PARAMS.
   const displayQubitIndices = useMemo(
@@ -368,16 +408,18 @@ function App() {
       ? activeControllable.map((param) => param.qubitIndex)
       : undefined;
     checkpointsRef.current = {};
-    setState(createInitialState(nextSimulationQubitCount, nextStartStates, activeParamIndices));
+    const initialState = createInitialState(nextSimulationQubitCount, nextStartStates, activeParamIndices);
+    setState(initialState);
     setRuntimeQubitCount(nextSimulationQubitCount);
     setMeasurements({});
+    setConditionOutcomes({});
     const initDesc = activeControllable.length
       ? activeControllable.map((param) => `${param.name}=${nextStartStates[param.qubitIndex] ?? '0p'}`).join(' ')
       : nextStartStates.slice(0, nextSimulationQubitCount).map((value) => value ?? '0p').join(' ');
     setLog([reason ?? `Initialized ${initDesc}.`]);
     setCursor(0);
     setPlaying(false);
-    setParticleSnapshots([]);
+    setParticleSnapshots(snapshotAllParticles(initialState, nextSimulationQubitCount, {}));
     setParticleTransitions([]);
   };
 
@@ -399,15 +441,64 @@ function App() {
     setGates(nextGates);
     syncCanvasProtocol(nextGates);
     setSelectedGate(type);
+    setSelectedWrapper(null);
     resetRuntime();
   };
 
   // Steps are renumbered after removal so the canvas column layout stays contiguous.
+  // Removing the visible recursive gate drops the whole collapsed expansion.
   const removeGate = (gateId: string) => {
-    const nextGates = gates.filter((gate) => gate.id !== gateId).map((gate, step) => ({ ...gate, step }));
+    const target = gates.find((gate) => gate.id === gateId);
+    const nextSource = target?.recursion
+      ? gates.filter((gate) => !(gate.recursion && sameExpansion(gate.recursion, target.recursion!)))
+      : gates.filter((gate) => gate.id !== gateId);
+    const nextGates = nextSource.map((gate, step) => ({ ...gate, step }));
     setGates(nextGates);
     syncCanvasProtocol(nextGates);
     resetRuntime();
+  };
+
+  const openWrapperModalForGate = (gate: CircuitGate, tool?: GateWrapperTool) => {
+    setWrapperModal({
+      gateId: gate.id,
+      draft: draftFromGate(gate, { tool, qubitCount: simulationQubitCount }),
+    });
+  };
+
+  const activateCanvasGate = (gate: CircuitGate) => {
+    if (selectedWrapper) {
+      openWrapperModalForGate(gate, selectedWrapper);
+      return;
+    }
+    if (gateHasWrappers(gate)) {
+      openWrapperModalForGate(gate);
+      return;
+    }
+    removeGate(gate.id);
+  };
+
+  const saveWrapperModal = () => {
+    if (!wrapperModal) return;
+    const nextGates = applyWrappersToGateList(gates, wrapperModal.gateId, wrapperModal.draft, wireParamNames);
+    setGates(nextGates);
+    syncCanvasProtocol(nextGates);
+    resetRuntime();
+    setWrapperModal(null);
+    setSelectedWrapper(null);
+  };
+
+  const deleteWrapperModal = () => {
+    if (!wrapperModal) return;
+    const nextGates = stripWrappersFromGateList(gates, wrapperModal.gateId);
+    setGates(nextGates);
+    syncCanvasProtocol(nextGates);
+    resetRuntime();
+    setWrapperModal(null);
+    setSelectedWrapper(null);
+  };
+
+  const cancelWrapperModal = () => {
+    setWrapperModal(null);
   };
 
   // Run / step boundary: both paths write to the same shared vectors (state,
@@ -429,6 +520,7 @@ function App() {
     setState(result.state);
     setRuntimeQubitCount(resolveStateQubitCount(result.state, simulationQubitCount));
     setMeasurements(result.measurements);
+    setConditionOutcomes(result.conditionOutcomes ?? {});
     setParticleSnapshots(result.particles ?? []);
     setParticleTransitions(result.transitions ?? []);
     setLog(result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared')));
@@ -450,6 +542,7 @@ function App() {
     setRuntimeQubitCount(nextQubitCount);
     setState(result.state);
     setMeasurements(result.measurements);
+    if (result.conditionOutcomes) setConditionOutcomes((current) => ({ ...current, ...result.conditionOutcomes }));
     setParticleSnapshots(result.particles ?? []);
     setParticleTransitions((current) => [...current, ...(result.transitions ?? [])]);
     setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'))]);
@@ -578,6 +671,34 @@ function App() {
       return;
     }
     addGate(selectedGate, selectedSimulationQubit, workbenchControlsForGate(selectedGate, selectedSimulationQubit));
+  };
+
+  const addCycleBoundary = () => {
+    const step =
+      gates.length === 0
+        ? 0
+        : Math.max(...gates.map((gate) => gate.step)) + 1;
+    const previousCycle = gates.reduce(
+      (highest, gate) => Math.max(highest, gate.cycle ?? 0),
+      0,
+    );
+    const marker: CircuitGate = {
+      id: `cycle-${crypto.randomUUID()}`,
+      type: 'CYCLE',
+      step,
+      targets: [],
+      controls: [],
+      cycle: previousCycle + 1,
+      source: 'INCREASECYCLE',
+    };
+    const nextGates = [...gates, marker];
+    setGates(nextGates);
+    syncCanvasProtocol(nextGates);
+    resetRuntime();
+    setLog((current) => [
+      ...current,
+      `Added INCREASECYCLE boundary (cycle ${previousCycle + 1}). This advances the logical stage; it does not loop.`,
+    ]);
   };
 
   // Particle count controls either raw canvas wires or process PARAMS, depending on which authoring mode is active.
@@ -726,7 +847,15 @@ function App() {
         : `${result.qubitCount} register(s)`;
       setCompileSummary(`Compiled ${result.parsed.length} QPU instruction(s) into ${result.gates.length} runnable gate(s) over ${registerSummary} with ${paramSummary}.`);
       resetRuntime(result.qubitCount, `Compiled ${label}. ${result.log[0] ?? ''}`, nextStartStates, result.processParams);
-      setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared')).slice(0, 24)]);
+      const compileLog = result.log.filter(
+        (entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'),
+      );
+      const recursionLog = compileLog.filter((entry) => /TCO|DEPTH=|RECUR|REC |TREC /i.test(entry));
+      const otherLog = compileLog.filter((entry) => !/TCO|DEPTH=|RECUR|REC |TREC /i.test(entry));
+      setLog((current) => [
+        ...current,
+        ...[...recursionLog, ...otherLog].slice(0, 32),
+      ]);
       if (!options?.skipCatalogRegister) {
         registerCatalogProcess({
           name: extractMainProcessName(source) ?? label,
@@ -909,9 +1038,49 @@ function App() {
   const gateSymbol = (gateId: string) => (['X', 'NOT', 'CNOT', 'CCNOT'].includes(gateId) ? '⊕' : getGateDefinition(gateId)?.label ?? gateId);
   const focusSelection = () => setDocFocus('selection');
   const selectGate = (gate: GateType) => {
+    setSelectedWrapper(null);
     setSelectedGate(gate);
     focusSelection();
   };
+
+  const selectWrapper = (tool: GateWrapperTool) => {
+    setSelectedGate(null);
+    setSelectedWrapper((current) => (current === tool ? null : tool));
+  };
+
+  // Expanded REC detail: the frame under the playhead, else the first frame on demand.
+  const activeRecursionFrame = activeCanvasGate?.recursion
+    ? recursionFrameForStep(renderedGates, activeCanvasGate.step)
+    : undefined;
+  const inspectableRecursionFrame = (() => {
+    if (activeRecursionFrame) return undefined;
+    const column = buildVisualCircuitColumns(renderedGates).find((entry) => entry.recursion);
+    return column ? recursionFrameForColumn(renderedGates, column) : undefined;
+  })();
+  const recursionFrameDetail = activeRecursionFrame ? (
+    <aside aria-label="Expanded recursive frame" className="workbench-docs">
+      <div className="workbench-docs-heading">
+        <p className="eyebrow">Recursive frame · step {cursor} of {orderedGates.length}</p>
+      </div>
+      <RecursionFrameView activeStep={cursor - 1} frame={activeRecursionFrame} qubitNames={wireParamNames} />
+    </aside>
+  ) : inspectableRecursionFrame ? (
+    <details className="workbench-docs recursion-frame-inspect">
+      <summary>
+        Expand {inspectableRecursionFrame.process} · first frame of DEPTH {inspectableRecursionFrame.rootDepth}
+      </summary>
+      <RecursionFrameView activeStep={cursor - 1} frame={inspectableRecursionFrame} qubitNames={wireParamNames} />
+    </details>
+  ) : null;
+
+  // Conditioned step: name the branch and, once the bit is known, whether it ran.
+  const activeBranchNote = (() => {
+    if (!activeCanvasGate?.condition) return '';
+    const sourceName = activeCanvasGate.condition.predicate ? undefined : wireParamNames[activeCanvasGate.condition.qubit];
+    const label = conditionFeedLabel(activeCanvasGate, sourceName);
+    const outcome = branchOutcomeNote(branchOutcomeFor(activeCanvasGate, measurements, conditionOutcomes));
+    return ` · ${label}${outcome ? ` · ${outcome}` : ''}`;
+  })();
 
   const workbenchDocs = (() => {
     if (docFocus === 'circuit' && activeCanvasGate && activeCanvasGateId && circuitDoc) {
@@ -924,7 +1093,7 @@ function App() {
           action={<button onClick={focusSelection} type="button">Back to selected gate</button>}
           controls={activeCanvasGate.controls}
           entry={circuitDoc}
-          eyebrow={`Step ${cursor} of ${orderedGates.length} on the canvas`}
+          eyebrow={`Step ${cursor} of ${orderedGates.length} on the canvas${activeBranchNote}`}
           qubitCount={simulationQubitCount}
           reversible={gateHelp[activeCanvasGateId]?.reversible}
           symbol={gateSymbol(activeCanvasGateId)}
@@ -938,18 +1107,33 @@ function App() {
     }
     if (docFocus === 'circuit' && activeCanvasGate) {
       const wires = activeCanvasGate.targets.map((qubit) => `q${qubit}`).join(' and ');
+      const recursion = activeCanvasGate.recursion;
+      const recursionNote = recursion
+        ? `Recursive ${recursion.process} call · DEPTH ${recursion.depth} of ${recursion.rootDepth}. `
+          + 'The canvas shows one gate with a teal D{n} badge; n counts down as you step, then hides when the call finishes.'
+        : undefined;
+      const cycleNote = activeCanvasGate.type === 'CYCLE' && !recursion
+        ? `Logical cycle ${activeCanvasGate.cycle ?? ''} boundary from INCREASECYCLE. This advances the stage; it does not loop.`
+        : activeCanvasGate.type === 'CYCLE' && recursion
+          ? recursionNote
+          : undefined;
       return (
         <aside aria-label={`About step ${cursor}`} className="workbench-docs">
           <div className="workbench-docs-heading">
-            <p className="eyebrow">Step {cursor} of {orderedGates.length} on the canvas</p>
+            <p className="eyebrow">Step {cursor} of {orderedGates.length} on the canvas{activeBranchNote}</p>
             <button onClick={focusSelection} type="button">Back to selected gate</button>
           </div>
           <p>
             {activeCanvasGate.type === 'RESET'
               ? `This step is the compiler's internal RESET, inserted by SET: it forces ${wires} to |0⟩. It is hidden on the canvas and is not reversible.`
-              : `This step runs ${activeCanvasGateId} on ${wires}. There are no workbench notes for it.`}
+              : cycleNote
+                ? cycleNote
+                : recursionNote
+                  ? `${activeCanvasGateId} on ${wires || 'this column'}. ${recursionNote}`
+                  : `This step runs ${activeCanvasGateId} on ${wires}. There are no workbench notes for it.`}
           </p>
           {activeCanvasGate.type === 'RESET' ? <DocLink target={docTargets.resetSemantics} /> : null}
+          {recursion ? <DocLink target={docTargets.processes} /> : null}
         </aside>
       );
     }
@@ -1038,7 +1222,14 @@ function App() {
               <p className="eyebrow">Gate palette</p>
               <h2 id="palette-title">Pick up a block</h2>
             </div>
-            <GatePalette inverse={inverseMode} onSelectGate={selectGate} onToggleInverse={() => setInverseMode((on) => !on)} selectedGate={selectedGate} />
+            <GatePalette
+              inverse={inverseMode}
+              onSelectGate={selectGate}
+              onSelectWrapper={selectWrapper}
+              onToggleInverse={() => setInverseMode((on) => !on)}
+              selectedGate={selectedGate}
+              selectedWrapper={selectedWrapper}
+            />
           </section>
 
           <CustomGatePanel
@@ -1049,12 +1240,17 @@ function App() {
 
           <CircuitCanvas
             activeStep={cursor - 1}
+            circuitComplete={orderedGates.length > 0 && cursor >= orderedGates.length}
             gates={renderedGates}
             measurements={measurements}
+            onActivateGate={activateCanvasGate}
             onDropGate={addGate}
-            onRemoveGate={removeGate}
+            particleSnapshots={particleSnapshots}
             qubitCount={simulationQubitCount}
+            qubitNames={wireParamNames}
+            conditionOutcomes={conditionOutcomes}
             selectedGate={selectedGate}
+            selectedWrapper={selectedWrapper}
             startStates={startStates}
             wireGates={orderedGates}
           />
@@ -1096,6 +1292,7 @@ function App() {
                 </label>
               ) : null}
             </div>
+            {recursionFrameDetail}
             {workbenchDocs}
             {protocolDoc ? (
               <WorkbenchDocs
@@ -1111,6 +1308,7 @@ function App() {
             ) : null}
             <div className="workbench-actions">
               <button onClick={addGateFromWorkbench} title={uiTips.addGate} type="button">Add gate to target</button>
+              <button onClick={addCycleBoundary} title={uiTips.increaseCycle} type="button">Add cycle boundary</button>
               <button onClick={addParticle} title={uiTips.addParticle} type="button">Add particle</button>
               <button onClick={removeParticle} title={uiTips.removeParticle} type="button">Remove particle</button>
               <button onClick={measureSelectedQubit} title={uiTips.measureTarget} type="button">Measure target</button>
@@ -1192,6 +1390,26 @@ function App() {
                 <li><strong>Multi-stage:</strong> compute, use, and uncompute helper wires; reuse circuits as child processes or custom gates.</li>
               </ol>
               <p>Cards below are numbered by step. For each one, predict the result, then use Step gate and compare.</p>
+              <div className="learning-progress" aria-label="Learning path progress">
+                {learningSteps.map((label, index) => {
+                  const step = index + 1;
+                  const done = learningProgress.completedSteps.includes(step);
+                  const suggested = suggestNextLearningStep(learningProgress) === step;
+                  return (
+                    <label className={`learning-progress-step ${done ? 'done' : ''} ${suggested ? 'suggested' : ''}`} key={label}>
+                      <input
+                        checked={done}
+                        onChange={(event) => setLearningProgress(toggleLearningStep(step, event.target.checked))}
+                        type="checkbox"
+                      />
+                      <span>Step {step}{done ? ' ✓' : suggested ? ' →' : ''} · {label}</span>
+                    </label>
+                  );
+                })}
+                <p className="learning-progress-note">
+                  Mark a checkpoint yourself when you understand it. Progress is saved in this browser and never blocks jumping ahead.
+                </p>
+              </div>
               <p className="help-links">
                 <DocLink target={docTargets.learningPath} />
                 <DocLink target={docTargets.advancedCircuits} />
@@ -1366,6 +1584,80 @@ function App() {
               <p className="help-links"><DocLink target={docTargets.processes} /></p>
             </article>
             <article>
+              <h3>Bounded recursion and TCO</h3>
+              <p>
+                Child processes may declare <code>REC</code> or <code>TREC</code> and call <code>RECUR</code> (or self-
+                <code>RUNCHILD</code>). The parent must pass <code>-DEPTH N</code>. Expansion is compile-time only. On the
+                canvas a recursive call appears as <strong>one gate</strong> with a teal <code>D{'{n}'}</code> badge;
+                step through to watch DEPTH count down, then the badge hides.
+              </p>
+              <ul>
+                <li><strong>REC</strong> auto-converts to TCO when every recursive call is in tail position (F#-style).</li>
+                <li><strong>TREC</strong> requires that tail form and always uses iterative frame rewind.</li>
+                <li>Non-tail <code>REC</code> keeps stacked nested scopes; the simulator gate list is still O(DEPTH).</li>
+                <li><code>EXIT WHEN DEPTH|LEVEL|ROOTDEPTH …</code> is a compile-time base case, not a runtime loop.</li>
+              </ul>
+              <p>
+                Try the <strong>Recursive H (TCO expanded)</strong> canvas example, or compile <strong>RecursiveHParent</strong>
+                from the protocol list (do not compile RecursiveH alone as the root — RECUR needs a child frame).
+              </p>
+              <ul>
+                <li>A child with several gates collapses to one <strong>REC</strong> box spanning its wires, captioned with the child
+                  name and depth range (for example <code>D5 → D1</code>). It is red during a forward gate and purple during an inverse one.</li>
+                <li>While you step inside the call, the Interactive workbench shows the <strong>Recursive frame</strong>: that level&apos;s
+                  forward gates, their inverses, its <code>IC</code> cycle line, and <code>RECUR ↓ D{'{n-1}'}</code> for the next frame.</li>
+                <li>The palette&apos;s <strong>REC</strong> wrapper only adds the D{'{n}'} badge to a canvas gate. The gate still runs once
+                  and the tag is not saved to the protocol text; to repeat gates, write a REC/TREC child and call it with <code>-DEPTH</code>.</li>
+              </ul>
+              <p>
+                Compile <strong>RecursiveReversibleEchoHarness</strong> to see a TREC child at <code>-DEPTH 5</code> followed by an IF/ELSE pair.
+              </p>
+              <p className="help-links"><DocLink target={docTargets.recursion} /> <DocLink target={docTargets.processes} /></p>
+            </article>
+            <article>
+              <h3>IF / ELSE feed-forward</h3>
+              <p>
+                After a <code>MEASURE</code>, later gates can depend on the bit that was read. Write a block in the protocol:
+              </p>
+              <pre><code>{'MEASURE -I A\nIF A=1\nX -I C -O C\nELSE\nZ -I C -O C\nENDIF'}</code></pre>
+              <p>
+                The compiler turns this into ordinary gates with conditions (<code>X … -IF A=1</code>, <code>Z … -IF A=0</code>).
+                A single gate can also take <code>-IF Token=0|1</code> directly. Nothing loops or forks: both gates stay in the circuit
+                and the one whose condition fails is skipped.
+              </p>
+              <p>
+                To join conditions, test a gate instead of one bit. Where another language writes <code>A &amp;&amp; B</code>, write
+                the AND gate, and compare its result with <code>0</code>, <code>1</code>, or <code>S</code> (or <code>0p</code>/<code>1p</code>/<code>sp</code>):
+              </p>
+              <pre><code>{'IF (AND -I A B -O B) = 1p     # A AND B\nIF (OR -I A B -O B) = 1       # A OR B\nIF (CNOT -I A -O B) = 1       # A XOR B\nIF (H -I A -O A) != S         # != also works'}</code></pre>
+              <p>
+                The gate runs on a scratch copy just before the conditioned gate, so the circuit itself is not changed. AND, NAND,
+                OR, and XOR that name an input as <code>-O</code> write to a fresh |0⟩ wire, so <code>AND -I A B -O B</code> means A AND B.
+                Other gates act on their <code>-O</code> wire as in a normal line. <strong>S</strong> means the result is not a
+                definite 0 or 1. This test reads amplitudes without measuring, which only a simulator can do; use
+                <code> MEASURE</code> + <code>IF A=1</code> for physically realistic protocols.
+              </p>
+              <ul>
+                <li><code>ELSE</code> is optional; <code>ENDIF</code> is required. A plain <code>IF A=1</code> needs A measured first.</li>
+                <li>On the canvas both gates sit on their own wire, each joined to the <strong>c</strong> lane by a yellow double line and
+                  labelled <strong>IF</strong> <code>A=1</code> / <strong>ELSE</strong> <code>A=0</code> underneath.</li>
+                <li>Once the bit is measured the running branch shows <strong>✓ taken</strong>; the other shows <strong>⊘ skipped</strong>
+                  and fades with dashed lines.</li>
+                <li>A gate-expression test has no bit on <strong>c</strong>: its yellow line spans the wires it reads (yellow taps), and the
+                  label shows the expression, such as <code>AND(A,B) = 1p</code>.</li>
+                <li>Registered <strong>custom gates</strong> work too: write them as a line (<code>NOR -I A B -O Out</code>) inside a branch,
+                  or as the test (<code>IF (NOR -I A B -O Out) = 1p</code>). Use a custom gate instead of <code>RUNCHILD</code> inside an IF block.</li>
+                <li>Without writing text: pick the <strong>IF</strong> or <strong>ELSE</strong> wrapper in the palette, click a gate, choose the
+                  classical bit and value, and Save. Click the gate again to edit or delete the wrapper.</li>
+                <li>For a gate-expression test, tick <strong>Joined (test a gate)</strong> in the dialog: pick any single-result gate
+                  (built-in or custom), a wire for each input, an output wire, and Equals/Value. Save turns it into the same
+                  <code>IF (GATE …) = value</code> test as writing it in the protocol, and reopening the gate shows the same fields
+                  filled in for editing.</li>
+              </ul>
+              <p>Try the <strong>Quantum teleportation</strong> starter circuit, which uses <code>-IF</code>.</p>
+              <p className="help-links"><DocLink target={docTargets.ifElse} /> <DocLink target={docTargets.ifExpression} /> <DocLink target={docTargets.wrappers} /></p>
+            </article>
+            <article>
               <h3>How circuits are built</h3>
               <p>Use the circuit builder to drag a gate onto a qubit wire, or select a gate, target, and controls from the workbench. Play Sequence advances one gate at a time at the speed meter, including Measure (M) gates. Run all skips to the finished state.</p>
               <ul>
@@ -1379,9 +1671,11 @@ function App() {
               <h3>QPU protocol requirements</h3>
               <p>A protocol can begin with <code>PARAMS:</code>, should name its entry point with <code>MAIN-PROCESS</code>, and compiles commands with explicit <code>-I</code> inputs and <code>-O</code> outputs where required.</p>
               <ul>
-                <li>Primitive gates include X, Y, Z, H, S, T, CNOT, CCNOT, CZ, CY, SWAP, and PHASE.</li>
+                <li>Primitive gates include X, Y, Z, H, S, T, RX, RY, RZ, CNOT, CCNOT, CZ, CY, CPHASE, SWAP, and PHASE.</li>
                 <li>Derived Boolean gates include NOT, AND, NAND, OR, and XOR.</li>
                 <li>Child protocols can be declared, run, and accepted through DECLARECHILD, RUNCHILD, and ACCEPTVALS.</li>
+                <li>Bounded child recursion uses REC or TREC with RECUR / EXIT WHEN; parents pass -DEPTH (auto-TCO when tail).</li>
+                <li>Classical feed-forward uses <code>-IF Token=0|1</code> on one gate, or an <code>IF Token=v</code> … <code>ELSE</code> … <code>ENDIF</code> block, after a MEASURE. <code>IF (GATE -I … -O …) = 0|1|S</code> joins conditions through a gate.</li>
                 <li>Constants <code>0p</code>, <code>1p</code>, and <code>sp</code> initialize zero, one, and superposition registers.</li>
               </ul>
             </article>
@@ -1513,6 +1807,23 @@ function App() {
           </div>
         </section>
       </PlaygroundPage>}
+
+      {wrapperModal ? (() => {
+        const modalGate = gates.find((gate) => gate.id === wrapperModal.gateId);
+        if (!modalGate) return null;
+        return (
+          <GateWrapperModal
+            draft={wrapperModal.draft}
+            gate={modalGate}
+            onCancel={cancelWrapperModal}
+            onChange={(draft) => setWrapperModal({ gateId: wrapperModal.gateId, draft })}
+            onDelete={deleteWrapperModal}
+            onSave={saveWrapperModal}
+            qubitCount={simulationQubitCount}
+            qubitNames={wireParamNames}
+          />
+        );
+      })() : null}
     </main>
   );
 }

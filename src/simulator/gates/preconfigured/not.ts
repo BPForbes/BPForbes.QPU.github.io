@@ -14,7 +14,7 @@ export const notGate: GateDefinition = {
   inPalette: true,
   isAstPrimitive: false,
   isAstDerived: true,
-  supportsReverse: false,
+  supportsReverse: true,
   supportsPhase: false,
   cssClass: 'gate-not',
   // apply hook wires simulator state through the shared operations layer.

@@ -145,21 +145,61 @@ temporal order: if U acts first and V second, then
 \ket{\psi_{\rm final}}=V(U\ket{\psi_{\rm initial}})=VU\ket{\psi_{\rm initial}}.
 \]
 
-\subsection{Unitarity and reversibility}
+\subsection{Requirements for a reversible gate}
+\hypertarget{gate-reversibility-requirements}{}
 
-Closed-system quantum gates must preserve total probability. Their matrices are
-\emph{unitary}:
-\[
-U^\dagger U=I.
-\]
-Here $U^\dagger$ means transpose the matrix and complex-conjugate every entry;
-$I$ is the identity matrix. Unitarity guarantees an inverse,
-$U^{-1}=U^\dagger$. Quantum gates therefore cannot normally erase information.
-Classical functions such as AND are embedded reversibly by preserving inputs
-and XORing the result into a target:
-\[
-\ket{a,b,t}\mapsto\ket{a,b,t\oplus(a\land b)}.
-\]
-Measurement and reset are exceptions because they interact with classical
-outcomes or preparation rather than acting as closed unitary gates.
+A quantum gate is, by default, reversible: closed-system evolution is unitary,
+and unitarity already implies everything ``reversible'' requires. The four
+conditions below are one fact, stated four ways --- as a matrix equation, as a
+statement about information, as a wire count, and as a scope limit --- so that
+each can be checked on its own.
+
+\begin{enumerate}
+  \item \textbf{Unitarity.} The gate's matrix $U$ must satisfy
+  \[
+  U^\dagger U=UU^\dagger=I,
+  \]
+  where $U^\dagger$ transposes $U$ and complex-conjugates every entry
+  (\emph{The complex plane, magnitude, and conjugate}), and $I$ is the
+  identity matrix. Unitarity guarantees an inverse, $U^{-1}=U^\dagger$: the
+  gate's action can always be undone by running $U^\dagger$. It is also
+  exactly the condition that keeps a state normalized
+  ($|\alpha|^2+|\beta|^2=1$, \emph{Normalization and the Born rule}) after the
+  gate runs, so the total probability of all outcomes stays $100\%$.
+
+  \item \textbf{Bijective mapping.} The gate must be a one-to-one map from
+  input states to output states: given only the output and the gate, the
+  input can always be reconstructed. Classical NOT has this property (an
+  output of 1 proves the input was 0); classical AND and OR do not (an output
+  of 0 does not say which inputs produced it), which is why they are not
+  themselves reversible. A gate satisfying $U^\dagger U=I$ automatically has
+  this property, because $U^\dagger$ is precisely the map that reconstructs
+  the input from the output. Unitarity and bijectivity are the same fact
+  viewed two ways; a reversible gate never erases information.
+
+  \item \textbf{Equal inputs and outputs.} $U$ is a square matrix, so a
+  reversible gate has exactly as many output wires as input wires: no wire
+  can be discarded mid-computation without breaking the bijection above. This
+  is why QPU's \code{AND} is not the two-input classical gate but a
+  three-wire embedding,
+  \[
+  \ket{a,b,t}\mapsto\ket{a,b,t\oplus(a\land b)},
+  \]
+  the doubly-controlled CCNOT/Toffoli gate
+  (\hyperlink{ccnot-and-embedding}{Doubly controlled NOT / Toffoli}). With
+  $t$ starting at $\ket0$, $t'=a\land b$: the classical AND is recovered on
+  $t'$ without erasing $a$ or $b$, at the cost of one extra wire the
+  two-input classical gate did not need.
+
+  \item \textbf{Isolation from measurement.} The three conditions above hold
+  only for a closed system, with no interaction with the environment and, in
+  particular, no MEASURE (\hyperlink{measure-collapse}{Measurement gate}).
+  Measurement is not linear and has no inverse matrix: it collapses a
+  superposition to one classical outcome and permanently discards the
+  amplitudes that were not observed. RESET shares this --- preparing a wire
+  at $\ket0$ regardless of its prior state is not invertible either
+  (\hyperlink{reset-semantics}{Reversible gates versus RESET}). MEASURE and
+  RESET are legitimate operations, just not reversible ones, and they are the
+  only two exceptions to an otherwise-unitary gate list.
+\end{enumerate}
 

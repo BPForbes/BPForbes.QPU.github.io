@@ -23,6 +23,21 @@ export const MATRIX_S = [[ONE, ZERO], [ZERO, complex(0, 1)]] as const;
 export const MATRIX_T = [[ONE, ZERO], [ZERO, complex(INV_SQRT2, INV_SQRT2)]] as const;
 export const phaseMatrix = (angle: number) => [[ONE, ZERO], [ZERO, complex(Math.cos(angle), Math.sin(angle))]];
 
+export const rotationXMatrix = (theta: number) => [
+  [complex(Math.cos(theta / 2), 0), complex(0, -Math.sin(theta / 2))],
+  [complex(0, -Math.sin(theta / 2)), complex(Math.cos(theta / 2), 0)],
+];
+
+export const rotationYMatrix = (theta: number) => [
+  [complex(Math.cos(theta / 2), 0), complex(-Math.sin(theta / 2), 0)],
+  [complex(Math.sin(theta / 2), 0), complex(Math.cos(theta / 2), 0)],
+];
+
+export const rotationZMatrix = (theta: number) => [
+  [complex(Math.cos(-theta / 2), Math.sin(-theta / 2)), ZERO],
+  [ZERO, complex(Math.cos(theta / 2), Math.sin(theta / 2))],
+];
+
 export const PHASE_PI = Math.PI;
 export const PHASE_PI_2 = Math.PI / 2;
 export const PHASE_PI_4 = Math.PI / 4;

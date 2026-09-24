@@ -1,0 +1,29 @@
+PARAMS: A:state B:state C:state
+MAIN-PROCESS RecursiveReversibleEchoHarness
+DECLARECHILD RecursiveReversibleEcho
+# Prepare |101⟩ from the all-zero start state used by the canvas.
+X -I A -O A
+X -I C -O C
+# ==============================================
+# RECURSION TEST
+# ==============================================
+RUNCHILD RecursiveReversibleEcho -DEPTH 5 -I A B C -O A B C
+ACCEPTVALS A B C
+# ==============================================
+# CHECKPOINT TEST
+# ==============================================
+SAVE_STATE EchoComplete
+X -I A -O A
+LOAD_STATE EchoComplete
+# ==============================================
+# CLASSICAL BRANCH TEST
+# ==============================================
+MEASURE -I A
+IF A=1
+X -I C -O C
+ELSE
+Z -I C -O C
+ENDIF
+MEASURE -I B
+MEASURE -I C
+RETURNVALS A B C

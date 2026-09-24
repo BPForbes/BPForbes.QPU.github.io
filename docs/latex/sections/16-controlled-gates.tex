@@ -22,6 +22,7 @@ CNOT is a reversible embedding of XOR because it preserves the control.
 In the workbench, the control comes from \textbf{Control A} and the target
 from \textbf{Target particle}; \textbf{Control B} is ignored.
 
+\hypertarget{ccnot-and-embedding}{}
 \GateHeading{Doubly controlled NOT / Toffoli}{CCNOT}{\DoubleControlledSegment}
 
 \[
@@ -43,6 +44,10 @@ CCNOT -I A B -O Target
 \end{tabular}
 \end{center}
 With a target initialized to zero, Toffoli computes classical AND reversibly.
+This is the \emph{equal inputs and outputs} requirement for a reversible gate
+in action: the two-input classical AND has no inverse, but its three-wire
+Toffoli embedding does, because no wire is discarded (\emph{Requirements for
+a reversible gate} in the Theory Guide's mathematical foundations chapter).
 
 \begin{beginnerbox}[Controls are preserved, the target is the output]
 In the table, the $a'$ and $b'$ columns always equal $a$ and $b$: the two
@@ -74,6 +79,19 @@ CZ -I Control -O Target
 \end{tabular}
 \end{center}
 The classical columns are unchanged; the quantum phase is the operation.
+
+\GateHeading{Controlled phase}{CPHASE}{\ControlledSegment{$P(\theta)$}}
+
+\[
+\ket{11}\longmapsto e^{i\theta}\ket{11},
+\]
+while $\ket{00}$, $\ket{01}$, and $\ket{10}$ are unchanged. CZ is the special
+case $\theta=\pi$. CPHASE unlocks compact Quantum Fourier Transform and
+phase-estimation demos.
+\begin{lstlisting}
+CPHASE=pi/2 -I Control -O Target
+CPHASE=90d -I Control -O Target
+\end{lstlisting}
 
 \GateHeading{Controlled Y}{CY}{\ControlledSegment{Y}}
 

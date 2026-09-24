@@ -1,7 +1,28 @@
 // QPU protocol compiler: child processes and cycles expand into flat gates so the simulator and UI share one execution model.
 import { assertGateArity } from '../gates/arity';
 import { astDerivedGateIds, astPrimitiveGateIds } from '../gates/metadata';
-import { CircuitGate, GateType, QpuOperation } from '../types';
+import { buildConditionPredicate, remapConditionWires } from '../gates/conditions';
+import { getCustomGateRecord } from '../gates/customGateStore';
+import {
+  CircuitGate,
+  ClassicalBranchMeta,
+  conditionValueLabel,
+  ConditionPredicate,
+  ConditionValue,
+  GateType,
+  QpuOperation,
+  RecursionFrameMeta,
+} from '../types';
+import {
+  analyzeRecursionForm,
+  evaluateWhenClause,
+  parseDepthFlag,
+  parseRecDeclaration,
+  parseWhenClause,
+  planRecursionExpansion,
+  resolveRecursionMode,
+  type ProcessExecutionContext,
+} from './recursion';
 
 export type ParsedCommand = {
   op: QpuOperation;
@@ -12,6 +33,12 @@ export type ParsedCommand = {
   phase?: number;
   reverse: boolean;
   noParameterSubstitution: boolean;
+  /** Classical feed-forward: token name and required measurement value. */
+  condition?: { token: string; equals: 0 | 1 };
+  /** Compile-time recursion budget from RUNCHILD -DEPTH N. */
+  depth?: number;
+  /** Set when the opcode is a registered custom gate (its exact id). */
+  customGateId?: string;
 };
 
 export type ProtocolProcess = {
@@ -55,6 +82,7 @@ const NUMERIC_PARAM_TYPES = ['int', 'float'] as const;
 
 const primitiveGates = new Set(astPrimitiveGateIds());
 const derivedGates = new Set(astDerivedGateIds());
+const knownAstGates = new Set([...primitiveGates, ...derivedGates]);
 
 export const supportedQpuOperations: QpuOperation[] = [
   'INCREASECYCLE',
@@ -66,6 +94,13 @@ export const supportedQpuOperations: QpuOperation[] = [
   'CALL',
   'DECLARECHILD',
   'RUNCHILD',
+  'REC',
+  'TREC',
+  'RECUR',
+  'EXIT',
+  'IF',
+  'ELSE',
+  'ENDIF',
   'AND',
   'NAND',
   'OR',
@@ -86,10 +121,14 @@ export const supportedQpuOperations: QpuOperation[] = [
   'H',
   'S',
   'T',
+  'RX',
+  'RY',
+  'RZ',
   'CNOT',
   'CCNOT',
   'CZ',
   'CY',
+  'CPHASE',
   'SWAP',
   'PHASE',
 ];
@@ -219,11 +258,12 @@ const stripInverseMarker = (normalized: string): { opcode: string; reverse: bool
   for (const marker of INVERSE_MARKERS) {
     if (head.length > marker.length && head.endsWith(marker)) {
       const candidate = head.slice(0, -marker.length);
-      if (primitiveGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
+      // Strip on any known AST gate so MEASUREdg still parses and can warn as inactive.
+      if (knownAstGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
     }
     if (head.length > marker.length && head.startsWith(marker)) {
       const candidate = head.slice(marker.length);
-      if (primitiveGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
+      if (knownAstGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
     }
   }
 
@@ -238,6 +278,54 @@ const splitFlagArgs = (tokens: string[], flag: '-I' | '-O') => {
   return tokens.slice(start + 1, end === -1 ? tokens.length : end);
 };
 
+/** Parse `-IF Token=0|1` classical feed-forward without introducing block control flow. */
+const parseConditionFlag = (tokens: string[]): ParsedCommand['condition'] => {
+  const upper = tokens.map((token) => token.toUpperCase());
+  const start = upper.indexOf('-IF');
+  if (start === -1) return undefined;
+  const raw = tokens[start + 1];
+  if (!raw) throw new Error('-IF requires Token=0 or Token=1');
+  const match = raw.match(/^([A-Za-z_][\w]*)=(0|1)$/);
+  if (!match) throw new Error(`Invalid -IF condition '${raw}' (expected Token=0 or Token=1)`);
+  return { token: match[1], equals: Number(match[2]) as 0 | 1 };
+};
+
+/** Parse `IF Token=0|1` structured classical branch header. */
+type IfHeader =
+  | { kind: 'bit'; token: string; equals: 0 | 1 }
+  | { kind: 'predicate'; expression: string; negate: boolean; expect: ConditionValue };
+
+const parseConditionValue = (raw: string): ConditionValue | undefined => {
+  const value = raw.toLowerCase();
+  if (value === '0' || value === '0p') return 0;
+  if (value === '1' || value === '1p') return 1;
+  if (value === 's' || value === 'sp') return 's';
+  return undefined;
+};
+
+/**
+ * `IF Token=0|1` tests a measured bit. `IF (GATE -I … -O …) = V` (or `!=`)
+ * tests a gate expression, where V is 0/1/S or 0p/1p/sp.
+ */
+const parseIfHeader = (line: string): IfHeader => {
+  const body = line.trim().replace(/^IF\b/i, '').trim();
+  if (!body) throw new Error('IF requires Token=0|1 or (GATE -I … -O …) = 0|1|S');
+  if (body.startsWith('(')) {
+    const match = body.match(/^\((.+)\)\s*(!=|=)\s*(\S+)$/);
+    const expect = match ? parseConditionValue(match[3]) : undefined;
+    if (!match || expect === undefined) {
+      throw new Error(`Invalid IF expression '${body}' (expected (GATE -I … -O …) = 0|1|S, or != )`);
+    }
+    return { kind: 'predicate', expression: match[1].trim(), negate: match[2] === '!=', expect };
+  }
+  const match = body.match(/^([A-Za-z_][\w]*)=(0|1)$/);
+  if (!match) throw new Error(`Invalid IF condition '${body}' (expected Token=0 or Token=1)`);
+  return { kind: 'bit', token: match[1], equals: Number(match[2]) as 0 | 1 };
+};
+
+/** Gates that make sense as IF predicates: one result wire, no measurement or reset. */
+const PREDICATE_EXCLUDED = new Set(['MEASURE', 'RESET', 'SWAP']);
+
 export const parseCommand = (line: string): ParsedCommand => {
   let tokens = line.trim().split(/\s+/);
   if (!tokens.length) throw new Error('Empty command');
@@ -248,8 +336,8 @@ export const parseCommand = (line: string): ParsedCommand => {
   const noParameterSubstitution = upperTokens.includes('-$R');
   let phase: number | undefined;
 
-  // dg (dagger) and inv (inverse) mark a primitive, either as a suffix (Sdg) or a prefix (dgS).
-  // PHASE keeps its angle on the opcode token: PHASEdg=pi/4 and dgPHASE=pi/4.
+  // dg (dagger) and inv (inverse) mark a reversible gate, either as a suffix (Sdg) or a prefix (dgS).
+  // PHASE/RX/RY/RZ/CPHASE keep their angle on the opcode token: PHASEdg=pi/4 and dgPHASE=pi/4.
   const marked = stripInverseMarker(rawOp.toUpperCase());
   let normalized = marked.opcode;
   const reverse = marked.reverse;
@@ -258,14 +346,41 @@ export const parseCommand = (line: string): ParsedCommand => {
     const [gate, value] = normalized.split('=', 2);
     normalized = gate;
     phase = parseRotationParameter(value, gate);
-    if (reverse && normalized === 'PHASE') phase *= -1;
+    if (
+      reverse
+      && (normalized === 'PHASE' || normalized === 'RX' || normalized === 'RY' || normalized === 'RZ' || normalized === 'CPHASE')
+    ) {
+      phase *= -1;
+    }
   }
 
   const inputs = splitFlagArgs(tokens, '-I');
   const outputs = splitFlagArgs(tokens, '-O');
-  const op = normalized as QpuOperation;
+  const condition = parseConditionFlag(tokens);
+  const depth = parseDepthFlag(tokens);
+  let op = normalized as QpuOperation;
+  let customGateId: string | undefined;
+  let customReverse = false;
 
-  if (!supportedQpuOperations.includes(op)) throw new Error(`Unknown command: ${normalized}`);
+  // A registered custom gate is written like any gate line: NAME -I params… -O returns…
+  if (!supportedQpuOperations.includes(op)) {
+    const bare = rawOp.split('=', 1)[0];
+    const unmarked = bare.replace(/^(dg|inv)(?=[A-Za-z])/i, '').replace(/(dg|inv)$/i, '');
+    const record = getCustomGateRecord(bare) ?? (unmarked !== bare ? getCustomGateRecord(unmarked) : undefined);
+    if (!record) throw new Error(`Unknown command: ${normalized}`);
+    customGateId = record.id;
+    customReverse = record.id.toLowerCase() !== bare.toLowerCase();
+    if (customReverse && !record.reversible) {
+      throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted in '${line}'.${record.reversibilityIssue ? ` ${record.reversibilityIssue}` : ''}`);
+    }
+    if (inputs.length !== record.inputParamNames.length) {
+      throw new Error(`${record.id} takes ${record.inputParamNames.length} -I input(s) (${record.inputParamNames.join(' ')}), got ${inputs.length}`);
+    }
+    if (outputs.length !== record.outputParamNames.length) {
+      throw new Error(`${record.id} returns ${record.outputParamNames.length} -O output(s) (${record.outputParamNames.join(' ')}), got ${outputs.length}`);
+    }
+    op = record.id as QpuOperation;
+  }
   if ((primitiveGates.has(op) || derivedGates.has(op)) && !inputs.length && op !== 'MEASURE') {
     throw new Error(`${op} requires -I inputs`);
   }
@@ -275,8 +390,37 @@ export const parseCommand = (line: string): ParsedCommand => {
   if (primitiveGates.has(op) || derivedGates.has(op)) {
     assertGateArity(op, inputs.length, outputs.length);
   }
+  if (op === 'RECUR' && !inputs.length) {
+    throw new Error('RECUR requires -I inputs');
+  }
+  if (op === 'EXIT') {
+    parseWhenClause(tokens.slice(1));
+  }
+  if (op === 'REC' || op === 'TREC') {
+    parseRecDeclaration(tokens);
+  }
+  if (op === 'IF') {
+    parseIfHeader(line);
+  }
+  if (op === 'ELSE' || op === 'ENDIF') {
+    if (tokens.length > 1) {
+      throw new Error(`${op} does not take arguments`);
+    }
+  }
 
-  return { op, raw: line, inputs, outputs, args: tokens.slice(1), phase, reverse, noParameterSubstitution };
+  return {
+    op,
+    raw: line,
+    inputs,
+    outputs,
+    args: tokens.slice(1),
+    phase,
+    reverse,
+    noParameterSubstitution,
+    condition,
+    depth,
+    ...(customGateId ? { customGateId, reverse: customReverse } : {}),
+  };
 };
 
 export const parseProtocol = (source: string): ProtocolProcess => {
@@ -300,6 +444,11 @@ type Frame = {
   released: Set<string>;
   masterTokens: Array<{ name: string; line: string }>;
   returnBases: string[];
+  /** Set by REC/TREC — required before RECUR / self-RUNCHILD expansion. */
+  allowsRecursion: boolean;
+  maxDepth?: number;
+  /** Explicit TREC (or REC auto-TCO once analyzed). */
+  prefersTco?: boolean;
 };
 
 type CompilerState = {
@@ -321,6 +470,10 @@ type CompilerState = {
   processRuns: number;
   rootScope: string;
   verifying: Set<string>;
+  /** Active REC/TREC frame; stamped onto every gate emitted while set. */
+  activeRecursion?: RecursionFrameMeta;
+  /** Counter for RecursionFrameMeta.invocation ids. */
+  nextRecursionInvocation: number;
 };
 
 const createCompilerState = (): CompilerState => ({
@@ -342,6 +495,7 @@ const createCompilerState = (): CompilerState => ({
   processRuns: 0,
   rootScope: '',
   verifying: new Set(),
+  nextRecursionInvocation: 0,
 });
 
 // Gates shown in the circuit UI; cycle workspace prep is compiler-internal and never rendered.
@@ -402,6 +556,8 @@ const emitGate = (
   phase?: number,
   checkpoint?: string,
   inverse?: boolean,
+  condition?: CircuitGate['condition'],
+  branch?: ClassicalBranchMeta,
 ) => {
   state.gates.push({
     id: `${type}-${state.gates.length}-${targets.join('-')}`,
@@ -414,6 +570,9 @@ const emitGate = (
     cycle: state.timelineCycle,
     checkpoint,
     inverse: inverse || undefined,
+    condition,
+    branch,
+    recursion: state.activeRecursion ? { ...state.activeRecursion } : undefined,
   });
   if (type === 'RESET') {
     targets.forEach((qubit) => state.knownZero.add(qubit));
@@ -578,6 +737,7 @@ const executeProcess = (
   outputBindings: Map<string, string> = new Map(),
   callSite = '',
   skipCallParams = false,
+  context: ProcessExecutionContext = { rootProcess: process.name, callStack: [] },
 ): string[] => {
   const enclosingFrameCycle = state.frameCycle;
   const scope = `${process.name}#${state.processRuns}`;
@@ -604,19 +764,144 @@ const executeProcess = (
     released: new Set(),
     masterTokens: [],
     returnBases: [],
+    allowsRecursion: false,
   };
   outputBindings.forEach((parentToken, childRegister) => {
     frame.aliases.set(childRegister, parentToken);
   });
   process.params.forEach((param) => ensureQubit(state, params.get(param.name)!, false));
   let returns: string[] = [];
+  const frameContext: ProcessExecutionContext = {
+    ...context,
+    callStack: [...context.callStack, process.name],
+  };
+  // Mutable recursion registers so TCO can rewind this frame like a loop (F#-style).
+  const recursionState = {
+    depth: frameContext.recursionDepth,
+    rootDepth: frameContext.rootDepth,
+    level: frameContext.level ?? 0,
+    mode: frameContext.recursionMode,
+    invocation: frameContext.recursionInvocation,
+  };
+  const enclosingRecursion = state.activeRecursion;
+  const syncActiveRecursion = () => {
+    if (recursionState.depth === undefined || recursionState.rootDepth === undefined) {
+      state.activeRecursion = undefined;
+      return;
+    }
+    state.activeRecursion = {
+      process: process.name,
+      depth: recursionState.depth,
+      level: recursionState.level,
+      rootDepth: recursionState.rootDepth,
+      mode: recursionState.mode ?? 'stack',
+      ...(recursionState.invocation ? { invocation: recursionState.invocation } : {}),
+    };
+  };
+  syncActiveRecursion();
 
-  state.log.push(`MAIN-PROCESS ${process.name} compiled in scope ${scope}.`);
+  type ActiveBranch = {
+    groupId: string;
+    kind: 'if' | 'else';
+    token: string;
+    equals: 0 | 1;
+    /** Present for `IF (GATE …) = V`; ELSE flips `negate`. */
+    predicate?: ConditionPredicate;
+  };
+
+  // Resolve `GATE -I … -O …` inside an IF header against this frame without emitting a gate.
+  const compilePredicate = (
+    header: Extract<IfHeader, { kind: 'predicate' }>,
+    line: string,
+  ): ConditionPredicate => {
+    const inner = parseCommand(header.expression);
+    const op = inner.op;
+    if (inner.customGateId && inner.outputs.length !== 1) {
+      throw new Error(`IF expression custom gate ${op} must return exactly one value to compare in '${line}'`);
+    }
+    if (!inner.customGateId && (!(primitiveGates.has(op) || derivedGates.has(op)) || PREDICATE_EXCLUDED.has(op))) {
+      throw new Error(`IF expression must be a single-result gate (not '${op}') in '${line}'`);
+    }
+    if (inner.condition) throw new Error(`IF expression cannot carry its own -IF in '${line}'`);
+    const inputs = inner.inputs.map((input) => resolveInputQubit(state, frame, input, line, parentFrame));
+    const outputToken = inner.outputs[0] ?? inner.inputs[0];
+    const output = resolveInputQubit(state, frame, outputToken, line, parentFrame);
+    const loweredPhase = inner.op === 'PHASE' || inner.op === 'RX' || inner.op === 'RY'
+      || inner.op === 'RZ' || inner.op === 'CPHASE'
+      ? inner.phase ?? 0
+      : undefined;
+    return buildConditionPredicate({
+      type: op as GateType,
+      inputs,
+      output,
+      // AND -I A B -O B means "A AND B": keep both operands and write to a fresh |0⟩ wire.
+      isBooleanJoin: derivedGates.has(op),
+      phase: loweredPhase,
+      inverse: inner.reverse,
+      expect: header.expect,
+      negate: header.negate,
+      inputNames: inner.inputs.map(stripCycle),
+      outputName: stripCycle(outputToken),
+    });
+  };
+  const branchStack: ActiveBranch[] = [];
+  let nextBranchGroup = 0;
+
+  const resolveClassicalControl = (
+    commandCondition: ParsedCommand['condition'] | undefined,
+    line: string,
+    skipParams: boolean,
+  ): { condition?: CircuitGate['condition']; branch?: ClassicalBranchMeta } => {
+    const active = branchStack[branchStack.length - 1];
+    if (active) {
+      // A gate holds one condition, so an inline -IF here would silently replace the block's test.
+      if (commandCondition) {
+        throw new Error(`-IF inside an IF block is not supported (a gate carries one condition) in '${line}'`);
+      }
+      if (active.predicate) {
+        const { predicate } = active;
+        return {
+          condition: { qubit: predicate.output, equals: active.kind === 'else' ? 0 : 1, predicate: { ...predicate } },
+          branch: {
+            groupId: active.groupId,
+            kind: active.kind,
+            sourceQubit: predicate.output,
+            equals: active.kind === 'else' ? 0 : 1,
+          },
+        };
+      }
+      const qubit = resolveInputQubit(state, frame, active.token, line, parentFrame, skipParams);
+      return {
+        condition: { qubit, equals: active.equals },
+        branch: {
+          groupId: active.groupId,
+          kind: active.kind,
+          sourceQubit: qubit,
+          equals: active.equals,
+        },
+      };
+    }
+    if (!commandCondition) return {};
+    return {
+      condition: {
+        qubit: resolveInputQubit(state, frame, commandCondition.token, line, parentFrame, skipParams),
+        equals: commandCondition.equals,
+      },
+    };
+  };
+
+  const depthNote = recursionState.depth !== undefined
+    ? ` DEPTH=${recursionState.depth} LEVEL=${recursionState.level}${recursionState.mode ? ` mode=${recursionState.mode}` : ''}`
+    : '';
+  state.log.push(`MAIN-PROCESS ${process.name} compiled in scope ${scope}.${depthNote}`);
   state.frameCycle = 0;
 
   // Line dispatch is ordered: workspace/cycle ops run before gates so pending RESETs flush at INCREASECYCLE and primitives.
   try {
-  for (const line of process.lines) {
+  let lineIndex = 0;
+  while (lineIndex < process.lines.length) {
+    const line = process.lines[lineIndex];
+    lineIndex += 1;
     const command = parseCommand(line);
     const skipParams = command.noParameterSubstitution;
     state.parsed.push(command);
@@ -624,6 +909,84 @@ const executeProcess = (
     if (command.op === 'MAIN-PROCESS') {
       // Body entry marker only; compilation already started from parseProtocol's MAIN-PROCESS name.
       state.log.push(`Main process '${command.args[0]}' started.`);
+      continue;
+    }
+
+    if (command.op === 'REC' || command.op === 'TREC') {
+      if (process.name === frameContext.rootProcess && !parentFrame) {
+        state.log.push(`${command.op} noted on '${process.name}' (valid when this process is expanded as a child).`);
+      }
+      const meta = parseRecDeclaration(line.trim().split(/\s+/));
+      frame.allowsRecursion = true;
+      frame.maxDepth = meta.maxDepth;
+      frame.prefersTco = meta.requiresTail;
+      state.log.push(
+        meta.maxDepth === undefined
+          ? `${command.op} enables bounded self-recursion for '${process.name}'.`
+          : `${command.op} MAXDEPTH ${meta.maxDepth} enables bounded self-recursion for '${process.name}'.`,
+      );
+      continue;
+    }
+
+    if (command.op === 'EXIT') {
+      const clause = parseWhenClause(command.args);
+      if (evaluateWhenClause(clause, recursionState)) {
+        state.log.push(`EXIT WHEN ${clause.left} ${clause.operator} ${clause.right} ended frame ${scope}.`);
+        break;
+      }
+      state.log.push(`EXIT WHEN ${clause.left} ${clause.operator} ${clause.right} was false; continuing.`);
+      continue;
+    }
+
+    if (command.op === 'IF') {
+      // Nested blocks would need a conjunction of conditions; reject rather than drop the outer test.
+      if (branchStack.length > 0) {
+        throw new Error(`Nested IF blocks are not supported; close the outer IF with ENDIF first ('${line}')`);
+      }
+      const header = parseIfHeader(line);
+      if (header.kind === 'predicate') {
+        const predicate = compilePredicate(header, line);
+        branchStack.push({
+          groupId: `branch-${nextBranchGroup}`,
+          kind: 'if',
+          token: predicate.text,
+          equals: 1,
+          predicate,
+        });
+        state.log.push(`IF (${header.expression}) ${header.negate ? '!=' : '='} ${conditionValueLabel(header.expect)} opened gate-expression branch.`);
+      } else {
+        branchStack.push({
+          groupId: `branch-${nextBranchGroup}`,
+          kind: 'if',
+          token: header.token,
+          equals: header.equals,
+        });
+        state.log.push(`IF ${header.token}=${header.equals} opened classical branch.`);
+      }
+      nextBranchGroup += 1;
+      continue;
+    }
+
+    if (command.op === 'ELSE') {
+      const active = branchStack[branchStack.length - 1];
+      if (!active || active.kind !== 'if') {
+        throw new Error(`ELSE without matching IF in '${line}'`);
+      }
+      active.kind = 'else';
+      if (active.predicate) {
+        active.predicate = { ...active.predicate, negate: !active.predicate.negate };
+        state.log.push(`ELSE ${active.token} ${active.predicate.negate ? '!=' : '='} ${conditionValueLabel(active.predicate.expect)} branch.`);
+      } else {
+        active.equals = active.equals === 1 ? 0 : 1;
+        state.log.push(`ELSE ${active.token}=${active.equals} classical branch.`);
+      }
+      continue;
+    }
+
+    if (command.op === 'ENDIF') {
+      const active = branchStack.pop();
+      if (!active) throw new Error(`ENDIF without matching IF in '${line}'`);
+      state.log.push(`ENDIF closed classical branch ${active.groupId}.`);
       continue;
     }
 
@@ -639,6 +1002,9 @@ const executeProcess = (
     if (command.op === 'SET') {
       const [target, value] = command.args;
       const targetBase = stripCycle(target);
+      if (['DEPTH', 'LEVEL', 'ROOTDEPTH'].includes(targetBase.toUpperCase())) {
+        throw new Error(`${targetBase} is read-only compile-time recursion metadata in '${line}'`);
+      }
       if (!value) throw new Error(`SET requires a value in '${line}'`);
       const prepared = preparedConstant(value);
       if (prepared && !isPowerOfTwoDimension(prepared.dimension)) {
@@ -714,28 +1080,150 @@ const executeProcess = (
       continue;
     }
 
-    if (command.op === 'RUNCHILD' || command.op === 'CALL') {
-      const childName = command.args[0];
+    if (command.op === 'RUNCHILD' || command.op === 'CALL' || command.op === 'RECUR') {
+      // Child gates compile in their own frame and would not inherit this block's condition.
+      if (branchStack.length > 0) {
+        throw new Error(
+          `${command.op} inside an IF block is not supported; its gates would run unconditionally. `
+          + `Register the child as a custom gate and use that gate inside the block instead ('${line}')`,
+        );
+      }
+      const isRecur = command.op === 'RECUR';
+      const childName = isRecur ? process.name : command.args[0];
       if (!childName) throw new Error(`${command.op} requires a process name`);
-      const child = frame.declaredChildren.get(childName) ?? library.get(childName);
+      const child = isRecur
+        ? process
+        : frame.declaredChildren.get(childName) ?? library.get(childName);
       if (!child) throw new Error(`Unknown child process '${childName}'`);
+
+      const childAnalysis = analyzeRecursionForm(child);
+      const childRecursionMode = childAnalysis.allowsRecursion
+        ? resolveRecursionMode(childAnalysis)
+        : undefined;
+      const liveContext: ProcessExecutionContext = {
+        ...frameContext,
+        recursionDepth: recursionState.depth,
+        rootDepth: recursionState.rootDepth,
+        level: recursionState.level,
+        recursionMode: recursionState.mode,
+      };
+      const plan = planRecursionExpansion({
+        childName,
+        currentProcessName: process.name,
+        context: liveContext,
+        requestedDepth: command.depth,
+        childIsRecursive: isRecur ? true : childAnalysis.allowsRecursion,
+        childMaxDepth: childAnalysis.maxDepth ?? frame.maxDepth,
+        isExplicitRecur: isRecur,
+        frameAllowsRecursion: frame.allowsRecursion,
+        childRecursionMode,
+      });
+
+      if (plan.kind === 'stop') {
+        state.log.push(plan.reason);
+        continue;
+      }
+
+      // Tail REC/TREC: rewind this frame (TCO) instead of nesting another executeProcess.
+      const selfCall = isRecur || childName === process.name;
+      if (selfCall && plan.kind === 'expand' && (recursionState.mode === 'tco' || plan.recursionMode === 'tco')) {
+        command.inputs.forEach((input, index) => {
+          const param = process.params[index];
+          if (!param) return;
+          const resolved = scopedName(state, frame, input, line, parentFrame, skipParams);
+          params.set(param.name, resolved);
+        });
+        recursionState.depth = plan.recursionDepth;
+        recursionState.rootDepth = plan.rootDepth;
+        recursionState.level = plan.level;
+        recursionState.mode = 'tco';
+        syncActiveRecursion();
+        // Each rewound iteration gets fresh locals, as a stacked call would: a new scope and only the call's output bindings.
+        frame.scope = `${process.name}#${state.processRuns}`;
+        state.processRuns += 1;
+        frame.aliases = new Map(outputBindings);
+        frame.released.clear();
+        frame.returnBases = [];
+        frame.masterTokens = [];
+        state.frameCycle = 0;
+        lineIndex = 0;
+        state.log.push(
+          `TCO rewind '${process.name}' → DEPTH=${plan.recursionDepth} LEVEL=${plan.level} (iterative expansion).`,
+        );
+        continue;
+      }
+
       const childReturnRegisters = returnRegistersForProcess(child);
       const childOutputBindings = new Map<string, string>();
       const preparedOutputQubits = new Set<number>();
-      // Child RETURNVALS bind directly onto parent outputs, with each output reset once before expansion.
+      const inputQubits = new Set(
+        command.inputs.map((input) => {
+          const parentToken = scopedName(state, frame, stripCycle(input), line, parentFrame, skipParams);
+          return ensureQubit(state, parentToken, false);
+        }),
+      );
+      // Child RETURNVALS bind onto parent outputs. Skip zero-prep when the output aliases an input (in-place).
       command.outputs.forEach((output, index) => {
         const childRegister = childReturnRegisters[index];
         if (!childRegister) return;
         const parentToken = scopedName(state, frame, stripCycle(output), line, parentFrame, skipParams);
-        const qubit = ensureQubit(state, parentToken);
-        if (!preparedOutputQubits.has(qubit)) {
+        const qubit = ensureQubit(state, parentToken, false);
+        if (!preparedOutputQubits.has(qubit) && !inputQubits.has(qubit)) {
           preparedOutputQubits.add(qubit);
           scheduleCycleZero(state, qubit);
         }
         childOutputBindings.set(childRegister, parentToken);
       });
-      flushCycleZeros(state, `prepare outputs before RUNCHILD ${childName} at cycle ${state.frameCycle}`);
-      const childReturns = executeProcess(child, state, library, command.inputs, frame, childOutputBindings, line, skipParams);
+      // RECUR / in-place RUNCHILD with only -I: map RETURNVALS onto the same PARAM wires.
+      if (command.outputs.length === 0 && (isRecur || childName === process.name || plan.kind === 'expand')) {
+        child.params.forEach((param, index) => {
+          const input = command.inputs[index];
+          if (!input) return;
+          const childRegister = childReturnRegisters.find((name) => name === param.name);
+          if (!childRegister) return;
+          const parentToken = scopedName(state, frame, stripCycle(input), line, parentFrame, skipParams);
+          childOutputBindings.set(childRegister, parentToken);
+        });
+      }
+      flushCycleZeros(state, `prepare outputs before ${command.op} ${childName} at cycle ${state.frameCycle}`);
+
+      const nextContext: ProcessExecutionContext = plan.kind === 'expand'
+        ? {
+            rootProcess: frameContext.rootProcess,
+            recursionProcess: plan.recursionProcess,
+            recursionDepth: plan.recursionDepth,
+            rootDepth: plan.rootDepth,
+            level: plan.level,
+            callStack: frameContext.callStack,
+            recursionMode: plan.recursionMode,
+            // Frames of one chain share the id; a fresh RUNCHILD starts a new one.
+            recursionInvocation: selfCall && recursionState.invocation
+              ? recursionState.invocation
+              : `rec-${state.nextRecursionInvocation++}`,
+          }
+        : {
+            rootProcess: frameContext.rootProcess,
+            callStack: frameContext.callStack,
+          };
+
+      if (plan.kind === 'expand' && plan.recursionMode === 'tco') {
+        state.log.push(
+          `TCO: expanding '${childName}' iteratively (DEPTH=${plan.recursionDepth}`
+          + `${childAnalysis.declaredTrec ? '; TREC' : '; REC auto-converted'}).`,
+        );
+      }
+
+      const childReturns = executeProcess(
+        child,
+        state,
+        library,
+        command.inputs,
+        frame,
+        childOutputBindings,
+        line,
+        skipParams,
+        nextContext,
+      );
       command.outputs.forEach((output, index) => {
         const returned = childReturns[index];
         if (returned) frame.aliases.set(stripCycle(output), returned);
@@ -783,7 +1271,10 @@ const executeProcess = (
       const scratch = createCompilerState();
       scratch.verifying = state.verifying;
       try {
-        executeProcess(child, scratch, library);
+        executeProcess(child, scratch, library, [], undefined, new Map(), '', false, {
+          rootProcess: childName,
+          callStack: [],
+        });
         state.log.push(`COMPILEPROCESS verified '${childName}' (${scratch.gates.length} gate(s)) without inlining.`);
       } finally {
         state.verifying.delete(childName);
@@ -853,16 +1344,30 @@ const executeProcess = (
       continue;
     }
 
+    // Custom gates keep their own wiring: -I wires bind the process PARAMS in order, -O wires its RETURNVALS.
+    if (command.customGateId) {
+      flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      const { condition, branch } = resolveClassicalControl(command.condition, line, skipParams);
+      const controls = command.inputs.map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams));
+      const targets = command.outputs.map((output) => resolveInputQubit(state, frame, output, line, parentFrame, skipParams));
+      emitGate(state, command.customGateId, targets, controls, line, undefined, undefined, command.reverse, condition, branch);
+      state.gates[state.gates.length - 1].customGateId = command.customGateId;
+      continue;
+    }
+
     if (primitiveGates.has(command.op)) {
       flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      const { condition, branch } = resolveClassicalControl(command.condition, line, skipParams);
       const loweredPhase = command.reverse && command.op === 'S'
         ? -Math.PI / 2
         : command.reverse && command.op === 'T'
           ? -Math.PI / 4
-          : command.op === 'PHASE'
+          : command.op === 'PHASE' || command.op === 'RX' || command.op === 'RY' || command.op === 'RZ' || command.op === 'CPHASE'
             ? command.phase ?? 0
             : undefined;
-      const loweredType: GateType = loweredPhase !== undefined && command.op !== 'PHASE' ? 'PHASE' : command.op as GateType;
+      const loweredType: GateType = loweredPhase !== undefined && (command.op === 'S' || command.op === 'T')
+        ? 'PHASE'
+        : command.op as GateType;
       if (command.op === 'SWAP') {
         const swapQubits = command.inputs
           .slice(0, 2)
@@ -879,7 +1384,7 @@ const executeProcess = (
             }
           });
         }
-        emitGate(state, 'SWAP', swapQubits, [], line, undefined, undefined, command.reverse);
+        emitGate(state, 'SWAP', swapQubits, [], line, undefined, undefined, command.reverse, condition, branch);
         continue;
       }
       // For primitive and derived AST gates, -O names the mutated target and -I names controls/inputs.
@@ -889,24 +1394,32 @@ const executeProcess = (
         .map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams))
         // When -O names the mutated wire, drop it from the control list so self-controlled ops do not deadlock.
         .filter((qubit) => qubit !== target);
-      emitGate(state, loweredType, [target], controls, line, loweredPhase, undefined, command.reverse);
+      emitGate(state, loweredType, [target], controls, line, loweredPhase, undefined, command.reverse, condition, branch);
       continue;
     }
 
-    // Derived gates share the same -I/-O lowering as primitives but never carry PHASE metadata.
+    // Derived gates share the same -I/-O lowering as primitives; self-inverse ops keep reverse for dagger display.
     if (derivedGates.has(command.op)) {
       flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      const { condition, branch } = resolveClassicalControl(command.condition, line, skipParams);
       const target = resolveInputQubit(state, frame, command.outputs[0], line, parentFrame, skipParams);
       const controls = command.inputs
         .map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams))
         .filter((qubit) => qubit !== target);
-      emitGate(state, command.op as GateType, [target], controls, line);
+      emitGate(state, command.op as GateType, [target], controls, line, undefined, undefined, command.reverse, condition, branch);
       continue;
     }
   }
 
   if (frame.returnBases.length === 0) {
-    returns = frame.masterTokens.map((entry) => scopedName(state, frame, entry.name, entry.line, parentFrame));
+    if (frame.masterTokens.length > 0) {
+      returns = frame.masterTokens.map((entry) => scopedName(state, frame, entry.name, entry.line, parentFrame));
+    } else if (returns.length === 0) {
+      // Early EXIT before RETURNVALS: surface PARAM wires so in-place recursive callers keep bindings.
+      returns = process.params
+        .map((param) => params.get(param.name))
+        .filter((token): token is string => Boolean(token));
+    }
   } else {
     frame.masterTokens.forEach((entry) => {
       if (!frame.returnBases.includes(entry.name)) {
@@ -916,9 +1429,13 @@ const executeProcess = (
   }
 
   flushCycleZeros(state, `end of process ${process.name}`);
+  if (branchStack.length > 0) {
+    throw new Error(`Unclosed IF in process '${process.name}' (missing ENDIF).`);
+  }
   return returns;
   } finally {
     state.frameCycle = enclosingFrameCycle;
+    state.activeRecursion = enclosingRecursion;
   }
 };
 
@@ -932,6 +1449,12 @@ const compactQubitLayout = (
   gates.forEach((gate) => {
     gate.targets.forEach((qubit) => used.add(qubit));
     gate.controls.forEach((qubit) => used.add(qubit));
+    // A wire read only by an IF predicate must survive compaction.
+    gate.condition?.predicate?.inputs.forEach((qubit) => used.add(qubit));
+    if (gate.condition?.predicate) used.add(gate.condition.predicate.output);
+    // Measured-bit conditions and branches keep their wire so the "measured first" check sees the right index.
+    if (gate.condition) used.add(gate.condition.qubit);
+    if (gate.branch) used.add(gate.branch.sourceQubit);
   });
   processParams.forEach((param) => used.add(param.qubitIndex));
 
@@ -947,6 +1470,13 @@ const compactQubitLayout = (
       ...gate,
       targets: gate.targets.map((qubit) => remap.get(qubit)!),
       controls: gate.controls.map((qubit) => remap.get(qubit)!),
+      // Feed-forward reads a measured wire, so it must follow the same compaction.
+      ...(gate.condition
+        ? { condition: remapConditionWires(gate.condition, (qubit) => remap.get(qubit) ?? qubit) }
+        : {}),
+      ...(gate.branch
+        ? { branch: { ...gate.branch, sourceQubit: remap.get(gate.branch.sourceQubit) ?? gate.branch.sourceQubit } }
+        : {}),
     })),
     tokenMap: Object.fromEntries(
       Object.entries(tokenMap).flatMap(([token, qubit]) => {
@@ -967,11 +1497,14 @@ const compactQubitLayout = (
 export const compileQpuProtocol = (source: string, librarySources: Record<string, string> = {}): CompileResult => {
   const main = parseProtocol(source);
   const library = processLibraryFromSources(librarySources);
-  // The file being compiled is always addressable as a child of itself (e.g. recursive RUNCHILD tests).
+  // The file being compiled is always addressable as a child of itself (e.g. recursive RUNCHILD / RECUR).
   library.set(main.name, main);
   const state = createCompilerState();
 
-  executeProcess(main, state, library);
+  executeProcess(main, state, library, [], undefined, new Map(), '', false, {
+    rootProcess: main.name,
+    callStack: [],
+  });
 
   const tokenMap: Record<string, number> = {};
   state.tokenToQubit.forEach((qubit, token) => {

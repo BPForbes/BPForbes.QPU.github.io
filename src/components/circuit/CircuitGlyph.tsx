@@ -6,7 +6,16 @@ type CircuitGlyphProps = {
   gate: CircuitGate;
   qubit: number;
   active?: boolean;
-  onRemove?: () => void;
+  branchOutcome?: 'taken' | 'skipped' | 'pending';
+  /** Canvas-only label override (e.g. REC for collapsed multi-op recursion). */
+  labelOverride?: string;
+  /** Forward name to show instead of the registry label; keeps glyph kind and dagger (e.g. T for lowered Tdg). */
+  forwardLabel?: string;
+  /** Collapsed REC: colour as inverse while the playhead is in the adjoint half of the frame. */
+  inverseOverride?: boolean;
+  /** Primary click: edit wrappers, apply a selected wrapper tool, or remove. */
+  onActivate?: () => void;
+  activateLabel?: string;
 };
 
 const PlusTarget = () => (
@@ -38,22 +47,52 @@ const glyphContent = (kind: CircuitGlyphKind, label: string) => {
   return <span>{label}</span>;
 };
 
-export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitGlyphProps) {
-  const kind = glyphKindFor(gate, qubit);
+export function CircuitGlyph({
+  gate,
+  qubit,
+  active = false,
+  branchOutcome = 'pending',
+  labelOverride,
+  forwardLabel: forwardLabelProp,
+  inverseOverride,
+  onActivate,
+  activateLabel,
+}: CircuitGlyphProps) {
+  const kind = labelOverride ? 'box' : glyphKindFor(gate, qubit);
   const definition = getGateDefinition(String(gate.type));
-  const forwardLabel = glyphLabelFor(gate, qubit, definition?.label ?? String(gate.type));
-  const label = gate.inverse && kind === 'box' ? `${forwardLabel}†` : forwardLabel;
-  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${gate.inverse ? ' inverse' : ''}${active ? ' active' : ''}`;
-  const title = `${gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}`;
+  const forwardLabel = labelOverride
+    ?? glyphLabelFor(gate, qubit, forwardLabelProp ?? definition?.label ?? String(gate.type));
+  const inverse = inverseOverride ?? (!labelOverride && gate.inverse);
+  const label = !labelOverride && gate.inverse && kind === 'box' ? `${forwardLabel}†` : forwardLabel;
+  const branchClass = gate.condition
+    ? branchOutcome === 'taken'
+      ? ' branch-taken'
+      : branchOutcome === 'skipped'
+        ? ' branch-skipped'
+        : ''
+    : '';
+  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${inverse ? ' inverse' : ''}${gate.condition ? ' conditioned' : ''}${gate.recursion ? ' recursive' : ''}${active ? ' active' : ''}${branchClass}`;
+  const conditionNote = gate.condition
+    ? ` if q${gate.condition.qubit}=${gate.condition.equals}`
+    : '';
+  const branchNote = gate.branch
+    ? ` (${gate.branch.kind.toUpperCase()} ${branchOutcome})`
+    : '';
+  const recursionNote = gate.recursion
+    ? ` · recursive DEPTH ${gate.recursion.depth}/${gate.recursion.rootDepth}`
+    : '';
+  const title = labelOverride
+    ? `${labelOverride} recursive call${conditionNote}${branchNote}`
+    : `${forwardLabelProp ?? gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}${conditionNote}${branchNote}${recursionNote}`;
 
-  if (onRemove) {
+  if (onActivate) {
     return (
       <button
-        aria-label={`Remove ${title}`}
+        aria-label={activateLabel ?? `Edit or remove ${title}`}
         className={className}
         onClick={(event) => {
           event.stopPropagation();
-          onRemove();
+          onActivate();
         }}
         title={title}
         type="button"

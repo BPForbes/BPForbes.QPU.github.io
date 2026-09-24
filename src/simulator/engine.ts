@@ -1,8 +1,9 @@
 // Circuit execution orchestration: initial state, per-gate application via the gate registry, and full runs.
 import { Complex, magnitudeSquared, ONE, ZERO } from './complex';
-import { applyGate as applyRegisteredGate } from './gates/registry';
+import { applyGate as applyRegisteredGate, getGateDefinition } from './gates/registry';
 import { applySingleQubitGate, applyStartState, hasBit, measureQubit, padStateVector } from './gates/operations';
-import { phaseMatrix } from './gates/matrices';
+import { conditionSatisfied } from './gates/conditions';
+import { applyInverseAwareDefinition } from './gates/inverse';
 import { buildOperationTransition, snapshotAllParticles } from './physics/particleTracking';
 import { CircuitGate, ExecutionResult, MeasurementMap, OperationTransition, ParticleStartState, StateCheckpoint } from './types';
 
@@ -38,6 +39,8 @@ export const projectStateOntoQubits = (
 
   return probabilities.map((probability) => (probability > 0 ? { re: Math.sqrt(probability), im: 0 } : ZERO));
 };
+
+export { conditionSatisfied };
 
 // When the compiler does not supply explicit param indices, start states bind to the first N simulator wires.
 const resolveParamQubitIndices = (
@@ -176,16 +179,34 @@ const applyInverseOrRegistered = (
   measurements: MeasurementMap,
   librarySources: Record<string, string>,
 ): ExecutionResult => {
-  if (gate.inverse && (gate.type === 'S' || gate.type === 'T')) {
-    const angle = gate.type === 'S' ? -Math.PI / 2 : -Math.PI / 4;
-    const target = gate.targets[0];
+  // Predicates may use custom gates, so hand the evaluator the same registry-aware path.
+  const runPredicateGate = (
+    probe: CircuitGate,
+    probeState: Complex[],
+    probeQubitCount: number,
+    probeMeasurements: MeasurementMap,
+  ): ExecutionResult => {
+    const probeDefinition = getGateDefinition(String(probe.type));
+    return probeDefinition
+      ? applyInverseAwareDefinition(probeDefinition, probeState, probeQubitCount, probe, probeMeasurements, librarySources)
+      : applyRegisteredGate(probeState, probeQubitCount, probe, probeMeasurements, librarySources);
+  };
+  const satisfied = conditionSatisfied(gate, measurements, state, qubitCount, runPredicateGate);
+  // Recorded per gate so the canvas can mark gate-expression branches taken/skipped.
+  const conditionOutcomes = gate.condition ? { [gate.id]: satisfied } : undefined;
+  if (!satisfied) {
     return {
-      state: applySingleQubitGate(state, qubitCount, target, phaseMatrix(angle)),
+      state,
       measurements,
-      log: [`${gate.type}† applied phase ${angle.toFixed(3)} on q${target}.`],
+      log: [`${gate.type} skipped because classical condition was false.`],
+      conditionOutcomes,
     };
   }
-  return applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
+  const definition = getGateDefinition(String(gate.type));
+  const result = definition
+    ? applyInverseAwareDefinition(definition, state, qubitCount, gate, measurements, librarySources)
+    : applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
+  return conditionOutcomes ? { ...result, conditionOutcomes } : result;
 };
 
 // Gate application pads the state vector on demand because compiled child processes may introduce workspace qubits.
@@ -294,6 +315,9 @@ export const runCircuit = (
           particles: next.particles ?? result.particles,
           transitions: [...(result.transitions ?? []), ...(next.transitions ?? [])],
           checkpoints,
+          conditionOutcomes: next.conditionOutcomes
+            ? { ...result.conditionOutcomes, ...next.conditionOutcomes }
+            : result.conditionOutcomes,
         };
       },
       {

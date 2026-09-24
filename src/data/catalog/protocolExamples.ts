@@ -8,6 +8,10 @@ import fourBitFullAdderQpucir from '../processes/four-bit-full-adder.qpucir?raw'
 import fourBitFullAdderQpuio from '../processes/four-bit-full-adder.qpuio?raw';
 import phaseDemoQpucir from '../processes/phase-demo.qpucir?raw';
 import phaseDemoQpuio from '../processes/phase-demo.qpuio?raw';
+import recursiveHQpucir from '../processes/recursive-h.qpucir?raw';
+import recursiveHParentQpucir from '../processes/recursive-h-parent.qpucir?raw';
+import recursiveReversibleEchoQpucir from '../processes/recursive-reversible-echo.qpucir?raw';
+import recursiveReversibleEchoHarnessQpucir from '../processes/recursive-reversible-echo-harness.qpucir?raw';
 import singleBitFullAdderQpuio from '../processes/single-bit-full-adder.qpuio?raw';
 import singleBitFullAdderQpucir from '../processes/single-bit-full-adder.qpucir?raw';
 import twoBitFullAdderQpucir from '../processes/two-bit-full-adder.qpucir?raw';
@@ -41,6 +45,8 @@ export type ConfiguredQpucirProcess = {
   truthTableFileName?: string;
   compiled?: QpucirPayload['compiled'];
   exportedAt?: string;
+  /** Child processes that only compile when invoked via RUNCHILD/RECUR; kept in the library but not offered as runnable examples. */
+  libraryOnly?: boolean;
 };
 
 const parseConfiguredProcess = (
@@ -93,10 +99,14 @@ export const configuredProcesses = [
   parseConfiguredProcess('two-bit-full-adder.qpucir', twoBitFullAdderQpucir, bundledQpuio('two-bit-full-adder.qpuio', twoBitFullAdderQpuio)),
   parseConfiguredProcess('single-bit-full-adder.qpucir', singleBitFullAdderQpucir, bundledQpuio('single-bit-full-adder.qpuio', singleBitFullAdderQpuio)),
   parseConfiguredProcess('phase-demo.qpucir', phaseDemoQpucir, bundledQpuio('phase-demo.qpuio', phaseDemoQpuio)),
+  { ...parseConfiguredProcess('recursive-h.qpucir', recursiveHQpucir), libraryOnly: true },
+  parseConfiguredProcess('recursive-h-parent.qpucir', recursiveHParentQpucir),
+  { ...parseConfiguredProcess('recursive-reversible-echo.qpucir', recursiveReversibleEchoQpucir), libraryOnly: true },
+  parseConfiguredProcess('recursive-reversible-echo-harness.qpucir', recursiveReversibleEchoHarnessQpucir),
 ];
 
 export const protocolLibrary = Object.fromEntries(
   configuredProcesses.map((process) => [process.name, process.source]),
 ) as Record<string, string>;
 
-export const protocolExamples = configuredProcesses;
+export const protocolExamples = configuredProcesses.filter((process) => !process.libraryOnly);

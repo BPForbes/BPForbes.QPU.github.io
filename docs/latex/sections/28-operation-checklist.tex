@@ -8,13 +8,15 @@
 \normalfont\bfseries Item & \bfseries Covered in\\
 \midrule
 PARAMS: & Lexical syntax & MAIN-PROCESS & Process composition\\
-X,Y,Z,H & Single-qubit gates & S,T,PHASE & Single-qubit gates\\
-CNOT,CCNOT & Controlled gates & CZ,CY,SWAP & Controlled gates\\
+X,Y,Z,H & Single-qubit gates & S,T,PHASE,RX,RY,RZ & Single-qubit gates\\
+CNOT,CCNOT & Controlled gates & CZ,CY,CPHASE,SWAP & Controlled gates\\
 NOT,AND,NAND & Derived gates & OR,XOR & Derived gates\\
 MEASURE & Measurement & SET & State/token commands\\
 CREATETOKEN & State/token commands & DELETETOKEN,FREE & State/token commands\\
 INCREASECYCLE & State/token commands & JOIN,SPLIT & State/token commands\\
 DECLARECHILD & Process composition & RUNCHILD,CALL & Process composition\\
+REC,TREC,RECUR,EXIT & Process composition & -DEPTH,WHEN & Process composition\\
+IF,ELSE,ENDIF & Classical feed-forward & Token=0|1 & Process composition\\
 RETURNVALS & Process composition & ACCEPTVALS & Process composition\\
 COMPILEPROCESS & Compatibility & MASTERVAL & Compatibility\\
 \code{SAVE_STATE} & Compatibility & \code{LOAD_STATE} & Compatibility\\

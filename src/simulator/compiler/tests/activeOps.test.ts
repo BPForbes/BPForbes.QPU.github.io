@@ -127,6 +127,48 @@ SET Q 0p
 BX -I Q -O Q
 RETURNVALS Q`)).toThrow(/Unknown command: BX/);
   });
+
+  it('accepts dg and inv on reversible derived Boolean gates', () => {
+    const markers = ['ANDdg', 'ANDinv', 'ORdg', 'ORinv', 'XORdg', 'XORinv', 'NOTdg', 'NOTinv', 'NANDdg'];
+    for (const marker of markers) {
+      const isNot = marker.startsWith('NOT');
+      const compiled = compileQpuProtocol(isNot
+        ? `MAIN-PROCESS DerivedInverse
+SET T 0p
+${marker} -I T -O T
+RETURNVALS T`
+        : `MAIN-PROCESS DerivedInverse
+SET A 1p
+SET B 1p
+SET T 0p
+${marker} -I A B -O T
+RETURNVALS T`);
+      expect(compiled.gates.some((gate) => gate.inverse)).toBe(true);
+      expect(compiled.warnings).toEqual([]);
+    }
+  });
+
+  it('round-trips derived inverse gates through serialize and compile', () => {
+    const source = serializeCircuitToQpuProtocol([
+      { id: 'and', type: 'AND', step: 0, targets: [2], controls: [0, 1], inverse: true },
+    ], 3);
+    expect(source).toContain('ANDdg');
+    const compiled = compileQpuProtocol(source);
+    expect(compiled.gates.some((gate) => gate.type === 'AND' && gate.inverse)).toBe(true);
+  });
+
+  it('applies derived gate then dagger back to the initial state', () => {
+    const compiled = compileQpuProtocol(`MAIN-PROCESS UndoAnd
+SET A 1p
+SET B 1p
+SET T 0p
+AND -I A B -O T
+ANDdg -I A B -O T
+RETURNVALS T`);
+    const executed = runCircuit(compiled.qubitCount, compiled.gates);
+    const measured = measureAll(executed.state, compiled.qubitCount, executed.measurements);
+    expect(measured.measurements[tokenQubit(compiled.tokenMap, 'T')]).toBe(0);
+  });
 });
 
 describe('lifetimes and registers', () => {
@@ -348,7 +390,7 @@ RETURNVALS Q`);
 });
 
 describe('canvas serialization', () => {
-  it('numbers wire suffixes from the cycle and skips dg on derived NOT', () => {
+  it('numbers wire suffixes from the cycle and emits dg on reversible derived NOT', () => {
     const source = serializeCircuitToQpuProtocol([
       { id: 'h', type: 'H', step: 0, targets: [0], controls: [], source: 'H', inverse: true },
       { id: 'cycle', type: 'CYCLE', step: 1, targets: [], controls: [], source: 'INCREASECYCLE' },
@@ -357,8 +399,7 @@ describe('canvas serialization', () => {
     ], 1);
     expect(source).toContain('Hdg -I $Q0:0 -O $Q0:0');
     expect(source).toContain('X -I $Q0:1 -O $Q0:1');
-    expect(source).toContain('NOT -I $Q0:1 -O $Q0:1');
-    expect(source).not.toContain('NOTdg');
+    expect(source).toContain('NOTdg -I $Q0:1 -O $Q0:1');
     expect(analyzeQpuProtocol(source).diagnostics.map((diagnostic) => diagnostic.code)).not.toContain('CYCLE_SUFFIX_MISMATCH');
   });
 });

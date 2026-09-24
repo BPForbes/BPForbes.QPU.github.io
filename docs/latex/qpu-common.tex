@@ -65,9 +65,9 @@
 \lstdefinelanguage{QPU}{
   morekeywords={
     PARAMS,MAIN-PROCESS,INCREASECYCLE,COMPILEPROCESS,FREE,SET,JOIN,SPLIT,
-    CALL,DECLARECHILD,RUNCHILD,RETURNVALS,ACCEPTVALS,MASTERVAL,SAVE_STATE,
+    CALL,DECLARECHILD,RUNCHILD,REC,TREC,RECUR,EXIT,IF,ELSE,ENDIF,RETURNVALS,ACCEPTVALS,MASTERVAL,SAVE_STATE,
     LOAD_STATE,CREATETOKEN,DELETETOKEN,X,Y,Z,H,S,T,CNOT,CCNOT,CZ,CY,
-    SWAP,PHASE,MEASURE,NOT,AND,NAND,OR,XOR
+    SWAP,PHASE,RX,RY,RZ,CPHASE,MEASURE,NOT,AND,NAND,OR,XOR
   },
   sensitive=false,
   morecomment=[l]{\#},
@@ -248,6 +248,12 @@
 \end{titlepage}
 \nopagecolor
 }
+
+% Widen the TOC number column so two-digit subsections (13.10) keep a gap before the title.
+\makeatletter
+\renewcommand*\l@subsection{\@dottedtocline{2}{1.5em}{2.8em}}
+\renewcommand*\l@subsubsection{\@dottedtocline{3}{4.3em}{3.6em}}
+\makeatother
 
 \newcommand{\QpuContents}{%
 \pagenumbering{roman}

@@ -4,11 +4,15 @@ import { zGate } from './z';
 import { hGate } from './h';
 import { sGate } from './s';
 import { tGate } from './t';
+import { rxGate } from './rx';
+import { ryGate } from './ry';
+import { rzGate } from './rz';
 import { phaseGate } from './phase';
 import { cnotGate } from './cnot';
 import { ccnotGate } from './ccnot';
 import { czGate } from './cz';
 import { cyGate } from './cy';
+import { cphaseGate } from './cphase';
 import { swapGate } from './swap';
 import { measureGate } from './measure';
 import { resetGate } from './reset';
@@ -26,11 +30,15 @@ export const preconfiguredGates: GateDefinition[] = [
   hGate,
   sGate,
   tGate,
+  rxGate,
+  ryGate,
+  rzGate,
   phaseGate,
   cnotGate,
   ccnotGate,
   czGate,
   cyGate,
+  cphaseGate,
   swapGate,
   measureGate,
   resetGate,

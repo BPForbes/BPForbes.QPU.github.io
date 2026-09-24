@@ -25,12 +25,13 @@ export type PsiKet = {
   formatted: string;
 };
 
-// Mixed-state metrics summarize Bloch length, Tr(ρ²), unit-ball density expectation, and depolarizing spread.
+// Mixed-state metrics from the Bloch radius: purity = Tr(ρ²), mixedness = normalized linear entropy.
+// Local mixedness can come from entanglement with the rest of the register, not physical noise.
 export type MixedStateMetrics = {
+  blochRadius: number;
   purity: number;
-  traceRhoSquared: number;
+  mixedness: number;
   rhoExpectation: number;
-  noise: number;
   isPure: boolean;
 };
 
@@ -40,6 +41,8 @@ export type ParticleSnapshot = {
   spherical: SphericalCoordinates;
   ket: PsiKet;
   mixed: MixedStateMetrics;
+  /** True when this reduced qubit is mixed while the global state-vector remains pure. */
+  entangledWithRegister?: boolean;
   probOne: number;
   measured?: 0 | 1;
 };
@@ -131,14 +134,15 @@ export const formatPsiKet = (alpha: Complex, beta: Complex): string => {
 export const blochBallRhoExpectation = blochBallRhoExpectationFast;
 
 export const mixedStateMetrics = (spherical: SphericalCoordinates): MixedStateMetrics => {
-  const purity = spherical.r;
-  const noise = 1 - purity;
-  const traceRhoSquared = (1 + purity * purity) / 2;
+  const blochRadius = spherical.r;
+  const purity = (1 + blochRadius * blochRadius) / 2;
+  // Normalized linear entropy: 0 = pure, 1 = maximally mixed one-qubit state.
+  const mixedness = 2 * (1 - purity);
   return {
+    blochRadius,
     purity,
-    traceRhoSquared,
-    rhoExpectation: blochBallRhoExpectation(spherical.r, spherical.theta, spherical.phi, noise),
-    noise,
+    mixedness,
+    rhoExpectation: blochBallRhoExpectation(spherical.r, spherical.theta, spherical.phi, mixedness),
     isPure: purity >= 1 - PURE_TOLERANCE,
   };
 };
@@ -177,12 +181,15 @@ export const snapshotParticle = (
   const ket = ketFromSpherical(spherical.theta, spherical.phi);
   const mixed = mixedStateMetrics(spherical);
   const measured = measurements[qubit];
+  const entangledWithRegister =
+    measured === undefined && qubitCount > 1 && mixed.purity < 1 - PURE_TOLERANCE;
   return {
     qubit,
     bloch,
     spherical,
     ket,
     mixed,
+    entangledWithRegister,
     probOne: (1 - bloch.z) / 2,
     measured,
   };

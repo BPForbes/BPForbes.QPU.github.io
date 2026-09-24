@@ -1,9 +1,9 @@
 \section{Single-qubit primitive gates}
 
 \begin{beginnerbox}[Placing a single-qubit gate]
-X, Y, Z, H, S, T, and PHASE act on one wire, so the workbench uses only
+X, Y, Z, H, S, T, RX, RY, RZ, and PHASE act on one wire, so the workbench uses only
 \textbf{Target particle}; \textbf{Control A} and \textbf{Control B} are
-ignored. PHASE also shows a \textbf{Phase angle} slider. On the canvas, drop
+ignored. PHASE, RX, RY, RZ, and CPHASE also show a \textbf{Phase angle} slider. On the canvas, drop
 the block on the wire you want to change.
 \end{beginnerbox}
 
@@ -164,14 +164,59 @@ denominator. A zero denominator and malformed angle raise an error.
 1 & 1 & $e^{i\theta}\ket1$\\\bottomrule\end{tabular}
 \end{center}
 
+\GateHeading{X rotation}{RX}{\GateSegment{$R_x(\theta)$}}
+
+\[
+R_x(\theta)=\begin{bmatrix}
+\cos(\theta/2)&-i\sin(\theta/2)\\
+-i\sin(\theta/2)&\cos(\theta/2)
+\end{bmatrix}.
+\]
+RX rotates about the Bloch $x$-axis. \code{RX=pi} is X up to global phase.
+\begin{lstlisting}
+RX=pi/2 -I Q -O Q
+RX=90d -I Q -O Q
+RXdg=pi/4 -I Q -O Q
+\end{lstlisting}
+
+\GateHeading{Y rotation}{RY}{\GateSegment{$R_y(\theta)$}}
+
+\[
+R_y(\theta)=\begin{bmatrix}
+\cos(\theta/2)&-\sin(\theta/2)\\
+\sin(\theta/2)&\cos(\theta/2)
+\end{bmatrix}.
+\]
+RY rotates about $y$ and is useful for preparing real superpositions from $\ket0$.
+\begin{lstlisting}
+RY=pi/2 -I Q -O Q
+\end{lstlisting}
+
+\GateHeading{Z rotation}{RZ}{\GateSegment{$R_z(\theta)$}}
+
+\[
+R_z(\theta)=\begin{bmatrix}
+e^{-i\theta/2}&0\\
+0&e^{i\theta/2}
+\end{bmatrix}.
+\]
+RZ rotates about $z$. It differs from PHASE by a global phase that does not
+affect single-qubit measurement probabilities.
+\begin{lstlisting}
+RZ=pi/4 -I Q -O Q
+\end{lstlisting}
+
 \subsection{Dagger and inverse syntax}
 
-A primitive gate accepts \code{dg} (dagger) or \code{inv} (inverse), written
+A reversible gate accepts \code{dg} (dagger) or \code{inv} (inverse), written
 after the opcode or before it. Both spellings set \code{reverse=true}.
+Self-inverse gates such as X, CNOT, AND, and OR still accept the marker so
+intent is visible, even though the matrix is unchanged.
 \begin{lstlisting}
 Xdg -I Q -O Q
 invH -I Q -O Q
 CNOTdg -I A -O T
+ANDdg -I A B -O T
 dgSWAP -I A B -O A B
 Sdg -I Q -O Q              # P(-pi/2)
 Tinv -I Q -O Q             # P(-pi/4)
@@ -191,7 +236,8 @@ step is active the outline is purple. A forward gate uses a red outline only
 while its step is active. The palette \textbf{Inverse} toggle drops the dagger
 instead of the forward gate.
 
-A \code{dg} or \code{inv} marker on a derived gate such as \code{ANDdg} is an
-unknown opcode. \code{MEASUREdg} parses and warns, because measurement has no
-inverse. Compiler-internal \code{RESET} remains unavailable in source.
+A \code{dg} or \code{inv} marker on a reversible derived gate such as
+\code{ANDdg} is accepted and is self-inverse. \code{MEASUREdg} parses and warns,
+because measurement has no inverse. Compiler-internal \code{RESET} remains
+unavailable in source.
 
