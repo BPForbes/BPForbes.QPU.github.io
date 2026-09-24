@@ -223,7 +223,7 @@ export function CircuitCanvas({
         </div>
       </div>
       <p className="canvas-tip">
-        Qubit wires stay single. The meter stays on the measured qubit. An arrow marks the bit where that result lands on the classical bus c. That bus cannot take a gate.
+        Qubit wires stay single, and a measured qubit can still take later gates. The double stroke down to c marks the time of that measurement and the bit where the result lands. Inverse gates wear a dagger: blue in general, purple on the active step.
         Active steps use a red outline; measured particles turn red on their wire.
       </p>
     </section>

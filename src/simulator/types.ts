@@ -113,6 +113,8 @@ export type CircuitGate = {
   targets: number[];
   controls: number[];
   phase?: number;
+  /** Dagger of the forward gate. Self-inverse gates keep the same matrix. */
+  inverse?: boolean;
   source?: string;
   customGateId?: string;
   /** Timeline cycle that produced this gate. INCREASECYCLE advances it. */

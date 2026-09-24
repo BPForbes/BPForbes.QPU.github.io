@@ -401,6 +401,7 @@ const emitGate = (
   source: string,
   phase?: number,
   checkpoint?: string,
+  inverse?: boolean,
 ) => {
   state.gates.push({
     id: `${type}-${state.gates.length}-${targets.join('-')}`,
@@ -412,6 +413,7 @@ const emitGate = (
     source,
     cycle: state.timelineCycle,
     checkpoint,
+    inverse: inverse || undefined,
   });
   if (type === 'RESET') {
     targets.forEach((qubit) => state.knownZero.add(qubit));
@@ -871,7 +873,7 @@ const executeProcess = (
             }
           });
         }
-        emitGate(state, 'SWAP', swapQubits, [], line);
+        emitGate(state, 'SWAP', swapQubits, [], line, undefined, undefined, command.reverse);
         continue;
       }
       // For primitive and derived AST gates, -O names the mutated target and -I names controls/inputs.
@@ -881,7 +883,7 @@ const executeProcess = (
         .map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams))
         // When -O names the mutated wire, drop it from the control list so self-controlled ops do not deadlock.
         .filter((qubit) => qubit !== target);
-      emitGate(state, loweredType, [target], controls, line, loweredPhase);
+      emitGate(state, loweredType, [target], controls, line, loweredPhase, undefined, command.reverse);
       continue;
     }
 

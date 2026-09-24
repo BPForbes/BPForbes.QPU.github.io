@@ -302,7 +302,9 @@ export const serializeCircuitToQpuProtocol = (
         || gate.type === 'PHASE'
         || gate.type === 'NOT'
       ) {
-        const op = gate.type === 'PHASE' ? `PHASE=${gate.phase ?? 0}` : gate.type;
+        const op = gate.type === 'PHASE'
+          ? `${gate.inverse ? 'PHASEdg' : 'PHASE'}=${gate.inverse ? -(gate.phase ?? 0) : gate.phase ?? 0}`
+          : `${gate.type}${gate.inverse ? 'dg' : ''}`;
         lines.push(`${op} -I ${target} -O ${target}`);
         return;
       }

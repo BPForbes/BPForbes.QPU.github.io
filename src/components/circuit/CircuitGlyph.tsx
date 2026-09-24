@@ -41,9 +41,10 @@ const glyphContent = (kind: CircuitGlyphKind, label: string) => {
 export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitGlyphProps) {
   const kind = glyphKindFor(gate, qubit);
   const definition = getGateDefinition(String(gate.type));
-  const label = glyphLabelFor(gate, qubit, definition?.label ?? String(gate.type));
-  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${active ? ' active' : ''}`;
-  const title = `${gate.type}${kind === 'control' ? ' control' : ''}`;
+  const forwardLabel = glyphLabelFor(gate, qubit, definition?.label ?? String(gate.type));
+  const label = gate.inverse && kind === 'box' ? `${forwardLabel}†` : forwardLabel;
+  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${gate.inverse ? ' inverse' : ''}${active ? ' active' : ''}`;
+  const title = `${gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}`;
 
   if (onRemove) {
     return (
@@ -58,6 +59,7 @@ export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitG
         type="button"
       >
         {glyphContent(kind, label)}
+        {gate.inverse && kind !== 'box' ? <span className="glyph-dagger">†</span> : null}
       </button>
     );
   }
@@ -65,6 +67,7 @@ export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitG
   return (
     <span className={className} title={title}>
       {glyphContent(kind, label)}
+      {gate.inverse && kind !== 'box' ? <span className="glyph-dagger">†</span> : null}
     </span>
   );
 }

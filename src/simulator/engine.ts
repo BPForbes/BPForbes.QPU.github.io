@@ -1,7 +1,8 @@
 // Circuit execution orchestration: initial state, per-gate application via the gate registry, and full runs.
 import { Complex, magnitudeSquared, ONE, ZERO } from './complex';
 import { applyGate as applyRegisteredGate } from './gates/registry';
-import { applyStartState, hasBit, measureQubit, padStateVector } from './gates/operations';
+import { applySingleQubitGate, applyStartState, hasBit, measureQubit, padStateVector } from './gates/operations';
+import { phaseMatrix } from './gates/matrices';
 import { buildOperationTransition, snapshotAllParticles } from './physics/particleTracking';
 import { CircuitGate, ExecutionResult, MeasurementMap, OperationTransition, ParticleStartState, StateCheckpoint } from './types';
 
@@ -158,6 +159,25 @@ const applyMarkerGate = (
   };
 };
 
+const applyInverseOrRegistered = (
+  state: Complex[],
+  qubitCount: number,
+  gate: CircuitGate,
+  measurements: MeasurementMap,
+  librarySources: Record<string, string>,
+): ExecutionResult => {
+  if (gate.inverse && (gate.type === 'S' || gate.type === 'T')) {
+    const angle = gate.type === 'S' ? -Math.PI / 2 : -Math.PI / 4;
+    const target = gate.targets[0];
+    return {
+      state: applySingleQubitGate(state, qubitCount, target, phaseMatrix(angle)),
+      measurements,
+      log: [`${gate.type}† applied phase ${angle.toFixed(3)} on q${target}.`],
+    };
+  }
+  return applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
+};
+
 // Gate application pads the state vector on demand because compiled child processes may introduce workspace qubits.
 export const applyGate = (
   state: Complex[],
@@ -173,7 +193,7 @@ export const applyGate = (
 
   const beforeState = state;
   const beforeMeasurements = measurements;
-  const result = marker ?? applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
+  const result = marker ?? applyInverseOrRegistered(state, qubitCount, gate, measurements, librarySources);
 
   if (!options.trackParticles) return result;
 

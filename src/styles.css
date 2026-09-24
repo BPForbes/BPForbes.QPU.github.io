@@ -208,16 +208,6 @@ button { font: inherit; }
   pointer-events: none;
   z-index: 1;
 }
-.circuit-measure-drop::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: -1px;
-  transform: translateX(-50%);
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 7px solid #111;
-}
 .circuit-measure-bit {
   position: absolute;
   right: -.15rem;
@@ -285,6 +275,7 @@ button { font: inherit; }
   padding: .08rem;
 }
 .glyph-meter { width: 1.15rem; height: 1.15rem; }
+.glyph-dagger { font-size: .62rem; font-weight: 800; line-height: 1; }
 .circuit-glyph.glyph-wide { min-width: 2rem; font-size: .58rem; }
 .circuit-glyph.active {
   outline: 2px solid #dc2626;
@@ -292,10 +283,43 @@ button { font: inherit; }
   border-color: #dc2626;
   color: #dc2626;
 }
+.circuit-glyph.inverse {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-color: #2563eb;
+  color: #2563eb;
+}
+.circuit-glyph.inverse.active {
+  outline-color: #7c3aed;
+  border-color: #7c3aed;
+  color: #7c3aed;
+}
 .circuit-glyph.glyph-control.active { outline: none; }
 .circuit-glyph.glyph-control.active .glyph-control-dot {
   background: #dc2626;
   box-shadow: 0 0 0 2px #dc2626;
+}
+.circuit-glyph.glyph-control.inverse .glyph-control-dot {
+  background: #2563eb;
+  box-shadow: 0 0 0 2px #2563eb;
+}
+.circuit-glyph.glyph-control.inverse.active .glyph-control-dot {
+  background: #7c3aed;
+  box-shadow: 0 0 0 2px #7c3aed;
+}
+.inverse-toggle {
+  margin: 0 0 .75rem;
+  border: 1px solid rgba(37, 99, 235, .45);
+  background: rgba(37, 99, 235, .12);
+  color: #dbeafe;
+  border-radius: .8rem;
+  padding: .55rem .8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.inverse-toggle.on {
+  background: #2563eb;
+  color: #fff;
 }
 .canvas-tip { color: #a7b4cc; margin: .75rem 0 0; font-size: .9rem; }
 

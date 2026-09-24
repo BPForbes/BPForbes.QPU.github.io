@@ -121,6 +121,7 @@ const newGate = (
   overrideControls?: number[],
   swapPartner?: number,
   phase = Math.PI / 2,
+  inverse = false,
 ): CircuitGate | null => {
   const placement = controlsForGateType(type, target, qubitCount, swapPartner);
   if (!placement) return null;
@@ -135,7 +136,8 @@ const newGate = (
     step,
     targets,
     controls,
-    phase: definition?.supportsPhase ? phase : undefined,
+    phase: definition?.supportsPhase ? (inverse ? -phase : phase) : undefined,
+    inverse: inverse && definition?.supportsReverse ? true : undefined,
     customGateId: definition?.category === 'custom' ? type : undefined,
   };
 };
@@ -179,6 +181,7 @@ function App() {
   const [playing, setPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
   const [selectedGate, setSelectedGate] = useState<GateType | null>('H');
+  const [inverseMode, setInverseMode] = useState(false);
   const [targetQubit, setTargetQubit] = useState(0);
   const [controlQubit, setControlQubit] = useState(1);
   const [secondControlQubit, setSecondControlQubit] = useState(2);
@@ -387,7 +390,7 @@ function App() {
     const swapPartner = getGateDefinition(type)?.controlKind === 'swap'
       ? (secondControlQubit === target ? chooseDistinctQubit([target]) : secondControlQubit)
       : undefined;
-    const gate = newGate(type, step, target, simulationQubitCount, controls, swapPartner, phaseRadians);
+    const gate = newGate(type, step, target, simulationQubitCount, controls, swapPartner, phaseRadians, inverseMode);
     if (!gate) {
       setLog((current) => [...current, `${type} requires more qubits than are available in this circuit.`]);
       return;
@@ -1034,7 +1037,7 @@ function App() {
               <p className="eyebrow">Gate palette</p>
               <h2 id="palette-title">Pick up a block</h2>
             </div>
-            <GatePalette onSelectGate={selectGate} selectedGate={selectedGate} />
+            <GatePalette inverse={inverseMode} onSelectGate={selectGate} onToggleInverse={() => setInverseMode((on) => !on)} selectedGate={selectedGate} />
           </section>
 
           <CustomGatePanel

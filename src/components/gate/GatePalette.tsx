@@ -3,16 +3,21 @@ import { GateType } from '../../simulator/types';
 import { GateBlock } from './GateBlock';
 type GatePaletteProps = {
   selectedGate: GateType | null;
+  inverse: boolean;
+  onToggleInverse: () => void;
   onSelectGate: (gate: GateType) => void;
 };
 
-export function GatePalette({ selectedGate, onSelectGate }: GatePaletteProps) {
+export function GatePalette({ selectedGate, inverse, onToggleInverse, onSelectGate }: GatePaletteProps) {
   const preconfigured = preconfiguredPaletteGates();
   const custom = customPaletteGates();
 
   return (
     <div className="palette-sections">
       <div className="palette-section">
+        <button className={`inverse-toggle${inverse ? ' on' : ''}`} onClick={onToggleInverse} type="button">
+          {inverse ? 'Inverse on · drop dagger' : 'Inverse off · drop forward gate'}
+        </button>
         <h3 className="palette-section-title">Preconfigured</h3>
         <div className="palette">
           {preconfigured.map((gate) => (
