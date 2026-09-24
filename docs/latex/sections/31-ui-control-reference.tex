@@ -121,17 +121,20 @@ outputs map onto wires.
 \subsection{Circuit canvas: ``Standard circuit diagram''}
 \hypertarget{ui-canvas}{}
 
-Each row is one wire, labelled \textbf{q0}, \textbf{q1}, \ldots{} with its
-start state. Time runs left to right: every gate occupies its own column.
+Each qubit row is one wire, labelled \textbf{q0}, \textbf{q1}, \ldots{} with
+its start state. Measured qubits add classical rows \textbf{c0}, \textbf{c1},
+\ldots{} underneath, one per measured qubit. A circuit with no measurement
+has none. Time runs left to right: every gate occupies its own column.
 \begin{itemize}
-  \item \textbf{Placing a gate:} drop a block on a row, or select a block and
-  click the row. The row you drop on becomes the \emph{target}. Controls are
-  chosen automatically from the lowest other rows; use the workbench to choose
-  them yourself.
-  \item \textbf{Removing a gate:} click the gate symbol on its target wire.
-  \item \textbf{Line styles:} a double line is a classical bit (a
-  \code{0p}/\code{1p} start or a measured wire); a single line may hold a
-  superposition. A red outline marks the step that just ran.
+  \item \textbf{Placing a gate:} drop a block on a qubit row, or select a
+  block and click the row. The row you drop on becomes the \emph{target}.
+  Controls are chosen automatically from the lowest other qubit rows; use the
+  workbench to choose them yourself. Classical rows cannot be targeted.
+  \item \textbf{Removing a gate:} click the gate symbol. A measurement sits on
+  the classical row for that qubit.
+  \item \textbf{Line styles:} every qubit wire is a single line. Classical
+  rows are the only double lines. Each measurement drops from its qubit onto
+  its own classical row. A red outline marks the step that just ran.
 \end{itemize}
 
 \subsection{Interactive workbench: ``Add particles, gates, and measurements''}

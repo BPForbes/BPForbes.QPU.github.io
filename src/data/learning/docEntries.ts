@@ -94,7 +94,7 @@ export const gateDocs: Record<string, GateDoc> = {
   },
   H: {
     how: 'H turns a definite 0 or 1 into an even mix. Measuring |+⟩ gives 0 or 1 with 50% each. H undoes itself: H followed by H returns the starting state.',
-    target: `${singleWireTarget} On the canvas the wire turns from a double line (classical) to a single line (superposition).`,
+    target: `${singleWireTarget} On the canvas every qubit wire stays a single line.`,
     syntax: ['H -I Q -O Q'],
     table: ketTable(
       ['t', "t'"],
@@ -122,7 +122,7 @@ export const gateDocs: Record<string, GateDoc> = {
   },
   MEASURE: {
     how: 'M reads the wire. A definite 0 or 1 is read as itself; a superposition is read as 0 or 1 at random, weighted by its amplitudes, and becomes that bit.',
-    target: 'The measured wire is the target. Afterwards it is a classical bit (double line on the canvas) and the superposition is gone for good. Measuring one half of an entangled pair also fixes the other half.',
+    target: 'The measured wire is the target. The meter drops onto that qubit’s classical line (c0, c1, …) at the bottom of the canvas. Those lines are the only double lines, and they cannot take a gate. A circuit measures as many of them as it has measured qubits. Measuring one half of an entangled pair also fixes the other half.',
     syntax: ['MEASURE -I Q'],
     table: ketTable(['t before', 'reading'], [['|0⟩', '0 always'], ['|1⟩', '1 always'], ['|+⟩', '0 or 1 (50% each)']], undefined, ['t', 't']),
   },

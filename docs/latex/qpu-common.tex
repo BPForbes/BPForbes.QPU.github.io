@@ -151,11 +151,12 @@
   \end{scope}}
 \newcommand{\MeasureSegment}{%
 \begin{tikzpicture}[baseline=-0.55ex,scale=.78]
-  \draw[thick] (0,0)--(1.45,0);
+  \draw[thick] (0,0)--(3.6,0);
   \node[left] at (0,0) {$\ket{q}$};
-  \QpuMeter{1.8}{0}
-  \draw[thick] (2.15,0.045)--(3.6,0.045);
-  \draw[thick] (2.15,-0.045)--(3.6,-0.045);
+  \draw[double distance=1.4pt,thick] (0,-.75)--(3.6,-.75);
+  \node[left] at (0,-.75) {c};
+  \draw[double distance=1.4pt,thick] (1.8,0)--(1.8,-.75);
+  \QpuMeter{1.8}{-.75}
 \end{tikzpicture}}
 
 % The hypertarget gives each gate a stable PDF named destination (gate-CNOT,
@@ -223,15 +224,15 @@
 \vspace{0.55in}
 \begin{tikzpicture}
   \draw[very thick,QpuNavy] (0,1)--(8,1);
-  \draw[very thick,QpuNavy] (0,0)--(6.4,0);
+  \draw[very thick,QpuNavy] (0,0)--(8,0);
+  \draw[double distance=1.6pt,very thick,QpuNavy] (0,-.9)--(8,-.9);
   \node[draw=QpuBlue,fill=QpuBlue!10,minimum width=.7cm,minimum height=.6cm,font=\bfseries] at (1.25,1) {H};
   \fill[QpuNavy] (3,1) circle (.1);
   \draw[very thick] (3,1)--(3,0);
   \node[draw=QpuBlue,fill=QpuBlue!10,circle,inner sep=2pt] at (3,0) {$\oplus$};
   \node[draw=QpuBlue,fill=QpuBlue!10,minimum width=.8cm,minimum height=.6cm,font=\bfseries] at (5,1) {$P(\theta)$};
-  \QpuMeter{6.8}{0}
-  \draw[very thick,QpuNavy] (7.15,0.05)--(8,0.05);
-  \draw[very thick,QpuNavy] (7.15,-0.05)--(8,-0.05);
+  \draw[double distance=1.6pt,very thick,QpuNavy] (6.8,0)--(6.8,-.9);
+  \QpuMeter{6.8}{-.9}
 \end{tikzpicture}
 \vfill
 {\large Bailey Forbes\par}

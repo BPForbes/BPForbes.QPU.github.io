@@ -27,14 +27,15 @@ RETURNVALS Q
 
 \begin{center}
 \begin{tikzpicture}[scale=.95]
-  \draw[thick] (0,0)--(4.85,0);
+  \draw[thick] (0,0)--(7.7,0);
+  \draw[double distance=1.4pt,thick] (0,-.85)--(7.7,-.85);
   \node[left] at (0,0) {$\ket0$ Q};
+  \node[left] at (0,-.85) {c};
   \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.7cm,minimum height=.6cm,font=\bfseries] at (2,0) {H};
   \node[above] at (3.6,0) {$\ket+$};
-  \QpuMeter{5.2}{0}
-  \draw[thick] (5.55,0.045)--(7.7,0.045);
-  \draw[thick] (5.55,-0.045)--(7.7,-0.045);
-  \node[above] at (7,0) {0 or 1};
+  \draw[double distance=1.4pt,thick] (5.2,0)--(5.2,-.85);
+  \QpuMeter{5.2}{-.85}
+  \node[above] at (6.5,-.85) {0 or 1};
 \end{tikzpicture}
 \end{center}
 

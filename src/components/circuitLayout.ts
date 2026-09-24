@@ -21,6 +21,26 @@ export const startStateKet = (state?: ParticleStartState) => {
   return '|0⟩';
 };
 
+/** One classical wire per measured qubit, in qubit order. Unmeasured circuits have none. */
+export const classicalWireQubits = (
+  qubitCount: number,
+  gates: CircuitGate[],
+  measurements: MeasurementMap = {},
+): number[] => {
+  const measured = new Set<number>();
+  gates.forEach((gate) => {
+    if (gate.type !== 'MEASURE') return;
+    gate.targets.forEach((qubit) => {
+      if (qubit >= 0 && qubit < qubitCount) measured.add(qubit);
+    });
+  });
+  Object.keys(measurements).forEach((key) => {
+    const qubit = Number(key);
+    if (Number.isInteger(qubit) && qubit >= 0 && qubit < qubitCount) measured.add(qubit);
+  });
+  return [...measured].sort((left, right) => left - right);
+};
+
 export const gateTouchedQubits = (gate: CircuitGate) => [...gate.controls, ...gate.targets];
 
 export const gateSpanQubits = (gate: CircuitGate) => {
