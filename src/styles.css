@@ -151,26 +151,6 @@ button { font: inherit; }
   z-index: 1;
 }
 .circuit-connector.active { background: #dc2626; }
-.circuit-cycle-slice {
-  justify-self: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: .05rem;
-  border-left: 2px dashed #64748b;
-  pointer-events: none;
-  z-index: 1;
-  color: #64748b;
-  font-size: .62rem;
-  font-weight: 800;
-  padding-top: .1rem;
-  text-align: center;
-  line-height: 1.1;
-}
-.circuit-cycle-slice.active {
-  color: #f87171;
-  border-left-color: #f87171;
-}
 .circuit-gate-stack {
   position: relative;
   display: grid;
@@ -190,15 +170,30 @@ button { font: inherit; }
   pointer-events: none;
   white-space: nowrap;
 }
-.circuit-checkpoint {
+.circuit-marker {
+  /* Dashed whole-register line: from just under its tag to just past the last wire. */
+  position: relative;
   justify-self: center;
   width: 0;
-  border-left: 2px dotted #94a3b8;
-  /* Stop just past the first and last wires instead of running to the cell edges. */
-  margin-block: .35rem calc(var(--row-h) / 2 - .5rem);
+  margin-block: 1rem calc(var(--row-h) / 2 - .5rem);
+  border-left: 2px dashed #64748b;
+  pointer-events: none;
   z-index: 1;
 }
-.circuit-checkpoint.active { border-left-color: #f87171; }
+.circuit-marker-label {
+  position: absolute;
+  bottom: calc(100% + .12rem);
+  left: -1px;
+  transform: translateX(-50%);
+  color: #475569;
+  font-size: .64rem;
+  font-weight: 800;
+  letter-spacing: .03em;
+  line-height: 1;
+  white-space: nowrap;
+}
+.circuit-marker.active { border-left-color: #dc2626; }
+.circuit-marker.active .circuit-marker-label { color: #dc2626; }
 .circuit-label-cell {
   position: relative;
   display: grid;

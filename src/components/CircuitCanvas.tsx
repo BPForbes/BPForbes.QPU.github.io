@@ -10,6 +10,7 @@ import {
   conditionFeedTest,
 } from './circuit/branchVisuals';
 import { CircuitGlyph } from './circuit/CircuitGlyph';
+import { CircuitMarker } from './circuit/CircuitMarker';
 import {
   buildVisualCircuitColumns,
   columnIsActive,
@@ -93,6 +94,8 @@ export function CircuitCanvas({
   const conditionedDisplayGates = visualColumns.flatMap((column) =>
     column.displayGates.filter((gate) => gate.condition && gate.targets.length > 0),
   );
+  /** Timeline markers (S / L / IC) run across the quantum wires and the c bus, not the label row. */
+  const markerEndRow = qubitCount + (showClassical ? 2 : 1);
   const snapshotByQubit = new Map(particleSnapshots.map((entry) => [entry.qubit, entry]));
   /** Multi-op recursive calls collapse to one REC box spanning every wire the body touches. */
   const isSpanningRec = (column: (typeof visualColumns)[number]) =>
@@ -217,30 +220,27 @@ export function CircuitCanvas({
             })}
 
           {visualColumns.filter((column) => column.cycleGate).map((column) => (
-            <span
-              className={`circuit-cycle-slice ${columnIsActive(column, activeStep) ? 'active' : ''}`}
+            <CircuitMarker
+              active={columnIsActive(column, activeStep)}
+              description={`INCREASECYCLE → logical cycle ${column.cycleGate!.cycle ?? ''} (advances the stage; it does not loop)`}
               key={column.cycleGate!.id}
-              style={{ gridColumn: column.column + 2, gridRow: `1 / ${rowCount + 1}` }}
-              title={`Logical cycle ${column.cycleGate!.cycle ?? ''} (INCREASECYCLE advances the stage; it does not loop)`}
-            >
-              {column.cycleGate!.cycle ?? ''}
-            </span>
+              label="IC"
+              style={{ gridColumn: column.column + 2, gridRow: `1 / ${markerEndRow}` }}
+            />
           ))}
 
           {visualColumns.flatMap((column) =>
             column.displayGates
               .filter((gate) => gate.type === 'SAVE_STATE' || gate.type === 'LOAD_STATE')
               .map((gate) => {
-                const label = `${gate.type === 'SAVE_STATE' ? 'SAVE_STATE' : 'LOAD_STATE'} ${gate.checkpoint ?? ''}`.trim();
-                // Whole-register checkpoint: a quiet dotted marker across every wire, not a gate box.
+                const save = gate.type === 'SAVE_STATE';
                 return (
-                  <span
-                    aria-label={label}
-                    className={`circuit-checkpoint ${columnIsActive(column, activeStep) ? 'active' : ''}`}
+                  <CircuitMarker
+                    active={columnIsActive(column, activeStep)}
+                    description={`${gate.type} ${gate.checkpoint ?? ''} — ${save ? 'snapshots' : 'restores'} the whole state here`}
                     key={gate.id}
-                    role="img"
-                    style={{ gridColumn: column.column + 2, gridRow: `1 / ${qubitCount + (showClassical ? 2 : 1)}` }}
-                    title={`${label} — checkpoint marker; ${gate.type === 'SAVE_STATE' ? 'snapshots' : 'restores'} the whole state here.`}
+                    label={save ? 'S' : 'L'}
+                    style={{ gridColumn: column.column + 2, gridRow: `1 / ${markerEndRow}` }}
                   />
                 );
               }),

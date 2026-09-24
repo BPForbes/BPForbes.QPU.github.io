@@ -1,5 +1,6 @@
 import { gateSpanQubits, MAX_SLOT_REM, MIN_SLOT_REM, needsConnector } from '../circuitLayout';
 import { CircuitGlyph } from './CircuitGlyph';
+import { CircuitMarker } from './CircuitMarker';
 import { recursionDepthLabel, sourceGateLabel, type RecursionFrame } from './recursionVisuals';
 
 type RecursionFrameViewProps = {
@@ -99,13 +100,12 @@ export function RecursionFrameView({ frame, activeStep, qubitNames = [] }: Recur
           )}
 
           {cycleColumn !== undefined && frame.cycleGate ? (
-            <span
-              className={`circuit-cycle-slice ${frame.cycleGate.step === activeStep ? 'active' : ''}`}
+            <CircuitMarker
+              active={frame.cycleGate.step === activeStep}
+              description={`INCREASECYCLE → logical cycle ${frame.cycleGate.cycle ?? ''} (advances the stage; it does not loop)`}
+              label="IC"
               style={{ gridColumn: cycleColumn + 2, gridRow: `1 / ${annotationRow}` }}
-              title="INCREASECYCLE advances the logical stage; it does not loop."
-            >
-              {frame.cycleGate.cycle ?? ''}
-            </span>
+            />
           ) : null}
 
           <span
