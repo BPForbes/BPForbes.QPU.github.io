@@ -153,3 +153,92 @@ $A$&$B$&$C_{\rm in}$&$C_{\rm out}$&Sum\\\midrule
 \end{tabular}
 \end{center}
 
+\subsection{Bounded child-process recursion (\implemented)}
+\hypertarget{bounded-child-recursion}{}
+
+The QPU protocol does not support runtime loops or recursive execution of the
+compilation root. A child marked \code{REC} may recursively expand itself during
+compilation only. The parent supplies a finite \code{-DEPTH}; each
+\code{RECUR} creates another compile-time frame with $\mathrm{DEPTH}-1$.
+\code{EXIT WHEN ...} is the compile-time base case. After expansion the
+simulator still receives a flat ordered gate list.
+
+\begin{lstlisting}
+# recursive-h.qpucir
+PARAMS: Q:state
+MAIN-PROCESS RecursiveH
+REC MAXDEPTH 16
+EXIT WHEN DEPTH == 0
+H -I Q -O Q
+INCREASECYCLE
+RECUR -I Q
+RETURNVALS Q
+\end{lstlisting}
+
+\begin{lstlisting}
+# parent
+PARAMS: Q:state
+MAIN-PROCESS Parent
+DECLARECHILD RecursiveH
+RUNCHILD RecursiveH -DEPTH 4 -I Q
+RETURNVALS Q
+\end{lstlisting}
+
+Compiler structure:
+
+\begin{center}
+\texttt{Parent}
+$\rightarrow$
+\texttt{RecursiveH} DEPTH 4
+$\rightarrow$
+DEPTH 3
+$\rightarrow$
+DEPTH 2
+$\rightarrow$
+DEPTH 1
+$\rightarrow$ stop
+\end{center}
+
+Emitted circuit (no recursion metadata remains):
+
+\begin{lstlisting}
+H
+INCREASECYCLE
+H
+INCREASECYCLE
+H
+INCREASECYCLE
+H
+INCREASECYCLE
+\end{lstlisting}
+
+Rules (summary):
+\begin{itemize}
+  \item Root $\rightarrow$ root is forbidden.
+  \item Child $\rightarrow$ same child is allowed when bounded.
+  \item Mutual recursion ($A\rightarrow B\rightarrow A$) is rejected.
+  \item \code{RECUR} requires \code{REC}; the initial \code{RUNCHILD} requires
+  \code{-DEPTH}.
+  \item \code{DEPTH}, \code{LEVEL}, and \code{ROOTDEPTH} are read-only.
+  \item Absolute compiler limit: 64; optional \code{REC MAXDEPTH $n$} is lower.
+  \item In-place \code{-I} (same wire returned) is not zero-prepared between
+  recursive frames.
+\end{itemize}
+
+Keep these concepts distinct:
+
+\begin{center}
+\begin{tabular}{ll}\toprule
+Construct & Meaning\\\midrule
+\code{RUNCHILD} & Compose another process\\
+\code{RECUR} & Expand this child again with DEPTH$-1$\\
+\code{INCREASECYCLE} & Next logical circuit stage (not a loop)\\
+\code{WHEN} & Compile-time condition on DEPTH/LEVEL/ROOTDEPTH\\
+\code{-IF} & Runtime classical feed-forward after MEASURE\\\bottomrule
+\end{tabular}
+\end{center}
+
+The existing bit adders remain the teaching example of explicit hierarchical
+composition. Recursion is a circuit-\emph{construction} abstraction for
+repeated stages; it never introduces a backward execution edge.
+

@@ -2,6 +2,16 @@
 import { assertGateArity } from '../gates/arity';
 import { astDerivedGateIds, astPrimitiveGateIds } from '../gates/metadata';
 import { CircuitGate, GateType, QpuOperation } from '../types';
+import {
+  evaluateWhenClause,
+  parseDepthFlag,
+  parseRecDeclaration,
+  parseWhenClause,
+  planRecursionExpansion,
+  processDeclaresRecursion,
+  processMaxDepth,
+  type ProcessExecutionContext,
+} from './recursion';
 
 export type ParsedCommand = {
   op: QpuOperation;
@@ -14,6 +24,8 @@ export type ParsedCommand = {
   noParameterSubstitution: boolean;
   /** Classical feed-forward: token name and required measurement value. */
   condition?: { token: string; equals: 0 | 1 };
+  /** Compile-time recursion budget from RUNCHILD -DEPTH N. */
+  depth?: number;
 };
 
 export type ProtocolProcess = {
@@ -69,6 +81,9 @@ export const supportedQpuOperations: QpuOperation[] = [
   'CALL',
   'DECLARECHILD',
   'RUNCHILD',
+  'REC',
+  'RECUR',
+  'EXIT',
   'AND',
   'NAND',
   'OR',
@@ -289,6 +304,7 @@ export const parseCommand = (line: string): ParsedCommand => {
   const inputs = splitFlagArgs(tokens, '-I');
   const outputs = splitFlagArgs(tokens, '-O');
   const condition = parseConditionFlag(tokens);
+  const depth = parseDepthFlag(tokens);
   const op = normalized as QpuOperation;
 
   if (!supportedQpuOperations.includes(op)) throw new Error(`Unknown command: ${normalized}`);
@@ -301,8 +317,28 @@ export const parseCommand = (line: string): ParsedCommand => {
   if (primitiveGates.has(op) || derivedGates.has(op)) {
     assertGateArity(op, inputs.length, outputs.length);
   }
+  if (op === 'RECUR' && !inputs.length) {
+    throw new Error('RECUR requires -I inputs');
+  }
+  if (op === 'EXIT') {
+    parseWhenClause(tokens.slice(1));
+  }
+  if (op === 'REC') {
+    parseRecDeclaration(tokens);
+  }
 
-  return { op, raw: line, inputs, outputs, args: tokens.slice(1), phase, reverse, noParameterSubstitution, condition };
+  return {
+    op,
+    raw: line,
+    inputs,
+    outputs,
+    args: tokens.slice(1),
+    phase,
+    reverse,
+    noParameterSubstitution,
+    condition,
+    depth,
+  };
 };
 
 export const parseProtocol = (source: string): ProtocolProcess => {
@@ -326,6 +362,9 @@ type Frame = {
   released: Set<string>;
   masterTokens: Array<{ name: string; line: string }>;
   returnBases: string[];
+  /** Set by REC — required before RECUR / self-RUNCHILD expansion. */
+  allowsRecursion: boolean;
+  maxDepth?: number;
 };
 
 type CompilerState = {
@@ -606,6 +645,7 @@ const executeProcess = (
   outputBindings: Map<string, string> = new Map(),
   callSite = '',
   skipCallParams = false,
+  context: ProcessExecutionContext = { rootProcess: process.name, callStack: [] },
 ): string[] => {
   const enclosingFrameCycle = state.frameCycle;
   const scope = `${process.name}#${state.processRuns}`;
@@ -632,14 +672,22 @@ const executeProcess = (
     released: new Set(),
     masterTokens: [],
     returnBases: [],
+    allowsRecursion: false,
   };
   outputBindings.forEach((parentToken, childRegister) => {
     frame.aliases.set(childRegister, parentToken);
   });
   process.params.forEach((param) => ensureQubit(state, params.get(param.name)!, false));
   let returns: string[] = [];
+  const frameContext: ProcessExecutionContext = {
+    ...context,
+    callStack: [...context.callStack, process.name],
+  };
 
-  state.log.push(`MAIN-PROCESS ${process.name} compiled in scope ${scope}.`);
+  const depthNote = frameContext.recursionDepth !== undefined
+    ? ` DEPTH=${frameContext.recursionDepth} LEVEL=${frameContext.level ?? 0}`
+    : '';
+  state.log.push(`MAIN-PROCESS ${process.name} compiled in scope ${scope}.${depthNote}`);
   state.frameCycle = 0;
 
   // Line dispatch is ordered: workspace/cycle ops run before gates so pending RESETs flush at INCREASECYCLE and primitives.
@@ -655,6 +703,32 @@ const executeProcess = (
       continue;
     }
 
+    if (command.op === 'REC') {
+      if (process.name === frameContext.rootProcess && !parentFrame) {
+        // REC may appear in a file that is sometimes a child; only reject RECUR at the root.
+        state.log.push(`REC noted on '${process.name}' (valid when this process is expanded as a child).`);
+      }
+      const meta = parseRecDeclaration(line.trim().split(/\s+/));
+      frame.allowsRecursion = true;
+      frame.maxDepth = meta.maxDepth;
+      state.log.push(
+        meta.maxDepth === undefined
+          ? `REC enables bounded self-recursion for '${process.name}'.`
+          : `REC MAXDEPTH ${meta.maxDepth} enables bounded self-recursion for '${process.name}'.`,
+      );
+      continue;
+    }
+
+    if (command.op === 'EXIT') {
+      const clause = parseWhenClause(command.args);
+      if (evaluateWhenClause(clause, frameContext)) {
+        state.log.push(`EXIT WHEN ${clause.left} ${clause.operator} ${clause.right} ended frame ${scope}.`);
+        break;
+      }
+      state.log.push(`EXIT WHEN ${clause.left} ${clause.operator} ${clause.right} was false; continuing.`);
+      continue;
+    }
+
     if (command.op === 'INCREASECYCLE') {
       flushCycleZeros(state, `INCREASECYCLE end of cycle ${state.frameCycle}`);
       state.frameCycle += 1;
@@ -667,6 +741,9 @@ const executeProcess = (
     if (command.op === 'SET') {
       const [target, value] = command.args;
       const targetBase = stripCycle(target);
+      if (['DEPTH', 'LEVEL', 'ROOTDEPTH'].includes(targetBase.toUpperCase())) {
+        throw new Error(`${targetBase} is read-only compile-time recursion metadata in '${line}'`);
+      }
       if (!value) throw new Error(`SET requires a value in '${line}'`);
       const prepared = preparedConstant(value);
       if (prepared && !isPowerOfTwoDimension(prepared.dimension)) {
@@ -742,28 +819,92 @@ const executeProcess = (
       continue;
     }
 
-    if (command.op === 'RUNCHILD' || command.op === 'CALL') {
-      const childName = command.args[0];
+    if (command.op === 'RUNCHILD' || command.op === 'CALL' || command.op === 'RECUR') {
+      const isRecur = command.op === 'RECUR';
+      const childName = isRecur ? process.name : command.args[0];
       if (!childName) throw new Error(`${command.op} requires a process name`);
-      const child = frame.declaredChildren.get(childName) ?? library.get(childName);
+      const child = isRecur
+        ? process
+        : frame.declaredChildren.get(childName) ?? library.get(childName);
       if (!child) throw new Error(`Unknown child process '${childName}'`);
+
+      const childIsRecursive = processDeclaresRecursion(child);
+      const childCap = processMaxDepth(child) ?? frame.maxDepth;
+      const plan = planRecursionExpansion({
+        childName,
+        currentProcessName: process.name,
+        context: frameContext,
+        requestedDepth: command.depth,
+        childIsRecursive: isRecur ? true : childIsRecursive,
+        childMaxDepth: childCap,
+        isExplicitRecur: isRecur,
+        frameAllowsRecursion: frame.allowsRecursion,
+      });
+
+      if (plan.kind === 'stop') {
+        state.log.push(plan.reason);
+        continue;
+      }
+
       const childReturnRegisters = returnRegistersForProcess(child);
       const childOutputBindings = new Map<string, string>();
       const preparedOutputQubits = new Set<number>();
-      // Child RETURNVALS bind directly onto parent outputs, with each output reset once before expansion.
+      const inputQubits = new Set(
+        command.inputs.map((input) => {
+          const parentToken = scopedName(state, frame, stripCycle(input), line, parentFrame, skipParams);
+          return ensureQubit(state, parentToken, false);
+        }),
+      );
+      // Child RETURNVALS bind onto parent outputs. Skip zero-prep when the output aliases an input (in-place).
       command.outputs.forEach((output, index) => {
         const childRegister = childReturnRegisters[index];
         if (!childRegister) return;
         const parentToken = scopedName(state, frame, stripCycle(output), line, parentFrame, skipParams);
-        const qubit = ensureQubit(state, parentToken);
-        if (!preparedOutputQubits.has(qubit)) {
+        const qubit = ensureQubit(state, parentToken, false);
+        if (!preparedOutputQubits.has(qubit) && !inputQubits.has(qubit)) {
           preparedOutputQubits.add(qubit);
           scheduleCycleZero(state, qubit);
         }
         childOutputBindings.set(childRegister, parentToken);
       });
-      flushCycleZeros(state, `prepare outputs before RUNCHILD ${childName} at cycle ${state.frameCycle}`);
-      const childReturns = executeProcess(child, state, library, command.inputs, frame, childOutputBindings, line, skipParams);
+      // RECUR / in-place RUNCHILD with only -I: map RETURNVALS onto the same PARAM wires.
+      if (command.outputs.length === 0 && (isRecur || childName === process.name || plan.kind === 'expand')) {
+        child.params.forEach((param, index) => {
+          const input = command.inputs[index];
+          if (!input) return;
+          const childRegister = childReturnRegisters.find((name) => name === param.name);
+          if (!childRegister) return;
+          const parentToken = scopedName(state, frame, stripCycle(input), line, parentFrame, skipParams);
+          childOutputBindings.set(childRegister, parentToken);
+        });
+      }
+      flushCycleZeros(state, `prepare outputs before ${command.op} ${childName} at cycle ${state.frameCycle}`);
+
+      const nextContext: ProcessExecutionContext = plan.kind === 'expand'
+        ? {
+            rootProcess: frameContext.rootProcess,
+            recursionProcess: plan.recursionProcess,
+            recursionDepth: plan.recursionDepth,
+            rootDepth: plan.rootDepth,
+            level: plan.level,
+            callStack: frameContext.callStack,
+          }
+        : {
+            rootProcess: frameContext.rootProcess,
+            callStack: frameContext.callStack,
+          };
+
+      const childReturns = executeProcess(
+        child,
+        state,
+        library,
+        command.inputs,
+        frame,
+        childOutputBindings,
+        line,
+        skipParams,
+        nextContext,
+      );
       command.outputs.forEach((output, index) => {
         const returned = childReturns[index];
         if (returned) frame.aliases.set(stripCycle(output), returned);
@@ -811,7 +952,10 @@ const executeProcess = (
       const scratch = createCompilerState();
       scratch.verifying = state.verifying;
       try {
-        executeProcess(child, scratch, library);
+        executeProcess(child, scratch, library, [], undefined, new Map(), '', false, {
+          rootProcess: childName,
+          callStack: [],
+        });
         state.log.push(`COMPILEPROCESS verified '${childName}' (${scratch.gates.length} gate(s)) without inlining.`);
       } finally {
         state.verifying.delete(childName);
@@ -948,7 +1092,14 @@ const executeProcess = (
   }
 
   if (frame.returnBases.length === 0) {
-    returns = frame.masterTokens.map((entry) => scopedName(state, frame, entry.name, entry.line, parentFrame));
+    if (frame.masterTokens.length > 0) {
+      returns = frame.masterTokens.map((entry) => scopedName(state, frame, entry.name, entry.line, parentFrame));
+    } else if (returns.length === 0) {
+      // Early EXIT before RETURNVALS: surface PARAM wires so in-place recursive callers keep bindings.
+      returns = process.params
+        .map((param) => params.get(param.name))
+        .filter((token): token is string => Boolean(token));
+    }
   } else {
     frame.masterTokens.forEach((entry) => {
       if (!frame.returnBases.includes(entry.name)) {
@@ -1009,11 +1160,14 @@ const compactQubitLayout = (
 export const compileQpuProtocol = (source: string, librarySources: Record<string, string> = {}): CompileResult => {
   const main = parseProtocol(source);
   const library = processLibraryFromSources(librarySources);
-  // The file being compiled is always addressable as a child of itself (e.g. recursive RUNCHILD tests).
+  // The file being compiled is always addressable as a child of itself (e.g. recursive RUNCHILD / RECUR).
   library.set(main.name, main);
   const state = createCompilerState();
 
-  executeProcess(main, state, library);
+  executeProcess(main, state, library, [], undefined, new Map(), '', false, {
+    rootProcess: main.name,
+    callStack: [],
+  });
 
   const tokenMap: Record<string, number> = {};
   state.tokenToQubit.forEach((qubit, token) => {
