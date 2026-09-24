@@ -8,6 +8,7 @@ import {
   childProcessNames,
   customGateDocEntry,
   gateDocs,
+  protocolBranchInfo,
   protocolDocEntry,
   resolveDocEntry,
 } from '../docEntries';
@@ -76,6 +77,19 @@ describe('workbench documentation entries', () => {
     expect(parent?.subtitle).toMatch(/−DEPTH|DEPTH/i);
     expect(parent?.sections.some((section) => section.heading === 'Bounded recursion and TCO')).toBe(true);
     expect(parent?.syntax?.some((line) => /-DEPTH/.test(line))).toBe(true);
+  });
+
+  it('documents IF / ELSE blocks and inline -IF conditions', () => {
+    const harness = resolveDocEntry('process:RecursiveReversibleEchoHarness');
+    const branch = harness?.sections.find((section) => section.heading === 'Classical IF / ELSE');
+    expect(branch?.body).toMatch(/1 IF block \(1 with ELSE\)/);
+    expect(harness?.sections.some((section) => section.heading === 'Bounded recursion and TCO')).toBe(true);
+
+    expect(protocolBranchInfo('MEASURE -I A\n# IF A=1 in a comment\nX -I B -O B -IF A=1')).toEqual({
+      blocks: 0,
+      elses: 0,
+      inlineConditions: 1,
+    });
   });
 
   it('builds a custom gate entry with a simulated truth table and usage syntax', () => {

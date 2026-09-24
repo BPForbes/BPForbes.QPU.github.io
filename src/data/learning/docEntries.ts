@@ -254,6 +254,25 @@ export type ProtocolRecursionInfo = {
   usesDepthFlag: boolean;
 };
 
+export type ProtocolBranchInfo = {
+  /** Structured IF … ENDIF blocks. */
+  blocks: number;
+  /** Blocks that also have an ELSE part. */
+  elses: number;
+  /** Single gates with an inline -IF condition. */
+  inlineConditions: number;
+};
+
+/** Count classical feed-forward (IF/ELSE blocks and inline -IF) in protocol text for workbench copy. */
+export const protocolBranchInfo = (source: string): ProtocolBranchInfo => {
+  const lines = source.split(/\r?\n/).map((line) => line.replace(/#.*/, '').trim());
+  return {
+    blocks: lines.filter((line) => /^IF\s+\S+=[01]$/i.test(line)).length,
+    elses: lines.filter((line) => /^ELSE$/i.test(line)).length,
+    inlineConditions: lines.filter((line) => /\s-IF\s+\S+=[01]\b/i.test(line)).length,
+  };
+};
+
 /** Detect REC/TREC/RECUR/−DEPTH markers in protocol text for workbench copy. */
 export const protocolRecursionInfo = (source: string): ProtocolRecursionInfo => {
   let declared: 'REC' | 'TREC' | null = null;
@@ -376,6 +395,7 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
   const outputs = getReturnValTokens(source);
   const children = childProcessNames(source).filter((child) => child !== name);
   const recursion = protocolRecursionInfo(source);
+  const branches = protocolBranchInfo(source);
   const measures = /^\s*MEASURE\b/m.test(source);
   let gateCount: number | undefined;
   try {
@@ -422,6 +442,24 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
         + 'The canvas never shows a loop: a recursive call draws as one gate with a teal D{n} badge that counts down as you step. '
         + 'Tail form reuses one compiler frame (TCO); non-tail REC nests scopes. '
         + 'Compile RecursiveHParent (or any parent with RUNCHILD … -DEPTH N) to see D{n} above the gate.',
+    });
+  }
+
+  if (branches.blocks > 0 || branches.inlineConditions > 0) {
+    const parts = [
+      branches.blocks > 0
+        ? `${branches.blocks} IF block${branches.blocks === 1 ? '' : 's'}${branches.elses > 0 ? ` (${branches.elses} with ELSE)` : ''}`
+        : undefined,
+      branches.inlineConditions > 0
+        ? `${branches.inlineConditions} gate${branches.inlineConditions === 1 ? '' : 's'} with an inline -IF`
+        : undefined,
+    ].filter(Boolean).join(' and ');
+    sections.splice(1, 0, {
+      heading: 'Classical IF / ELSE',
+      body: `${name} has ${parts}. Each conditioned gate runs only if an earlier MEASURE read the named bit as the given value; `
+        + 'ELSE gates use the opposite value. Both branches stay in the circuit and the other one is skipped, so nothing loops or forks. '
+        + 'On the canvas each conditioned gate has a yellow double line to the c lane, labelled IF or ELSE underneath, '
+        + 'and shows ✓ taken or ⊘ skipped once the bit is measured.',
     });
   }
 

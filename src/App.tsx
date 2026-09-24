@@ -10,6 +10,7 @@ import {
 import { CircuitCanvas } from './components/CircuitCanvas';
 import { GateWrapperModal } from './components/circuit/GateWrapperModal';
 import { RecursionFrameView } from './components/circuit/RecursionFrameView';
+import { branchOutcomeFor, branchOutcomeNote, conditionFeedLabel } from './components/circuit/branchVisuals';
 import {
   buildVisualCircuitColumns,
   recursionFrameForColumn,
@@ -1070,6 +1071,14 @@ function App() {
     </details>
   ) : null;
 
+  // Conditioned step: name the branch and, once the bit is known, whether it ran.
+  const activeBranchNote = (() => {
+    if (!activeCanvasGate?.condition) return '';
+    const label = conditionFeedLabel(activeCanvasGate, wireParamNames[activeCanvasGate.condition.qubit]);
+    const outcome = branchOutcomeNote(branchOutcomeFor(activeCanvasGate, measurements));
+    return ` · ${label}${outcome ? ` · ${outcome}` : ''}`;
+  })();
+
   const workbenchDocs = (() => {
     if (docFocus === 'circuit' && activeCanvasGate && activeCanvasGateId && circuitDoc) {
       const touched = [...activeCanvasGate.controls, ...activeCanvasGate.targets];
@@ -1081,7 +1090,7 @@ function App() {
           action={<button onClick={focusSelection} type="button">Back to selected gate</button>}
           controls={activeCanvasGate.controls}
           entry={circuitDoc}
-          eyebrow={`Step ${cursor} of ${orderedGates.length} on the canvas`}
+          eyebrow={`Step ${cursor} of ${orderedGates.length} on the canvas${activeBranchNote}`}
           qubitCount={simulationQubitCount}
           reversible={gateHelp[activeCanvasGateId]?.reversible}
           symbol={gateSymbol(activeCanvasGateId)}
@@ -1108,7 +1117,7 @@ function App() {
       return (
         <aside aria-label={`About step ${cursor}`} className="workbench-docs">
           <div className="workbench-docs-heading">
-            <p className="eyebrow">Step {cursor} of {orderedGates.length} on the canvas</p>
+            <p className="eyebrow">Step {cursor} of {orderedGates.length} on the canvas{activeBranchNote}</p>
             <button onClick={focusSelection} type="button">Back to selected gate</button>
           </div>
           <p>
@@ -1588,7 +1597,41 @@ function App() {
                 Try the <strong>Recursive H (TCO expanded)</strong> canvas example, or compile <strong>RecursiveHParent</strong>
                 from the protocol list (do not compile RecursiveH alone as the root — RECUR needs a child frame).
               </p>
-              <p className="help-links"><DocLink target={docTargets.processes} /></p>
+              <ul>
+                <li>A child with several gates collapses to one <strong>REC</strong> box spanning its wires, captioned with the child
+                  name and depth range (for example <code>D5 → D1</code>). It is red during a forward gate and purple during an inverse one.</li>
+                <li>While you step inside the call, the Interactive workbench shows the <strong>Recursive frame</strong>: that level&apos;s
+                  forward gates, their inverses, its <code>IC</code> cycle line, and <code>RECUR ↓ D{'{n-1}'}</code> for the next frame.</li>
+                <li>The palette&apos;s <strong>REC</strong> wrapper only adds the D{'{n}'} badge to a canvas gate. The gate still runs once
+                  and the tag is not saved to the protocol text; to repeat gates, write a REC/TREC child and call it with <code>-DEPTH</code>.</li>
+              </ul>
+              <p>
+                Compile <strong>RecursiveReversibleEchoHarness</strong> to see a TREC child at <code>-DEPTH 5</code> followed by an IF/ELSE pair.
+              </p>
+              <p className="help-links"><DocLink target={docTargets.recursion} /> <DocLink target={docTargets.processes} /></p>
+            </article>
+            <article>
+              <h3>IF / ELSE feed-forward</h3>
+              <p>
+                After a <code>MEASURE</code>, later gates can depend on the bit that was read. Write a block in the protocol:
+              </p>
+              <pre><code>{'MEASURE -I A\nIF A=1\nX -I C -O C\nELSE\nZ -I C -O C\nENDIF'}</code></pre>
+              <p>
+                The compiler turns this into ordinary gates with conditions (<code>X … -IF A=1</code>, <code>Z … -IF A=0</code>).
+                A single gate can also take <code>-IF Token=0|1</code> directly. Nothing loops or forks: both gates stay in the circuit
+                and the one whose condition fails is skipped.
+              </p>
+              <ul>
+                <li><code>ELSE</code> is optional; <code>ENDIF</code> is required. The measured bit must be read before the first conditioned gate.</li>
+                <li>On the canvas both gates sit on their own wire, each joined to the <strong>c</strong> lane by a yellow double line and
+                  labelled <strong>IF</strong> <code>A=1</code> / <strong>ELSE</strong> <code>A=0</code> underneath.</li>
+                <li>Once the bit is measured the running branch shows <strong>✓ taken</strong>; the other shows <strong>⊘ skipped</strong>
+                  and fades with dashed lines.</li>
+                <li>Without writing text: pick the <strong>IF</strong> or <strong>ELSE</strong> wrapper in the palette, click a gate, choose the
+                  classical bit and value, and Save. Click the gate again to edit or delete the wrapper.</li>
+              </ul>
+              <p>Try the <strong>Quantum teleportation</strong> starter circuit, which uses <code>-IF</code>.</p>
+              <p className="help-links"><DocLink target={docTargets.ifElse} /> <DocLink target={docTargets.wrappers} /></p>
             </article>
             <article>
               <h3>How circuits are built</h3>
@@ -1608,6 +1651,7 @@ function App() {
                 <li>Derived Boolean gates include NOT, AND, NAND, OR, and XOR.</li>
                 <li>Child protocols can be declared, run, and accepted through DECLARECHILD, RUNCHILD, and ACCEPTVALS.</li>
                 <li>Bounded child recursion uses REC or TREC with RECUR / EXIT WHEN; parents pass -DEPTH (auto-TCO when tail).</li>
+                <li>Classical feed-forward uses <code>-IF Token=0|1</code> on one gate, or an <code>IF Token=v</code> … <code>ELSE</code> … <code>ENDIF</code> block, after a MEASURE.</li>
                 <li>Constants <code>0p</code>, <code>1p</code>, and <code>sp</code> initialize zero, one, and superposition registers.</li>
               </ul>
             </article>
