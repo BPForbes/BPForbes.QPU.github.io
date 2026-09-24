@@ -9,19 +9,29 @@
  *   3. Bijective: distinct inputs map to distinct (orthogonal) outputs.
  *   4. Norm preserving: every output has norm 1.
  * The matrix is built by simulating each basis input, so the gate must first be
- * linear: only reversible built-in steps and no classical conditions.
+ * linear: only reversible built-ins or custom gates that passed this check, and no
+ * classical conditions.
  */
 import type { compileQpuProtocol } from '../compiler/qpuAst';
 import { add, type Complex, magnitudeSquared, mul, ONE, ZERO } from '../complex';
-import type { CircuitGate } from '../types';
+import type { CircuitGate, ExecutionResult, MeasurementMap } from '../types';
+import { getCustomGateRecord } from './customGateStore';
 import { applyInverseAwareDefinition, invertCircuitGate } from './inverse';
 import { hasBit } from './operations';
 import { preconfiguredGateMap } from './preconfigured';
 
 export type ReversibilityResult = { reversible: true } | { reversible: false; reason: string };
 
+/** Runs a nested custom gate; passed in by the engine to avoid an import cycle. */
+export type NestedCustomGateRunner = (
+  state: Complex[],
+  qubitCount: number,
+  gate: CircuitGate,
+  measurements: MeasurementMap,
+) => ExecutionResult;
+
 /** Bump when the rules change so records saved under older rules are re-checked. */
-export const REVERSIBILITY_CHECK_VERSION = 2;
+export const REVERSIBILITY_CHECK_VERSION = 3;
 
 const NON_UNITARY_TYPES = new Set(['MEASURE', 'RESET', 'SAVE_STATE', 'LOAD_STATE']);
 const MAX_VISIBLE_WIRES = 8;
@@ -35,9 +45,20 @@ const conjugateDot = (left: Complex[], right: Complex[]): Complex => left.reduce
 
 const isClose = (value: Complex, re: number) => Math.hypot(value.re - re, value.im) < EPSILON;
 
-const runSteps = (state: Complex[], qubitCount: number, steps: CircuitGate[]) => steps.reduce((current, gate) => {
+const runSteps = (
+  state: Complex[],
+  qubitCount: number,
+  steps: CircuitGate[],
+  runNested: NestedCustomGateRunner,
+) => steps.reduce((current, gate) => {
   if (gate.type === 'CYCLE') return current;
-  return applyInverseAwareDefinition(preconfiguredGateMap[gate.type], current, qubitCount, gate, {}, {}).state;
+  const builtIn = preconfiguredGateMap[gate.type];
+  if (builtIn) return applyInverseAwareDefinition(builtIn, current, qubitCount, gate, {}, {}).state;
+  const expanded = runNested(current, qubitCount, gate, {}).state;
+  // A nested gate appends its workspace as the lowest bits; its own check proved that workspace
+  // returns to |0⟩, so keep only those amplitudes. Any loss shows up in the norm checks below.
+  const shift = Math.round(Math.log2(expanded.length)) - qubitCount;
+  return shift > 0 ? current.map((_, index) => expanded[index << shift]) : expanded;
 }, state);
 
 const structuralIssue = (gates: CircuitGate[]): string | undefined => {
@@ -49,8 +70,15 @@ const structuralIssue = (gates: CircuitGate[]): string | undefined => {
     if (NON_UNITARY_TYPES.has(String(gate.type))) {
       return `${gate.type} is not unitary, so the gate has no inverse (criterion 1).`;
     }
-    if (!preconfiguredGateMap[String(gate.type)]?.supportsReverse) {
-      return `${gate.type} is not a reversible built-in gate, so the gate cannot be verified as unitary (criterion 1).`;
+    if (preconfiguredGateMap[String(gate.type)]) {
+      if (!preconfiguredGateMap[String(gate.type)].supportsReverse) {
+        return `${gate.type} is not a reversible built-in gate, so the gate cannot be verified as unitary (criterion 1).`;
+      }
+      continue;
+    }
+    const nested = getCustomGateRecord(String(gate.type));
+    if (!nested?.reversible) {
+      return `Custom gate ${gate.type} is not reversible${nested?.reversibilityIssue ? ` (${nested.reversibilityIssue})` : ''}, so this gate is not either (criterion 1).`;
     }
   }
   return undefined;
@@ -58,6 +86,18 @@ const structuralIssue = (gates: CircuitGate[]): string | undefined => {
 
 export const checkCustomGateReversibility = (
   compiled: ReturnType<typeof compileQpuProtocol>,
+  runNested: NestedCustomGateRunner,
+): ReversibilityResult => {
+  try {
+    return verify(compiled, runNested);
+  } catch (error) {
+    return { reversible: false, reason: `Could not verify reversibility: ${(error as Error).message}` };
+  }
+};
+
+const verify = (
+  compiled: ReturnType<typeof compileQpuProtocol>,
+  runNested: NestedCustomGateRunner,
 ): ReversibilityResult => {
   const { gates, qubitCount } = compiled;
   const structural = structuralIssue(gates);
@@ -88,7 +128,7 @@ export const checkCustomGateReversibility = (
   for (let bits = 0; bits < dimension; bits += 1) {
     const start = basisIndex(bits);
     const input = Array.from({ length: 2 ** qubitCount }, (_, index) => (index === start ? ONE : ZERO));
-    const output = runSteps(input, qubitCount, gates);
+    const output = runSteps(input, qubitCount, gates, runNested);
 
     const dirty = output.some((amplitude, index) => (
       magnitudeSquared(amplitude) > EPSILON && workspace.some((qubit) => hasBit(index, qubit, qubitCount))
@@ -100,7 +140,7 @@ export const checkCustomGateReversibility = (
       };
     }
 
-    const recovered = runSteps(output, qubitCount, inverseSteps);
+    const recovered = runSteps(output, qubitCount, inverseSteps, runNested);
     if (magnitudeSquared(recovered[start]) < 1 - EPSILON) {
       return { reversible: false, reason: `Running the dagger after the gate does not return input ${inputLabel(bits)} (criterion 2).` };
     }

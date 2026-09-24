@@ -9,6 +9,7 @@ import type { Complex } from '../complex';
 import { applySingleQubitGate } from './operations';
 import { phaseMatrix } from './matrices';
 import { preconfiguredGateMap } from './preconfigured';
+import { getCustomGateRecord } from './customGateStore';
 import type { GateDefinition } from './types';
 
 const PARAMETERIZED_ANGLE_GATES = new Set(['PHASE', 'RX', 'RY', 'RZ', 'CPHASE']);
@@ -16,7 +17,12 @@ const PARAMETERIZED_ANGLE_GATES = new Set(['PHASE', 'RX', 'RY', 'RZ', 'CPHASE'])
 export const invertCircuitGate = (gate: CircuitGate): CircuitGate => {
   if (gate.type === 'CYCLE') return { ...gate };
   const definition = preconfiguredGateMap[String(gate.type)];
-  if (!definition?.supportsReverse) {
+  if (!definition) {
+    // A nested custom gate inverts itself on expansion when its own record passed the reversibility check.
+    if (getCustomGateRecord(String(gate.type))?.reversible) return { ...gate, inverse: !gate.inverse };
+    throw new Error(`${gate.type} cannot be inverted.`);
+  }
+  if (!definition.supportsReverse) {
     throw new Error(`${gate.type} cannot be inverted.`);
   }
   if (PARAMETERIZED_ANGLE_GATES.has(String(gate.type))) {

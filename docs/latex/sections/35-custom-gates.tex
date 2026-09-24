@@ -119,7 +119,8 @@ Registration checks this for you. The builder simulates every basis input on
 the block's PARAMS and RETURNVALS wires and allows \code{dg} / \code{inv}
 only when the resulting matrix $U$ is unitary ($U^\dagger U = UU^\dagger = I$),
 running the dagger returns every input, distinct inputs give distinct outputs,
-and every output has norm 1. If the block fails, the error names the reason.
+and every output has norm 1. A block may use another custom gate only if that
+gate passed the same check. If the block fails, the error names the reason.
 \end{cautionbox}
 
 \begin{beginnerbox}[A quick test you can run in the builder]

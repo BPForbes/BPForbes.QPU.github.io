@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileQpuProtocol } from '../../compiler/qpuAst';
 import { checkCustomGateReversibility } from '../customGateReversibility';
-import { getCustomGateRecord, registerCustomGate } from '../customGateEngine';
+import { applyCustomGateProcess, getCustomGateRecord, registerCustomGate } from '../customGateEngine';
+import { magnitudeSquared } from '../../complex';
+import { runCircuit } from '../../engine';
+import type { CircuitGate } from '../../types';
 import { writeStore } from '../customGateStore';
 import { refreshCustomGateRegistry } from '../registry';
 
-const check = (body: string, params = 'A:1', returns = 'A') =>
-  checkCustomGateReversibility(compileQpuProtocol(`PARAMS: ${params}\nMAIN-PROCESS G\n${body}\nRETURNVALS ${returns}`));
+const runNested = (state: Parameters<typeof applyCustomGateProcess>[0], qubitCount: number, gate: CircuitGate) =>
+  applyCustomGateProcess(state, qubitCount, gate, {}, getCustomGateRecord(String(gate.type))!);
+
+const check = (body: string, params = 'A:1', returns = 'A') => checkCustomGateReversibility(
+  compileQpuProtocol(`PARAMS: ${params}\nMAIN-PROCESS G\n${body}\nRETURNVALS ${returns}`),
+  runNested,
+);
 
 const reasonOf = (result: ReturnType<typeof checkCustomGateReversibility>) => (result.reversible ? '' : result.reason);
 
@@ -75,5 +83,35 @@ describe('custom gate records', () => {
     }]);
     refreshCustomGateRegistry();
     expect(getCustomGateRecord('Stale')?.reversible).toBe(false);
+  });
+
+  it('lets a gate built from a reversible custom gate be inverted, and its dagger undoes it', () => {
+    registerCustomGate({ id: 'Rot', source: 'PARAMS: A:1\nMAIN-PROCESS Rot\nRX=pi/5 -I A -O A\nT -I A -O A\nRETURNVALS A' });
+    // CleanCopy borrows a workspace wire and uncomputes it, so nesting it exercises the workspace trim.
+    registerCustomGate({ id: 'CleanCopy', source: 'PARAMS: A:1 B:1\nMAIN-PROCESS CleanCopy\nCNOT -I A -O Tmp\nCNOT -I Tmp -O B\nCNOT -I A -O Tmp\nRETURNVALS A B' });
+    refreshCustomGateRegistry();
+    const outer = registerCustomGate({
+      id: 'Outer',
+      source: 'PARAMS: A:1 B:1\nMAIN-PROCESS Outer\nH -I A -O A\nRot -I A -O A\nCleanCopy -I A B -O A B\nRETURNVALS A B',
+    });
+    expect(outer.reversibilityIssue).toBeUndefined();
+    expect(outer.reversible).toBe(true);
+    refreshCustomGateRegistry();
+
+    const forward = runCircuit(2, [{ id: 'f', type: 'Outer', step: 0, controls: [0, 1], targets: [0, 1] }], ['1p', '0p']);
+    const undone = applyCustomGateProcess(forward.state, Math.round(Math.log2(forward.state.length)), {
+      id: 'b', type: 'Outer', step: 1, controls: [0, 1], targets: [0, 1], inverse: true,
+    }, {}, getCustomGateRecord('Outer')!);
+    // |10⟩ on the visible wires with every workspace wire back at 0: the highest-order bits are A and B.
+    const width = Math.round(Math.log2(undone.state.length));
+    expect(magnitudeSquared(undone.state[1 << (width - 1)])).toBeCloseTo(1, 8);
+  });
+
+  it('rejects a gate that uses a non-reversible custom gate and says which one', () => {
+    registerCustomGate({ id: 'Peek', source: 'PARAMS: A:1\nMAIN-PROCESS Peek\nMEASURE -I A\nRETURNVALS A' });
+    refreshCustomGateRegistry();
+    const outer = registerCustomGate({ id: 'UsesPeek', source: 'PARAMS: A:1\nMAIN-PROCESS UsesPeek\nPeek -I A -O A\nRETURNVALS A' });
+    expect(outer.reversible).toBe(false);
+    expect(outer.reversibilityIssue).toMatch(/Custom gate Peek is not reversible.*MEASURE/);
   });
 });

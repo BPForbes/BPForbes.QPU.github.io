@@ -47,7 +47,11 @@ export type RegisterCustomGateInput = {
 };
 
 const reversibilityFields = (compiled: ReturnType<typeof compileQpuProtocol>) => {
-  const result = checkCustomGateReversibility(compiled);
+  const result = checkCustomGateReversibility(compiled, (state, qubitCount, gate, measurements) => {
+    const nested = getCustomGateRecord(String(gate.type));
+    if (!nested) throw new Error(`Unknown custom gate '${gate.type}'.`);
+    return applyCustomGateProcess(state, qubitCount, gate, measurements, nested, {});
+  });
   return {
     reversible: result.reversible,
     reversibilityIssue: result.reversible ? undefined : result.reason,
@@ -272,20 +276,22 @@ export const customGateToDefinition = (record: CustomGateRecord): GateDefinition
 /** Re-check records saved under older reversibility rules so a stale flag cannot allow a wrong dagger. */
 const refreshStaleReversibility = (records: CustomGateRecord[]): CustomGateRecord[] => {
   if (records.every((record) => record.reversibilityCheckVersion === REVERSIBILITY_CHECK_VERSION)) return records;
-  const next = records.map((record) => {
-    if (record.reversibilityCheckVersion === REVERSIBILITY_CHECK_VERSION) return record;
+  // Records are stored in registration order, so inner gates are re-checked (and saved) before the gates that use them.
+  const next = [...records];
+  next.forEach((record, index) => {
+    if (record.reversibilityCheckVersion === REVERSIBILITY_CHECK_VERSION) return;
     try {
-      return { ...record, ...reversibilityFields(compileQpuProtocol(record.source, record.librarySources)) };
+      next[index] = { ...record, ...reversibilityFields(compileQpuProtocol(record.source, record.librarySources)) };
     } catch (error) {
-      return {
+      next[index] = {
         ...record,
         reversible: false,
         reversibilityIssue: `Could not re-check reversibility: ${(error as Error).message}`,
         reversibilityCheckVersion: REVERSIBILITY_CHECK_VERSION,
       };
     }
+    writeStore(next);
   });
-  writeStore(next);
   return next;
 };
 
