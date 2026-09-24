@@ -479,7 +479,7 @@ function App() {
 
   const saveWrapperModal = () => {
     if (!wrapperModal) return;
-    const nextGates = applyWrappersToGateList(gates, wrapperModal.gateId, wrapperModal.draft);
+    const nextGates = applyWrappersToGateList(gates, wrapperModal.gateId, wrapperModal.draft, wireParamNames);
     setGates(nextGates);
     syncCanvasProtocol(nextGates);
     resetRuntime();
@@ -1649,6 +1649,10 @@ function App() {
                   or as the test (<code>IF (NOR -I A B -O Out) = 1p</code>). Use a custom gate instead of <code>RUNCHILD</code> inside an IF block.</li>
                 <li>Without writing text: pick the <strong>IF</strong> or <strong>ELSE</strong> wrapper in the palette, click a gate, choose the
                   classical bit and value, and Save. Click the gate again to edit or delete the wrapper.</li>
+                <li>For a gate-expression test, tick <strong>Joined (test a gate)</strong> in the dialog: pick any single-result gate
+                  (built-in or custom), a wire for each input, an output wire, and Equals/Value. Save turns it into the same
+                  <code>IF (GATE …) = value</code> test as writing it in the protocol, and reopening the gate shows the same fields
+                  filled in for editing.</li>
               </ul>
               <p>Try the <strong>Quantum teleportation</strong> starter circuit, which uses <code>-IF</code>.</p>
               <p className="help-links"><DocLink target={docTargets.ifElse} /> <DocLink target={docTargets.ifExpression} /> <DocLink target={docTargets.wrappers} /></p>
@@ -1816,6 +1820,7 @@ function App() {
             onDelete={deleteWrapperModal}
             onSave={saveWrapperModal}
             qubitCount={simulationQubitCount}
+            qubitNames={wireParamNames}
           />
         );
       })() : null}

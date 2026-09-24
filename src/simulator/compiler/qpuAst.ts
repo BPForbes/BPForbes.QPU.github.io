@@ -1,7 +1,7 @@
 // QPU protocol compiler: child processes and cycles expand into flat gates so the simulator and UI share one execution model.
 import { assertGateArity } from '../gates/arity';
 import { astDerivedGateIds, astPrimitiveGateIds } from '../gates/metadata';
-import { remapConditionWires } from '../gates/conditions';
+import { buildConditionPredicate, remapConditionWires } from '../gates/conditions';
 import { getCustomGateRecord } from '../gates/customGateStore';
 import {
   CircuitGate,
@@ -830,20 +830,19 @@ const executeProcess = (
       || inner.op === 'RZ' || inner.op === 'CPHASE'
       ? inner.phase ?? 0
       : undefined;
-    const names = inner.inputs.map(stripCycle);
-    const outputName = stripCycle(outputToken);
-    return {
+    return buildConditionPredicate({
       type: op as GateType,
       inputs,
       output,
       // AND -I A B -O B means "A AND B": keep both operands and write to a fresh |0⟩ wire.
-      scratch: derivedGates.has(op) && inputs.length >= 2 && inputs.includes(output),
-      ...(loweredPhase !== undefined ? { phase: loweredPhase } : {}),
-      ...(inner.reverse ? { inverse: true } : {}),
+      isBooleanJoin: derivedGates.has(op),
+      phase: loweredPhase,
+      inverse: inner.reverse,
       expect: header.expect,
       negate: header.negate,
-      text: `${op}${inner.reverse ? '†' : ''}(${names.join(',')})${names.includes(outputName) ? '' : `→${outputName}`}`,
-    };
+      inputNames: inner.inputs.map(stripCycle),
+      outputName: stripCycle(outputToken),
+    });
   };
   const branchStack: ActiveBranch[] = [];
   let nextBranchGroup = 0;

@@ -138,27 +138,55 @@ carries a wrapper. Its heading names the gate and its target wire.
 \UiTable{
 Recursive wrapper & Tags the gate as a recursive call.\\
 Depth & The DEPTH shown in the teal badge above the gate (at least 1).\\
-IF / ELSE wrapper & Makes the gate conditional on a measured bit.\\
+IF / ELSE wrapper & Makes the gate conditional.\\
 Kind & \textbf{IF} or \textbf{ELSE}. Choosing ELSE sets \textbf{Equals} to
-0; choosing IF sets it to 1. Either can then be changed.\\
-Classical bit & Which measured wire the condition reads, shown as
-\textbf{q$n$ $\rightarrow$ c}. That wire needs a MEASURE (\textbf{M}) before
-this gate.\\
-Equals & The value that makes the gate run: 1 or 0.\\
+0; choosing IF sets it to 1. Either can then be changed. This is a display
+label only when \textbf{Joined} is ticked; the test itself comes from
+Equals/Value there.\\
+Joined (test a gate) & Off (default): condition on one measured bit, using
+\textbf{Classical bit} and \textbf{Equals} below. On: condition on a gate
+expression, using the fields in \emph{Joined fields} below instead.\\
+Classical bit & \emph{Joined off.} Which measured wire the condition reads,
+shown as \textbf{q$n$ $\rightarrow$ c}. That wire needs a MEASURE
+(\textbf{M}) before this gate.\\
+Equals & \emph{Joined off.} The value that makes the gate run: 1 or 0.\\
 Save & Applies the ticked wrappers and rewinds the run.\\
 Cancel & Closes the dialog without changes.\\
 Delete wrappers & Removes both wrappers and keeps the gate.\\
 }
 
+\paragraph{Joined fields (shown when Joined is ticked).}
+\UiTable{
+Gate & Which gate to test: any built-in or registered custom gate with one
+result wire (the same rule as writing \code{IF (GATE ...) = V} --- see
+\hyperlink{if-gate-expression}{Gate-expression conditions}). MEASURE, RESET,
+and SWAP are not offered.\\
+Input 1, Input 2, \ldots & One selector per \code{-I} wire the chosen gate
+takes; the count updates when you change \textbf{Gate}.\\
+Output & The \code{-O} wire the result is read from.\\
+Inverse (dg/inv) & Shown only for a reversible gate. Tests the gate's dagger.\\
+Phase angle & Shown only for PHASE, RX, RY, RZ, and CPHASE. $\theta$ in
+degrees, as in the workbench.\\
+Test & \textbf{equals} or \textbf{not equal to} (\code{=} / \code{!=}).\\
+Value & \code{1p}, \code{0p}, or \code{sp}.\\
+}
+A line under these fields previews the exact test, for example
+\texttt{Test: AND(q0,q1) = 1p}, using the same wording the canvas label and
+the compiled protocol text use. Reopening a gate that already carries a
+gate-expression condition --- written in the protocol text or built here ---
+shows these fields filled in and ready to edit; Delete wrappers removes it.
+
 \begin{cautionbox}[What each wrapper changes]
 The \textbf{IF / ELSE} wrapper changes the run: the gate is skipped when the
-bit does not match. It is written to the protocol editor as a \code{-IF}
-condition, such as \code{Z -I $Q2:0 -O $Q2:0 -IF Q0=0}. The \textbf{REC} wrapper
-only labels the gate with a depth badge. The gate still runs once, and the tag
-is not written to the protocol text. To repeat gates DEPTH times, write a child
-process with \code{REC} or \code{TREC} and call it with
-\code{RUNCHILD} \ldots{} \code{-DEPTH} $n$; see bounded recursion in the Language
-Reference.
+condition does not match. With \textbf{Joined} off it is written to the
+protocol editor as a \code{-IF} condition, such as
+\code{Z -I $Q2:0 -O $Q2:0 -IF Q0=0}; with \textbf{Joined} on it is written as
+an \code{IF (...) = V ... ENDIF} block around the gate. The
+\textbf{REC} wrapper only labels the gate with a depth badge. The gate still
+runs once, and the tag is not written to the protocol text. To repeat gates
+DEPTH times, write a child process with \code{REC} or \code{TREC} and call
+it with \code{RUNCHILD} \ldots{} \code{-DEPTH} $n$; see bounded recursion in
+the Language Reference.
 \end{cautionbox}
 
 \subsection{Gate engine: ``Register custom gates from QPU processes''}
@@ -212,8 +240,8 @@ with no measurement has no \textbf{c} lane.
   on \textbf{c}: its yellow line spans the wires it reads, with a yellow tap
   on each, and its label shows the expression (\texttt{AND(A,B)} above
   \texttt{= 1p}) using the 0p/1p/sp state vocabulary, not bare 0/1/S. The
-  wrapper dialog shows such a test the same way, read-only; edit it in the
-  protocol text.
+  wrapper dialog's \textbf{Joined} fields edit the same test, whether it came
+  from the protocol text or was built there; see \emph{Wrapper dialog}.
   \item \textbf{Recursive call:} drawn once, not once per frame. A teal
   \textbf{D$n$} badge above it shows the current DEPTH and counts down as you
   step, then hides when the call is finished. A multi-gate recursive child is

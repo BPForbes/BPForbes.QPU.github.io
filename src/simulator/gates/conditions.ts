@@ -1,11 +1,48 @@
 import { magnitudeSquared, type Complex } from '../complex';
-import type { CircuitGate, ConditionPredicate, ConditionValue, ExecutionResult, MeasurementMap } from '../types';
+import type { CircuitGate, ConditionPredicate, ConditionValue, ExecutionResult, GateType, MeasurementMap } from '../types';
 import { applyInverseAwareDefinition } from './inverse';
 import { hasBit, padStateVector } from './operations';
 import { preconfiguredGateMap } from './preconfigured';
 
 /** P(1) within this tolerance of 0 or 1 reads as a definite bit; anything else is S. */
 const DEFINITE_TOLERANCE = 1e-9;
+
+/**
+ * Build a `ConditionPredicate` from explicit wires and a value test. Shared by
+ * the compiler (parsing `IF (GATE -I … -O …) = V`) and the wrapper dialog's
+ * "Joined" gate picker, so a protocol-text predicate and a GUI-built one are
+ * the same shape.
+ */
+export const buildConditionPredicate = (params: {
+  type: GateType;
+  /** Every -I wire, in order (may include the output wire). */
+  inputs: number[];
+  /** The -O wire the result is read from. */
+  output: number;
+  /** AND/NAND/OR/XOR-style gates: true when -O may alias one of the -I wires (the fresh-|0⟩-wire rule). */
+  isBooleanJoin: boolean;
+  phase?: number;
+  inverse?: boolean;
+  expect: ConditionValue;
+  /** `!=` in source, or the ELSE half of the block. */
+  negate: boolean;
+  /** Wire label used to build `text`, e.g. the resolved token name or `q{n}`. */
+  inputNames: string[];
+  outputName: string;
+}): ConditionPredicate => {
+  const { type, inputs, output, isBooleanJoin, phase, inverse, expect, negate, inputNames, outputName } = params;
+  return {
+    type,
+    inputs,
+    output,
+    scratch: isBooleanJoin && inputs.length >= 2 && inputs.includes(output),
+    ...(phase !== undefined ? { phase } : {}),
+    ...(inverse ? { inverse: true } : {}),
+    expect,
+    negate,
+    text: `${type}${inverse ? '†' : ''}(${inputNames.join(',')})${inputNames.includes(outputName) ? '' : `→${outputName}`}`,
+  };
+};
 
 export const classifyWire = (state: Complex[], qubitCount: number, qubit: number): ConditionValue => {
   const probabilityOne = state.reduce(

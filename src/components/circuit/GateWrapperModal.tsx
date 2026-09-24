@@ -1,9 +1,17 @@
-import { conditionValueLabel, type CircuitGate } from '../../simulator/types';
-import type { WrapperDraft } from './gateWrappers';
+import { getGateDefinition, paletteGateIds } from '../../simulator/gates/registry';
+import { conditionValueLabel, type CircuitGate, type ConditionValue } from '../../simulator/types';
+import {
+  predicateFromDraft,
+  predicateGateIds,
+  predicateInputCount,
+  resizePredicateInputs,
+  type WrapperDraft,
+} from './gateWrappers';
 
 type GateWrapperModalProps = {
   gate: CircuitGate;
   qubitCount: number;
+  qubitNames?: (string | undefined)[];
   draft: WrapperDraft;
   onChange: (draft: WrapperDraft) => void;
   onSave: () => void;
@@ -11,9 +19,13 @@ type GateWrapperModalProps = {
   onDelete: () => void;
 };
 
+const wireOption = (qubit: number, qubitNames: (string | undefined)[]) =>
+  qubitNames[qubit] ? `q${qubit} · ${qubitNames[qubit]}` : `q${qubit}`;
+
 export function GateWrapperModal({
   gate,
   qubitCount,
+  qubitNames = [],
   draft,
   onChange,
   onSave,
@@ -21,6 +33,12 @@ export function GateWrapperModal({
   onDelete,
 }: GateWrapperModalProps) {
   const gateLabel = String(gate.type) + (gate.inverse ? '†' : '');
+  const gateOptions = predicateGateIds(paletteGateIds());
+  const predicateDraft = draft.predicateDraft;
+  const predicateDefinition = predicateDraft ? getGateDefinition(predicateDraft.gateType) : undefined;
+  const preview = draft.branchEnabled && draft.joined && predicateDraft
+    ? predicateFromDraft(predicateDraft, qubitNames)
+    : undefined;
 
   return (
     <div className="wrapper-modal-root" role="presentation">
@@ -68,57 +86,180 @@ export function GateWrapperModal({
           />
           <span>IF / ELSE wrapper</span>
         </label>
-        {draft.branchEnabled && draft.predicate ? (
-          <p className="wrapper-modal-note">
-            {gate.branch?.kind === 'else' ? 'ELSE' : 'IF'} {draft.predicate.text}
-            {draft.predicate.negate ? ' ≠ ' : ' = '}
-            {conditionValueLabel(draft.predicate.expect)}. This gate-expression test comes from the
-            protocol text; edit it there. Untick to remove it.
-          </p>
-        ) : draft.branchEnabled ? (
-          <div className="wrapper-branch-grid">
-            <label className="wrapper-field">
-              Kind
-              <select
-                onChange={(event) => {
-                  const kind = event.target.value === 'else' ? 'else' : 'if';
-                  onChange({
-                    ...draft,
-                    branchKind: kind,
-                    conditionEquals: kind === 'else' ? 0 : 1,
-                  });
-                }}
-                value={draft.branchKind}
-              >
-                <option value="if">IF</option>
-                <option value="else">ELSE</option>
-              </select>
-            </label>
-            <label className="wrapper-field">
-              Classical bit
-              <select
-                onChange={(event) => onChange({ ...draft, conditionQubit: Number(event.target.value) })}
-                value={draft.conditionQubit}
-              >
-                {Array.from({ length: qubitCount }, (_, qubit) => (
-                  <option key={qubit} value={qubit}>q{qubit} → c</option>
+
+        {draft.branchEnabled ? (
+          <>
+            <div className="wrapper-branch-grid">
+              <label className="wrapper-field">
+                Kind
+                <select
+                  onChange={(event) => {
+                    const kind = event.target.value === 'else' ? 'else' : 'if';
+                    onChange({
+                      ...draft,
+                      branchKind: kind,
+                      conditionEquals: kind === 'else' ? 0 : 1,
+                    });
+                  }}
+                  value={draft.branchKind}
+                >
+                  <option value="if">IF</option>
+                  <option value="else">ELSE</option>
+                </select>
+              </label>
+              <label className="wrapper-field wrapper-toggle">
+                <input
+                  checked={Boolean(draft.joined)}
+                  onChange={(event) => onChange({ ...draft, joined: event.target.checked })}
+                  type="checkbox"
+                />
+                <span>Joined (test a gate)</span>
+              </label>
+            </div>
+
+            {draft.joined && predicateDraft ? (
+              <div className="wrapper-branch-grid">
+                <label className="wrapper-field">
+                  Gate
+                  <select
+                    onChange={(event) => onChange({
+                      ...draft,
+                      predicateDraft: resizePredicateInputs(predicateDraft, event.target.value, qubitCount),
+                    })}
+                    value={predicateDraft.gateType}
+                  >
+                    {gateOptions.map((id) => <option key={id} value={id}>{id}</option>)}
+                  </select>
+                </label>
+
+                {predicateDraft.inputs.map((input, index) => (
+                  <label className="wrapper-field" key={`predicate-input-${index}`}>
+                    {predicateDraft.inputs.length > 1 ? `Input ${index + 1}` : 'Input'}
+                    <select
+                      onChange={(event) => {
+                        const inputs = predicateDraft.inputs.slice();
+                        inputs[index] = Number(event.target.value);
+                        onChange({ ...draft, predicateDraft: { ...predicateDraft, inputs } });
+                      }}
+                      value={input}
+                    >
+                      {Array.from({ length: qubitCount }, (_, qubit) => (
+                        <option key={qubit} value={qubit}>{wireOption(qubit, qubitNames)}</option>
+                      ))}
+                    </select>
+                  </label>
                 ))}
-              </select>
-            </label>
-            <label className="wrapper-field">
-              Equals
-              <select
-                onChange={(event) => onChange({
-                  ...draft,
-                  conditionEquals: Number(event.target.value) === 0 ? 0 : 1,
-                })}
-                value={draft.conditionEquals}
-              >
-                <option value={1}>1</option>
-                <option value={0}>0</option>
-              </select>
-            </label>
-          </div>
+
+                <label className="wrapper-field">
+                  Output
+                  <select
+                    onChange={(event) => onChange({
+                      ...draft,
+                      predicateDraft: { ...predicateDraft, output: Number(event.target.value) },
+                    })}
+                    value={predicateDraft.output}
+                  >
+                    {Array.from({ length: qubitCount }, (_, qubit) => (
+                      <option key={qubit} value={qubit}>{wireOption(qubit, qubitNames)}</option>
+                    ))}
+                  </select>
+                </label>
+
+                {predicateDefinition?.supportsReverse ? (
+                  <label className="wrapper-field wrapper-toggle">
+                    <input
+                      checked={predicateDraft.inverse}
+                      onChange={(event) => onChange({
+                        ...draft,
+                        predicateDraft: { ...predicateDraft, inverse: event.target.checked },
+                      })}
+                      type="checkbox"
+                    />
+                    <span>Inverse (dg/inv)</span>
+                  </label>
+                ) : null}
+
+                {predicateDefinition?.supportsPhase ? (
+                  <label className="wrapper-field">
+                    Phase angle: {predicateDraft.phaseDegrees}°
+                    <input
+                      max="360"
+                      min="0"
+                      onChange={(event) => onChange({
+                        ...draft,
+                        predicateDraft: { ...predicateDraft, phaseDegrees: Number(event.target.value) },
+                      })}
+                      step="15"
+                      type="range"
+                      value={predicateDraft.phaseDegrees}
+                    />
+                  </label>
+                ) : null}
+
+                <label className="wrapper-field">
+                  Test
+                  <select
+                    onChange={(event) => onChange({
+                      ...draft,
+                      predicateDraft: { ...predicateDraft, negate: event.target.value === '!=' },
+                    })}
+                    value={predicateDraft.negate ? '!=' : '='}
+                  >
+                    <option value="=">equals</option>
+                    <option value="!=">not equal to</option>
+                  </select>
+                </label>
+                <label className="wrapper-field">
+                  Value
+                  <select
+                    onChange={(event) => onChange({
+                      ...draft,
+                      predicateDraft: { ...predicateDraft, expect: event.target.value as ConditionValue },
+                    })}
+                    value={predicateDraft.expect}
+                  >
+                    <option value={1}>1p</option>
+                    <option value={0}>0p</option>
+                    <option value="s">sp</option>
+                  </select>
+                </label>
+              </div>
+            ) : draft.joined ? null : (
+              <div className="wrapper-branch-grid">
+                <label className="wrapper-field">
+                  Classical bit
+                  <select
+                    onChange={(event) => onChange({ ...draft, conditionQubit: Number(event.target.value) })}
+                    value={draft.conditionQubit}
+                  >
+                    {Array.from({ length: qubitCount }, (_, qubit) => (
+                      <option key={qubit} value={qubit}>q{qubit} → c</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="wrapper-field">
+                  Equals
+                  <select
+                    onChange={(event) => onChange({
+                      ...draft,
+                      conditionEquals: Number(event.target.value) === 0 ? 0 : 1,
+                    })}
+                    value={draft.conditionEquals}
+                  >
+                    <option value={1}>1</option>
+                    <option value={0}>0</option>
+                  </select>
+                </label>
+              </div>
+            )}
+
+            {preview ? (
+              <p className="wrapper-modal-note">
+                Test: {preview.text} {preview.negate ? '≠' : '='} {conditionValueLabel(preview.expect)}.
+                The gate runs on a scratch copy just before this step; the circuit itself is unchanged.
+              </p>
+            ) : null}
+          </>
         ) : null}
 
         <div className="wrapper-modal-actions">
