@@ -28,17 +28,6 @@ type NumberedProtocolLine = {
   line: number;
 };
 
-const ACCEPTED_ONLY_OPERATIONS = new Set([
-  'COMPILEPROCESS',
-  'FREE',
-  'JOIN',
-  'SPLIT',
-  'MASTERVAL',
-  'SAVE_STATE',
-  'LOAD_STATE',
-  'DELETETOKEN',
-]);
-
 const SELF_INVERSE_PRIMITIVES = new Set([
   'X',
   'Y',
@@ -126,7 +115,7 @@ const semanticErrorLine = (
   message: string,
   lines: NumberedProtocolLine[],
 ): NumberedProtocolLine | undefined => {
-  const quotedSource = message.match(/'([^']+)'/)?.[1];
+  const quotedSource = message.match(/ in '([^']+)'$/)?.[1] ?? message.match(/'([^']+)'/)?.[1];
   if (quotedSource) {
     const exact = lines.find((line) => line.text === quotedSource);
     if (exact) return exact;
@@ -190,36 +179,14 @@ export const analyzeQpuProtocol = (
 
     try {
       const command = parseCommand(line.text);
-      if (ACCEPTED_ONLY_OPERATIONS.has(command.op)) {
+      if (command.reverse && command.op !== 'PHASE' && command.op !== 'S' && command.op !== 'T' && !SELF_INVERSE_PRIMITIVES.has(command.op)) {
         diagnostics.push({
           severity: 'warning',
-          code: 'ACCEPTED_ONLY_OPERATION',
-          message: `${command.op} is accepted but does not currently change the simulated circuit.`,
+          code: 'INACTIVE_INVERSE_MARKER',
+          message: `The dg/inv marker on ${command.op} does not synthesize an inverse operation.`,
           line: line.line,
           source: line.text,
-          suggestion: 'Treat this as compatibility metadata; use implemented gates or process bindings for behavior.',
-        });
-      }
-      if (command.noParameterSubstitution) {
-        diagnostics.push({
-          severity: 'warning',
-          code: 'INACTIVE_PARAMETER_FLAG',
-          message: '-$R is preserved but does not currently change parameter substitution.',
-          line: line.line,
-          source: line.text,
-          suggestion: 'Use explicit parameter and token bindings instead.',
-        });
-      }
-      if (command.reverse && command.op !== 'PHASE' && !SELF_INVERSE_PRIMITIVES.has(command.op)) {
-        diagnostics.push({
-          severity: 'warning',
-          code: 'INACTIVE_REVERSE_PREFIX',
-          message: `The B prefix on ${command.op} does not currently synthesize an inverse operation.`,
-          line: line.line,
-          source: line.text,
-          suggestion: command.op === 'S' || command.op === 'T'
-            ? 'Use BPHASE with the matching positive angle to apply the negative phase.'
-            : 'Remove the B prefix unless only compatibility metadata is intended.',
+          suggestion: 'Remove the dg or inv marker. Only PHASE, S, T, and the self-inverse primitives use it as an inverse.',
         });
       }
       if (command.op === 'RETURNVALS' && command.args.some((arg) => arg.startsWith('-'))) {
@@ -257,7 +224,18 @@ export const analyzeQpuProtocol = (
 
   if (!diagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
     try {
-      compileQpuProtocol(source, librarySources);
+      const compiled = compileQpuProtocol(source, librarySources);
+      compiled.warnings.forEach((warning) => {
+        const match = lines.find((entry) => entry.text === warning.source);
+        diagnostics.push({
+          severity: 'warning',
+          code: warning.code,
+          message: warning.message,
+          line: match?.line,
+          source: warning.source,
+          suggestion: warning.suggestion ?? 'Match an integer cycle suffix to the current cycle.',
+        });
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const line = semanticErrorLine(message, lines);

@@ -67,7 +67,7 @@ import {
 } from './simulator/compiler';
 import { controlsForGateType, getGateDefinition, paletteGateIds } from './simulator/gates/registry';
 import type { OperationTransition, ParticleSnapshot } from './simulator/physics';
-import { CircuitGate, GateType, MeasurementMap, ParticleStartState } from './simulator/types';
+import { CircuitGate, GateType, MeasurementMap, ParticleStartState, StateCheckpoint } from './simulator/types';
 import { Complex } from './simulator/complex';
 import './styles.css';
 
@@ -121,6 +121,7 @@ const newGate = (
   overrideControls?: number[],
   swapPartner?: number,
   phase = Math.PI / 2,
+  inverse = false,
 ): CircuitGate | null => {
   const placement = controlsForGateType(type, target, qubitCount, swapPartner);
   if (!placement) return null;
@@ -135,7 +136,8 @@ const newGate = (
     step,
     targets,
     controls,
-    phase: definition?.supportsPhase ? phase : undefined,
+    phase: definition?.supportsPhase ? (inverse ? -phase : phase) : undefined,
+    inverse: inverse && definition?.supportsReverse ? true : undefined,
     customGateId: definition?.category === 'custom' ? type : undefined,
   };
 };
@@ -179,6 +181,7 @@ function App() {
   const [playing, setPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
   const [selectedGate, setSelectedGate] = useState<GateType | null>('H');
+  const [inverseMode, setInverseMode] = useState(false);
   const [targetQubit, setTargetQubit] = useState(0);
   const [controlQubit, setControlQubit] = useState(1);
   const [secondControlQubit, setSecondControlQubit] = useState(2);
@@ -199,6 +202,7 @@ function App() {
   // The workbench docs follow the canvas while stepping and return to the selectors on any selector change.
   const [docFocus, setDocFocus] = useState<'selection' | 'circuit'>('selection');
   const [preStep, setPreStep] = useState<{ cursor: number; state: Complex[]; qubitCount: number } | null>(null);
+  const checkpointsRef = useRef<Record<string, StateCheckpoint>>({});
   const [particleSnapshots, setParticleSnapshots] = useState<ParticleSnapshot[]>([]);
   const [particleTransitions, setParticleTransitions] = useState<OperationTransition[]>([]);
   // Palette refresh bumps when custom gates register so GateBlock picks up new definitions.
@@ -363,6 +367,7 @@ function App() {
     const activeParamIndices = activeControllable.length
       ? activeControllable.map((param) => param.qubitIndex)
       : undefined;
+    checkpointsRef.current = {};
     setState(createInitialState(nextSimulationQubitCount, nextStartStates, activeParamIndices));
     setRuntimeQubitCount(nextSimulationQubitCount);
     setMeasurements({});
@@ -385,7 +390,7 @@ function App() {
     const swapPartner = getGateDefinition(type)?.controlKind === 'swap'
       ? (secondControlQubit === target ? chooseDistinctQubit([target]) : secondControlQubit)
       : undefined;
-    const gate = newGate(type, step, target, simulationQubitCount, controls, swapPartner, phaseRadians);
+    const gate = newGate(type, step, target, simulationQubitCount, controls, swapPartner, phaseRadians, inverseMode);
     if (!gate) {
       setLog((current) => [...current, `${type} requires more qubits than are available in this circuit.`]);
       return;
@@ -413,12 +418,13 @@ function App() {
   // Play Sequence walks the same step path on a timer; Run all skips animation.
   const run = () => {
     setPlaying(false);
+    checkpointsRef.current = {};
     const result = runCircuit(
       simulationQubitCount,
       orderedGates,
       startStates,
       paramQubitIndices.length ? paramQubitIndices : undefined,
-      { librarySources: getCatalogLibrarySources(), trackParticles: true },
+      { librarySources: getCatalogLibrarySources(), trackParticles: true, checkpoints: checkpointsRef.current },
     );
     setState(result.state);
     setRuntimeQubitCount(resolveStateQubitCount(result.state, simulationQubitCount));
@@ -439,6 +445,7 @@ function App() {
     const { result, qubitCount: nextQubitCount } = stepCircuitGate(state, workingQubitCount, gate, measurements, {
       librarySources: getCatalogLibrarySources(),
       trackParticles: true,
+      checkpoints: checkpointsRef.current,
     });
     setRuntimeQubitCount(nextQubitCount);
     setState(result.state);
@@ -523,6 +530,7 @@ function App() {
     setStartStates(defaultStartStates);
     setGates([]);
     setSelectedGate('H');
+    setInverseMode(false);
     setTargetQubit(0);
     setControlQubit(1);
     setSecondControlQubit(2);
@@ -1030,7 +1038,7 @@ function App() {
               <p className="eyebrow">Gate palette</p>
               <h2 id="palette-title">Pick up a block</h2>
             </div>
-            <GatePalette onSelectGate={selectGate} selectedGate={selectedGate} />
+            <GatePalette inverse={inverseMode} onSelectGate={selectGate} onToggleInverse={() => setInverseMode((on) => !on)} selectedGate={selectedGate} />
           </section>
 
           <CustomGatePanel

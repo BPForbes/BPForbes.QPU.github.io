@@ -44,10 +44,11 @@ RUNCHILD, CALL & \implemented & Expand a catalog/library child process.\\
 RETURNVALS, ACCEPTVALS & \implemented & Bind child and process outputs.\\
 MAIN-PROCESS, INCREASECYCLE & \implemented & Mark a process and flush cycle workspace.\\
 DECLARECHILD & \implemented & Bind a catalog child for later RUNCHILD/CALL.\\
-FREE, DELETETOKEN & \acceptedonly & Lifetime hints; currently logged.\\
-JOIN, SPLIT & \acceptedonly & Register-memory compatibility syntax.\\
-COMPILEPROCESS, MASTERVAL & \acceptedonly & Process-control compatibility syntax.\\
-\code{SAVE_STATE}, \code{LOAD_STATE} & \acceptedonly & Checkpoint compatibility syntax.\\
+FREE, DELETETOKEN & \implemented & End a name. Reuse its wire only from a known $\ket0$.\\
+JOIN, SPLIT & \implemented & Name an ordered register and a dimension-sized part of it.\\
+COMPILEPROCESS & \implemented & Verify a child process without inlining its gates.\\
+MASTERVAL & \implemented & Distinguished return. Does not add a truth-table column.\\
+\code{SAVE_STATE}, \code{LOAD_STATE} & \implemented & Simulator checkpoints of the state vector and measurements.\\
 \bottomrule
 \end{longtable}
 

@@ -1,9 +1,10 @@
 // Circuit execution orchestration: initial state, per-gate application via the gate registry, and full runs.
 import { Complex, magnitudeSquared, ONE, ZERO } from './complex';
 import { applyGate as applyRegisteredGate } from './gates/registry';
-import { applyStartState, hasBit, measureQubit, padStateVector } from './gates/operations';
+import { applySingleQubitGate, applyStartState, hasBit, measureQubit, padStateVector } from './gates/operations';
+import { phaseMatrix } from './gates/matrices';
 import { buildOperationTransition, snapshotAllParticles } from './physics/particleTracking';
-import { CircuitGate, ExecutionResult, MeasurementMap, OperationTransition, ParticleStartState } from './types';
+import { CircuitGate, ExecutionResult, MeasurementMap, OperationTransition, ParticleStartState, StateCheckpoint } from './types';
 
 export {
   applySingleQubitGate,
@@ -93,19 +94,30 @@ const ensureStateWidth = (state: Complex[], qubitCount: number, gate: CircuitGat
 export type ApplyGateOptions = {
   librarySources?: Record<string, string>;
   trackParticles?: boolean;
+  checkpoints?: Record<string, StateCheckpoint>;
 };
 
 // Legacy call sites pass a plain librarySources map; newer paths pass an options object with trackParticles.
 const isExecutionOptions = (
   input: Record<string, string> | ApplyGateOptions | RunCircuitOptions,
 ): boolean => {
-  const candidate = input as { trackParticles?: unknown; librarySources?: unknown };
+  const candidate = input as {
+    trackParticles?: unknown;
+    librarySources?: unknown;
+    checkpoints?: unknown;
+  };
   return typeof candidate.trackParticles === 'boolean'
     || (
       candidate.librarySources !== undefined
       && candidate.librarySources !== null
       && typeof candidate.librarySources === 'object'
       && !Array.isArray(candidate.librarySources)
+    )
+    || (
+      candidate.checkpoints !== undefined
+      && candidate.checkpoints !== null
+      && typeof candidate.checkpoints === 'object'
+      && !Array.isArray(candidate.checkpoints)
     );
 };
 
@@ -118,6 +130,64 @@ const normalizeApplyGateOptions = (
   return { librarySources: input as Record<string, string>, trackParticles: false };
 };
 
+const checkpointStore = (options: ApplyGateOptions) => {
+  if (!options.checkpoints) options.checkpoints = {};
+  return options.checkpoints;
+};
+
+// CYCLE, SAVE_STATE, and LOAD_STATE are simulator markers, not registry matrices.
+const applyMarkerGate = (
+  state: Complex[],
+  gate: CircuitGate,
+  measurements: MeasurementMap,
+  checkpoints: Record<string, StateCheckpoint>,
+): ExecutionResult | undefined => {
+  if (gate.type === 'CYCLE') {
+    return {
+      state,
+      measurements,
+      log: [`Cycle ${gate.cycle ?? 0} started.`],
+      checkpoints,
+    };
+  }
+  if (gate.type !== 'SAVE_STATE' && gate.type !== 'LOAD_STATE') return undefined;
+  const name = gate.checkpoint ?? 'checkpoint';
+  if (gate.type === 'SAVE_STATE') {
+    checkpoints[name] = {
+      state: state.map((amplitude) => ({ ...amplitude })),
+      measurements: { ...measurements },
+    };
+    return { state, measurements, log: [`Saved checkpoint ${name}.`], checkpoints };
+  }
+  const saved = checkpoints[name];
+  if (!saved) throw new Error(`Unknown checkpoint '${name}'`);
+  return {
+    state: saved.state.map((amplitude) => ({ ...amplitude })),
+    measurements: { ...saved.measurements },
+    log: [`Loaded checkpoint ${name}.`],
+    checkpoints,
+  };
+};
+
+const applyInverseOrRegistered = (
+  state: Complex[],
+  qubitCount: number,
+  gate: CircuitGate,
+  measurements: MeasurementMap,
+  librarySources: Record<string, string>,
+): ExecutionResult => {
+  if (gate.inverse && (gate.type === 'S' || gate.type === 'T')) {
+    const angle = gate.type === 'S' ? -Math.PI / 2 : -Math.PI / 4;
+    const target = gate.targets[0];
+    return {
+      state: applySingleQubitGate(state, qubitCount, target, phaseMatrix(angle)),
+      measurements,
+      log: [`${gate.type}† applied phase ${angle.toFixed(3)} on q${target}.`],
+    };
+  }
+  return applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
+};
+
 // Gate application pads the state vector on demand because compiled child processes may introduce workspace qubits.
 export const applyGate = (
   state: Complex[],
@@ -128,16 +198,16 @@ export const applyGate = (
 ): ExecutionResult => {
   const options = normalizeApplyGateOptions(librarySourcesOrOptions);
   const librarySources = options.librarySources ?? {};
+  const marker = applyMarkerGate(state, gate, measurements, checkpointStore(options));
+  if (marker && !options.trackParticles) return marker;
 
-  if (!options.trackParticles) {
-    const result = applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
-    return result;
-  }
-
-  // Particle tracking snapshots before/after one gate so the Bloch view can animate a single transition.
   const beforeState = state;
   const beforeMeasurements = measurements;
-  const result = applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
+  const result = marker ?? applyInverseOrRegistered(state, qubitCount, gate, measurements, librarySources);
+
+  if (!options.trackParticles) return result;
+
+  // Particle tracking snapshots before/after one gate so the Bloch view can animate a single transition.
   const effectiveQubitCount = resolveStateQubitCount(result.state, qubitCount);
   const particles = snapshotAllParticles(result.state, effectiveQubitCount, result.measurements);
   const transition = buildOperationTransition(
@@ -169,6 +239,7 @@ export const stepCircuitGate = (
 export type RunCircuitOptions = {
   librarySources?: Record<string, string>;
   trackParticles?: boolean;
+  checkpoints?: Record<string, StateCheckpoint>;
 };
 
 const normalizeRunCircuitOptions = (
@@ -190,6 +261,7 @@ export const runCircuit = (
 ): ExecutionResult => {
   const options = normalizeRunCircuitOptions(librarySourcesOrOptions);
   const librarySources = options.librarySources ?? {};
+  const checkpoints = options.checkpoints ?? {};
   const initSummary = Array.isArray(paramQubitIndices)
     ? paramQubitIndices.map((qubit) => startStates[qubit] ?? '0p').join(' ') || '(no mapped params)'
     : Array.from({ length: qubitCount }, (_, index) => startStates[index] ?? '0p').join(' ');
@@ -208,6 +280,7 @@ export const runCircuit = (
         const next = applyGate(workingState, workingQubitCount, gate, result.measurements, {
           librarySources,
           trackParticles: options.trackParticles,
+          checkpoints,
         });
         workingState = next.state;
         const vectorWidth = Math.round(Math.log2(workingState.length));
@@ -220,6 +293,7 @@ export const runCircuit = (
           log: [...result.log, ...next.log],
           particles: next.particles ?? result.particles,
           transitions: [...(result.transitions ?? []), ...(next.transitions ?? [])],
+          checkpoints,
         };
       },
       {

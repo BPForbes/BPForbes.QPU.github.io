@@ -117,9 +117,9 @@ T^2=S,\qquad T^4=Z.
 \]
 T is an eighth-turn around z. Together with gates such as H and CNOT, it is an
 important non-Clifford resource for expressing general quantum computations.
-Its inverse is $T^\dagger=P(-\pi/4)$; the current \code{BT} spelling does not
-synthesize that inverse, so use \code{BPHASE=pi/4} when the negative phase is
-required.
+Its inverse is $T^\dagger=P(-\pi/4)$. \code{Tdg} and \code{Tinv} lower to that
+gate, and \code{Sdg} and \code{Sinv} lower to $S^\dagger=P(-\pi/2)$.
+\code{PHASEdg=pi/4} is the same negative phase.
 \begin{lstlisting}
 T -I Q -O Q
 \end{lstlisting}
@@ -150,7 +150,8 @@ PHASE=45/2d -I Q -O Q      # rational degrees
 PHASE=pi -I Q -O Q
 PHASE=-11pi/6 -I Q -O Q
 PHASE=2*pi/3 -I Q -O Q
-BPHASE=pi/4 -I Q -O Q      # P(-pi/4)
+PHASEdg=pi/4 -I Q -O Q    # P(-pi/4)
+invPHASE=pi/2 -I Q -O Q    # P(-pi/2)
 \end{lstlisting}
 Accepted numeric atoms include signed integers, decimals, leading-dot decimals,
 and one optional rational denominator. Pi notation accepts an optional sign,
@@ -163,20 +164,34 @@ denominator. A zero denominator and malformed angle raise an error.
 1 & 1 & $e^{i\theta}\ket1$\\\bottomrule\end{tabular}
 \end{center}
 
-\subsection{Backward-prefix syntax}
+\subsection{Dagger and inverse syntax}
 
-The QPU language recognizes a leading \code{B} before a supported primitive gate name,
-for example \code{BX}, \code{BH}, \code{BCNOT}, or \code{BSWAP}, and sets
-\code{reverse=true}. (Compiler-internal \code{RESET} remains unavailable in
-source.) Only \code{BPHASE=angle} currently changes emitted behavior: the
-compiler negates the phase angle. For every other gate the flag is metadata
-only. Emitting the ordinary gate still gives the mathematical inverse for these
-self-inverse gates:
+A primitive gate accepts \code{dg} (dagger) or \code{inv} (inverse), written
+after the opcode or before it. Both spellings set \code{reverse=true}.
+\begin{lstlisting}
+Xdg -I Q -O Q
+invH -I Q -O Q
+CNOTdg -I A -O T
+dgSWAP -I A B -O A B
+Sdg -I Q -O Q              # P(-pi/2)
+Tinv -I Q -O Q             # P(-pi/4)
+PHASEdg=pi/4 -I Q -O Q     # P(-pi/4)
+\end{lstlisting}
+\code{Sdg}, \code{Sinv}, \code{dgS}, and \code{invS} synthesize $S^\dagger$.
+\code{Tdg}, \code{Tinv}, \code{dgT}, and \code{invT} synthesize $T^\dagger$.
+\code{PHASEdg=angle}, \code{PHASEinv=angle}, \code{dgPHASE=angle}, and
+\code{invPHASE=angle} negate the angle. For these self-inverse gates the
+marker emits the ordinary gate, which is already its own inverse:
 \[
 X,\ Y,\ Z,\ H,\ \mathrm{CNOT},\ \mathrm{CCNOT},\
 \mathrm{CZ},\ \mathrm{CY},\ \mathrm{SWAP}.
 \]
-In contrast, \code{BS} and \code{BT} do not synthesize $S^\dagger$ or
-$T^\dagger$. Do not rely on B-prefixed forms for inverse execution unless the
-gate is self-inverse or is \code{BPHASE}.
+On the canvas the dagger prints $\dagger$ and uses a blue outline. While that
+step is active the outline is purple. A forward gate uses a red outline only
+while its step is active. The palette \textbf{Inverse} toggle drops the dagger
+instead of the forward gate.
+
+A \code{dg} or \code{inv} marker on a derived gate such as \code{ANDdg} is an
+unknown opcode. \code{MEASUREdg} parses and warns, because measurement has no
+inverse. Compiler-internal \code{RESET} remains unavailable in source.
 

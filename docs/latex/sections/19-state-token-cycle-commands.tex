@@ -37,26 +37,24 @@ SET Sum 0p
 SET Carry 0p
 \end{lstlisting}
 
-\subsection{\code{DELETETOKEN} --- token lifetime marker (\acceptedonly)}
+\subsection{\code{DELETETOKEN} --- end a token name (\implemented)}
 
 \begin{lstlisting}
 DELETETOKEN -I Workspace
 \end{lstlisting}
-This says that the named token is no longer needed by the protocol. The current
-compiler records the instruction but does not remove, reset, or reuse its wire.
-It is unsafe to assume that deletion destroys sensitive state or makes a qubit
-available. Unused symbolic holes may disappear during final layout compaction,
-which is a separate implementation optimization.
+The named token leaves scope. A later use is a compile error. The wire is
+returned to the allocator only when it is already known to be $\ket0$, which
+is the state after \code{SET wire 0p} and before any gate targets it. Deletion
+does not emit \code{RESET} and does not erase an unknown or entangled state.
 
-\subsection{\code{FREE} --- releasable-memory marker (\acceptedonly)}
+\subsection{\code{FREE} --- same lifetime rule (\implemented)}
 
 \begin{lstlisting}
 FREE -I ScratchA ScratchB
 \end{lstlisting}
-FREE marks one or more input references as releasable. Like DELETETOKEN, it is
-currently a compatibility/lifetime hint: no physical reset, deallocation, or
-wire reuse occurs. Use SET with \code{0p} when the intended behavior is actual
-zero preparation for subsequent computation.
+FREE uses the same rule as DELETETOKEN. Use \code{SET wire 0p} when the
+intended behavior is zero preparation. A wire that is not known $\ket0$ keeps
+its qubit index, and only the name dies.
 
 \subsection{\code{INCREASECYCLE} --- cycle boundary (\implemented)}
 
@@ -69,35 +67,31 @@ operations. Cycle suffixes on tokens do not create separate visual wires.
 
 Cycles organize protocol stages. They are not wall-clock timing guarantees and
 do not cause gates to execute concurrently. The final circuit is still an
-ordered gate sequence. Their practical implemented effect today is the
-workspace-zero boundary.
+ordered gate sequence. Each emitted gate records the timeline cycle, and the
+canvas draws a dashed slice at \code{INCREASECYCLE}. An integer suffix such as
+\code{Q:1} must match this process's cycle. A child process starts again at
+cycle 0, so its own \code{:0} labels stay valid after the parent advances.
+Non-numeric suffixes stay labels. The suffix does not allocate another wire.
 
-\subsection{\code{JOIN} --- composite-register marker (\acceptedonly)}
+\subsection{\code{JOIN} --- name an ordered register (\implemented)}
 
 \begin{lstlisting}
 JOIN -I A B -O AB
 \end{lstlisting}
-JOIN expresses the intent to view smaller registers as one composite register.
-For independent inputs, the mathematical construction is
-\[
-\ket{AB}=\ket A\otimes\ket B.
-\]
-Tensor product increases dimension multiplicatively: two one-qubit vectors of
-length two produce one two-qubit vector of length four. The current compiler
-logs JOIN but emits no tensor-product allocation, alias, or visible gate.
-Because JOIN is not a gate instruction, its input/output count is not currently
-validated.
+JOIN gives the ordered wires A then B the name AB. It is not a gate and
+allocates no amplitudes: the simulator state is already one vector in
+$(\mathbb{C}^2)^{\otimes n}$. At least two inputs and exactly one output are
+required. A one-qubit gate on a multi-wire register is an error; name one wire
+or \code{SPLIT} it first.
 
-\subsection{\code{SPLIT} --- component-register marker (\acceptedonly)}
+\subsection{\code{SPLIT} --- name a subsystem (\implemented)}
 
 \begin{lstlisting}
 SPLIT AB A 2
 \end{lstlisting}
-SPLIT expresses the reverse organizational intent: identify a component of a
-larger register. A general entangled state cannot be factored into independent
-pure states, so ``splitting'' is not equivalent to slicing an ordinary array.
-For example, $(\ket{00}+\ket{11})/\sqrt2$ has no separate pure state for A.
-The current compiler logs the positional arguments but performs no extraction,
-measurement, or aliasing. Code requiring an implemented result should instead
-operate directly on named wires and RETURNVALS.
+The third argument is a power-of-two dimension, the same convention as
+\code{_dim}. \code{2} peels off one qubit from the front of AB and names it A.
+The remaining wires stay on AB. SPLIT does not copy amplitudes. An entangled
+register still has no separate pure state for A; the new name is a view of
+those wires inside the global vector.
 

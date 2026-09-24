@@ -70,6 +70,9 @@ RETURNVALS Carry Sum
     \draw[thick] (0,\y)--(8,\y);
     \node[left] at (0,\y) {\name};
   }
+  \draw[double distance=1.4pt,thick] (0,-2.45)--(8,-2.45);
+  \node[left] at (0,-2.45) {c};
+  \node[left,font=\scriptsize] at (0.35,-2.15) {/4};
   \fill[QpuNavy] (2,1.5) circle (.09);
   \fill[QpuNavy] (2,.5) circle (.09);
   \draw[thick] (2,1.5)--(2,-.5);
@@ -78,10 +81,12 @@ RETURNVALS Carry Sum
   \fill[QpuNavy] (4.2,.5) circle (.09);
   \draw[thick] (4.2,1.5)--(4.2,-1.5);
   \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.72cm,minimum height=.5cm,font=\scriptsize\bfseries] at (4.2,-1.5) {AND};
-  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.6cm,minimum height=.5cm,font=\bfseries] at (6.2,-.5) {M};
-  \node[draw=QpuBlue,fill=QpuBlue!8,minimum width=.6cm,minimum height=.5cm,font=\bfseries] at (6.2,-1.5) {M};
-  \draw[-{Latex[length=2mm]},QpuRed,thick] (6.55,-.5)--(7.8,-.5);
-  \draw[-{Latex[length=2mm]},QpuRed,thick] (6.55,-1.5)--(7.8,-1.5);
+  \QpuMeter{6.2}{-.5}
+  \QpuMeter{7.15}{-1.5}
+  \draw[double distance=1.4pt,thick] (6.2,-.5)--(6.2,-2.45);
+  \draw[double distance=1.4pt,thick] (7.15,-1.5)--(7.15,-2.45);
+  \node[right,font=\scriptsize] at (6.2,-2.15) {2};
+  \node[right,font=\scriptsize] at (7.15,-2.15) {3};
 \end{tikzpicture}
 \end{center}
 

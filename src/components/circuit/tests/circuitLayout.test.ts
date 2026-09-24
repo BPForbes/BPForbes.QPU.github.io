@@ -3,6 +3,7 @@ import type { CircuitGate } from '../../../simulator/types';
 import {
   applyGateToWireKind,
   circuitColumnCount,
+  classicalWireQubits,
   connectorEndInset,
   gateSpanQubits,
   glyphKindFor,
@@ -63,6 +64,15 @@ describe('circuit layout helpers', () => {
 
     expect(glyphKindFor(gate({ type: 'CNOT', targets: [1], controls: [0] }), 1)).toBe('plus');
     expect(glyphKindFor(gate({ type: 'CCNOT', targets: [2], controls: [0, 1] }), 2)).toBe('plus');
+  });
+
+  it('adds one classical wire per measured qubit and none when nothing is measured', () => {
+    expect(classicalWireQubits(3, [gate({ type: 'H', targets: [0] })])).toEqual([]);
+    expect(classicalWireQubits(3, [
+      gate({ id: 'm2', type: 'MEASURE', step: 1, targets: [2] }),
+      gate({ id: 'm0', type: 'MEASURE', step: 2, targets: [0] }),
+    ])).toEqual([0, 2]);
+    expect(classicalWireQubits(2, [], { 1: 0 })).toEqual([1]);
   });
 
   it('draws a connector only when a gate spans more than one wire', () => {

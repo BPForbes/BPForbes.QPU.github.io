@@ -7,7 +7,7 @@ ordinary quantum gate.
 
 \subsection{Reversible gates versus RESET}
 
-Every gate in the palette except \textbf{M} is \emph{reversible}: its effect
+Every gate in the palette except the meter is \emph{reversible}: its effect
 can always be undone. X, Y, Z, H, CNOT, CCNOT, CZ, CY, SWAP, NOT, AND, NAND,
 OR, and XOR undo themselves when applied a second time. S, T, and PHASE are
 undone by the same phase with the opposite sign. Mathematically each is a
@@ -33,7 +33,7 @@ Unitary? & Yes & No & No\\
 Can be undone? & Yes, by the inverse gate & No & No\\
 Result depends on chance? & No & Yes & No\\
 Written in source? & Yes & Yes & No --- write \code{SET wire 0p}\\
-Shown on canvas? & Yes & Yes, as the meter \textbf{M} & No (hidden)\\
+Shown on canvas? & Yes. Inverse copies add $\dagger$, a blue outline, and purple when active. & Yes, as the meter on the qubit, with a double stroke down to \textbf{c} & No (hidden)\\
 \bottomrule
 \end{tabularx}
 \end{center}

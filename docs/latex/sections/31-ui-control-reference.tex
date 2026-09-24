@@ -101,6 +101,13 @@ AND, NAND, OR, XOR & same name & & \\
 \textbf{Preconfigured} holds the built-in gates. \textbf{Custom gates} holds
 gates you registered from a process; it is empty until you register one.
 
+\textbf{Inverse} toggles how the next drop is drawn and run. Off places the
+forward gate. On places its dagger: the canvas prints $\dagger$ on the block.
+S, T, and PHASE then use the negated angle. X, Y, Z, H, CNOT, CCNOT, CZ, CY,
+and SWAP are their own inverses, so the dagger does not change the matrix.
+MEASURE and the derived gates do not take the toggle. The same spelling in
+source is \code{dg} or \code{inv}, as in \code{Hdg} or \code{invH}.
+
 \subsection{Gate engine: ``Register custom gates from QPU processes''}
 \hypertarget{ui-custom-gates}{}
 
@@ -121,17 +128,27 @@ outputs map onto wires.
 \subsection{Circuit canvas: ``Standard circuit diagram''}
 \hypertarget{ui-canvas}{}
 
-Each row is one wire, labelled \textbf{q0}, \textbf{q1}, \ldots{} with its
-start state. Time runs left to right: every gate occupies its own column.
+Each qubit row is one wire, labelled \textbf{q0}, \textbf{q1}, \ldots{} with
+its start state. Time runs left to right: every gate occupies its own column.
+When the circuit measures, one classical lane \textbf{c} sits underneath.
+It is a clock for those readings, not a wire the particle moves onto. A slash
+and a number give its width, which is the number of qubit wires. A circuit
+with no measurement has no \textbf{c} lane.
 \begin{itemize}
-  \item \textbf{Placing a gate:} drop a block on a row, or select a block and
-  click the row. The row you drop on becomes the \emph{target}. Controls are
-  chosen automatically from the lowest other rows; use the workbench to choose
-  them yourself.
-  \item \textbf{Removing a gate:} click the gate symbol on its target wire.
-  \item \textbf{Line styles:} a double line is a classical bit (a
-  \code{0p}/\code{1p} start or a measured wire); a single line may hold a
-  superposition. A red outline marks the step that just ran.
+  \item \textbf{Placing a gate:} drop a block on a qubit row, or select a
+  block and click the row. The row you drop on becomes the \emph{target}.
+  Controls are chosen automatically from the lowest other qubit rows; use the
+  workbench to choose them yourself. The \textbf{c} lane cannot be targeted.
+  \item \textbf{Removing a gate:} click the gate symbol. Clicking the meter
+  removes that measurement step. Later gates on the same qubit stay.
+  \item \textbf{Line styles:} every qubit wire is a single line. \textbf{c}
+  is the only double line. A double stroke, not an arrow, drops from the
+  meter to \textbf{c} at that column. The number beside the stroke is the
+  bit whose reading happened at that time.
+  \item \textbf{Outlines:} the step that just ran is red on a forward gate.
+  An inverse gate is blue. The active inverse step is purple.
+  \item \textbf{Dagger:} an inverse gate prints $\dagger$ on its symbol
+  (\code{H} becomes H$\dagger$). The forward gate keeps the plain symbol.
 \end{itemize}
 
 \subsection{Interactive workbench: ``Add particles, gates, and measurements''}
@@ -155,7 +172,7 @@ Add particle / Remove particle & Adds or removes the last wire (up to six on
 the canvas). After a compiled protocol, adds or removes a \code{PARAMS}
 input instead; compile again afterwards.\\
 Measure target & Measures only the selected target wire now, without adding
-an \textbf{M} block to the circuit.\\
+a meter to the circuit.\\
 \emph{name} start & One selector per input wire: \code{0p} ($\ket0$),
 \code{1p} ($\ket1$), or \code{sp} ($\ket+$). Changing it resets the run.\\
 }

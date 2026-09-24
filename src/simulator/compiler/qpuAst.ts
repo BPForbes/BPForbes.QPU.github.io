@@ -31,6 +31,13 @@ export type ReturnValue = {
   qubitIndex: number;
 };
 
+export type CompileWarning = {
+  code: string;
+  message: string;
+  source?: string;
+  suggestion?: string;
+};
+
 // Compile output separates physical simulator width from user-facing PARAMS/RETURNVALS mappings.
 export type CompileResult = {
   gates: CircuitGate[];
@@ -38,6 +45,7 @@ export type CompileResult = {
   logicalQubitCount: number;
   parsed: ParsedCommand[];
   log: string[];
+  warnings: CompileWarning[];
   tokenMap: Record<string, number>;
   processParams: ProcessParam[];
   returnValues: ReturnValue[];
@@ -124,6 +132,27 @@ const parseRotationParameter = (value: string, gate: string) => {
 const stripCycle = (token: string) => token.replace(/^\$/, '').split(':')[0];
 const isConstant = (token: string) => /^(0p|1p|sp)(?:_dim\d+)?$/i.test(token.replace(/^\$/, ''));
 
+// _dimN is a Hilbert-space dimension. Only powers of two fit this qubit register.
+const isPowerOfTwoDimension = (dimension: number) =>
+  Number.isInteger(dimension) && dimension >= 2 && (dimension & (dimension - 1)) === 0;
+
+const preparedConstant = (token: string) => {
+  const match = token.replace(/^\$/, '').match(/^(0p|1p|sp)(?:_dim(\d+))?$/i);
+  if (!match) return undefined;
+  return {
+    kind: match[1].toLowerCase() as '0p' | '1p' | 'sp',
+    dimension: match[2] === undefined ? 2 : Number(match[2]),
+  };
+};
+
+const integerCycleSuffix = (token: string) => {
+  const body = token.replace(/^\$/, '');
+  const colon = body.indexOf(':');
+  if (colon === -1) return undefined;
+  const suffix = body.slice(colon + 1);
+  return /^\d+$/.test(suffix) ? Number(suffix) : undefined;
+};
+
 // Continuation-aware line reading keeps multi-line gate commands parseable without changing the protocol format.
 export const readProtocolLines = (source: string): string[] => {
   const joined: string[] = [];
@@ -180,6 +209,27 @@ export const parseParameters = (line: string): ProtocolProcess['params'] => {
 };
 
 // Wrong -I/-O spans would mis-wire controls onto outputs, so each flag list ends at the next flag token.
+const INVERSE_MARKERS = ['DG', 'INV'] as const;
+
+const stripInverseMarker = (normalized: string): { opcode: string; reverse: boolean } => {
+  const equalsAt = normalized.indexOf('=');
+  const head = equalsAt === -1 ? normalized : normalized.slice(0, equalsAt);
+  const tail = equalsAt === -1 ? '' : normalized.slice(equalsAt);
+
+  for (const marker of INVERSE_MARKERS) {
+    if (head.length > marker.length && head.endsWith(marker)) {
+      const candidate = head.slice(0, -marker.length);
+      if (primitiveGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
+    }
+    if (head.length > marker.length && head.startsWith(marker)) {
+      const candidate = head.slice(marker.length);
+      if (primitiveGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
+    }
+  }
+
+  return { opcode: normalized, reverse: false };
+};
+
 const splitFlagArgs = (tokens: string[], flag: '-I' | '-O') => {
   const upper = tokens.map((token) => token.toUpperCase());
   const start = upper.indexOf(flag);
@@ -196,23 +246,13 @@ export const parseCommand = (line: string): ParsedCommand => {
   const rawOp = tokens[0];
   const upperTokens = tokens.map((token) => token.toUpperCase());
   const noParameterSubstitution = upperTokens.includes('-$R');
-  let reverse = false;
-  let normalized = rawOp.toUpperCase();
   let phase: number | undefined;
 
-  // Backward gate spellings prefix primitives with B, while PHASE embeds its rotation in the opcode token.
-  if (normalized.startsWith('B')) {
-    const candidate = normalized.slice(1).split('=', 1)[0];
-    if (primitiveGates.has(candidate)) {
-      reverse = true;
-      normalized = normalized.slice(1);
-    }
-  }
-
-  if (normalized.startsWith('BPHASE=')) {
-    reverse = true;
-    normalized = normalized.slice(1);
-  }
+  // dg (dagger) and inv (inverse) mark a primitive, either as a suffix (Sdg) or a prefix (dgS).
+  // PHASE keeps its angle on the opcode token: PHASEdg=pi/4 and dgPHASE=pi/4.
+  const marked = stripInverseMarker(rawOp.toUpperCase());
+  let normalized = marked.opcode;
+  const reverse = marked.reverse;
 
   if (normalized.includes('=')) {
     const [gate, value] = normalized.split('=', 2);
@@ -257,20 +297,52 @@ type Frame = {
   aliases: Map<string, string>;
   params: Map<string, string>;
   declaredChildren: Map<string, ProtocolProcess>;
+  released: Set<string>;
+  masterTokens: Array<{ name: string; line: string }>;
+  returnBases: string[];
 };
 
 type CompilerState = {
   gates: CircuitGate[];
   parsed: ParsedCommand[];
   log: string[];
+  warnings: CompileWarning[];
+  warningKeys: Set<string>;
   tokenToQubit: Map<string, number>;
+  registers: Map<string, number[]>;
   resetQubits: Set<number>;
   pendingCycleZeros: Set<number>;
+  knownZero: Set<number>;
+  reusableQubits: number[];
+  nextQubit: number;
   lastReturns: string[];
-  currentCycle: number;
+  frameCycle: number;
+  timelineCycle: number;
   processRuns: number;
   rootScope: string;
+  verifying: Set<string>;
 };
+
+const createCompilerState = (): CompilerState => ({
+  gates: [],
+  parsed: [],
+  log: [],
+  warnings: [],
+  warningKeys: new Set(),
+  tokenToQubit: new Map(),
+  registers: new Map(),
+  resetQubits: new Set(),
+  pendingCycleZeros: new Set(),
+  knownZero: new Set(),
+  reusableQubits: [],
+  nextQubit: 0,
+  lastReturns: [],
+  frameCycle: 0,
+  timelineCycle: 0,
+  processRuns: 0,
+  rootScope: '',
+  verifying: new Set(),
+});
 
 // Gates shown in the circuit UI; cycle workspace prep is compiler-internal and never rendered.
 export const visibleCircuitGates = (gates: CircuitGate[]) => gates.filter((gate) => gate.type !== 'RESET');
@@ -286,29 +358,51 @@ const processLibraryFromSources = (sources: Record<string, string>) => {
 
 const childWorkspaceKey = (parentFrame: Frame, base: string) => `${parentFrame.scope}/ws/${base}`;
 
+const noteCycleSuffix = (state: CompilerState, token: string, line: string) => {
+  const suffix = integerCycleSuffix(token);
+  if (suffix === undefined || suffix === state.frameCycle) return;
+  const key = `${line}|${stripCycle(token)}|${suffix}|${state.frameCycle}`;
+  if (state.warningKeys.has(key)) return;
+  state.warningKeys.add(key);
+  state.warnings.push({
+    code: 'CYCLE_SUFFIX_MISMATCH',
+    message: `Token ${token} is marked as cycle ${suffix}, but this process is on cycle ${state.frameCycle}.`,
+    source: line,
+    suggestion: 'Use a suffix that matches the cycle, or move the reference next to the matching INCREASECYCLE.',
+  });
+};
+
 // Scoped token names keep child-process registers isolated, except PARAMS, aliases, constants, and numeric workspace wires.
-const scopedName = (frame: Frame, token: string, parentFrame?: Frame) => {
+const scopedName = (
+  state: CompilerState,
+  frame: Frame,
+  token: string,
+  line: string,
+  parentFrame?: Frame,
+  skipParams = false,
+) => {
+  noteCycleSuffix(state, token, line);
   const base = stripCycle(token);
-  if (frame.params.has(base)) return frame.params.get(base)!;
+  if (frame.released.has(base)) {
+    throw new Error(`Token '${base}' was released by FREE or DELETETOKEN in '${line}'`);
+  }
+  if (!skipParams && frame.params.has(base)) return frame.params.get(base)!;
   if (frame.aliases.has(base)) return frame.aliases.get(base)!;
   if (isConstant(base)) return base.toLowerCase();
   if (parentFrame && /^\d+$/.test(base)) return childWorkspaceKey(parentFrame, base);
   return `${frame.scope}/${base}`;
 };
 
-// Symbolic tokens lazily claim the next simulator wire; constants share keyed slots so 0p/1p/sp init once.
-const ensureQubit = (state: CompilerState, canonical: string) => {
-  const key = isConstant(canonical) ? `const/${canonical.toLowerCase()}` : canonical;
-  const existing = state.tokenToQubit.get(key);
-  if (existing !== undefined) return existing;
-  const next = state.tokenToQubit.size;
-  state.tokenToQubit.set(key, next);
-  if (key === 'const/1p') emitGate(state, 'X', [next], [], 'initialize constant 1p');
-  if (key === 'const/sp') emitGate(state, 'H', [next], [], 'initialize superposition sp');
-  return next;
-};
-
-const emitGate = (state: CompilerState, type: GateType, targets: number[], controls: number[], source: string, phase?: number) => {
+const emitGate = (
+  state: CompilerState,
+  type: GateType,
+  targets: number[],
+  controls: number[],
+  source: string,
+  phase?: number,
+  checkpoint?: string,
+  inverse?: boolean,
+) => {
   state.gates.push({
     id: `${type}-${state.gates.length}-${targets.join('-')}`,
     type,
@@ -317,13 +411,41 @@ const emitGate = (state: CompilerState, type: GateType, targets: number[], contr
     controls,
     phase,
     source,
+    cycle: state.timelineCycle,
+    checkpoint,
+    inverse: inverse || undefined,
   });
+  if (type === 'RESET') {
+    targets.forEach((qubit) => state.knownZero.add(qubit));
+    return;
+  }
+  if (type === 'LOAD_STATE') {
+    state.knownZero.clear();
+    return;
+  }
+  if (type === 'CYCLE' || type === 'SAVE_STATE') return;
+  targets.forEach((qubit) => state.knownZero.delete(qubit));
+};
+
+// Symbolic tokens lazily claim the next simulator wire; constants share keyed slots so 0p/1p/sp init once.
+const ensureQubit = (state: CompilerState, canonical: string, knownZero = true) => {
+  const key = isConstant(canonical) ? `const/${canonical.toLowerCase()}` : canonical;
+  const existing = state.tokenToQubit.get(key);
+  if (existing !== undefined) return existing;
+  const recycled = !isConstant(canonical) && state.reusableQubits.length > 0;
+  const next = recycled ? state.reusableQubits.pop()! : state.nextQubit++;
+  state.tokenToQubit.set(key, next);
+  if (knownZero) state.knownZero.add(next);
+  if (key === 'const/1p') emitGate(state, 'X', [next], [], 'initialize constant 1p');
+  if (key === 'const/sp') emitGate(state, 'H', [next], [], 'initialize superposition sp');
+  return next;
 };
 
 // Zero initialization is batched until the next real operation so internal workspace RESET gates stay off the rendered canvas.
 const scheduleCycleZero = (state: CompilerState, qubit: number) => {
   state.resetQubits.add(qubit);
   state.pendingCycleZeros.add(qubit);
+  state.knownZero.add(qubit);
 };
 
 const flushCycleZeros = (state: CompilerState, source: string) => {
@@ -333,19 +455,109 @@ const flushCycleZeros = (state: CompilerState, source: string) => {
   emitGate(state, 'RESET', targets, [], source);
 };
 
-const resolveInputQubit = (state: CompilerState, frame: Frame, token: string, parentFrame?: Frame) =>
-  ensureQubit(state, scopedName(frame, token, parentFrame));
+const resolveWires = (
+  state: CompilerState,
+  frame: Frame,
+  token: string,
+  line: string,
+  parentFrame?: Frame,
+  skipParams = false,
+) => {
+  const canonical = scopedName(state, frame, token, line, parentFrame, skipParams);
+  return state.registers.get(canonical) ?? [ensureQubit(state, canonical)];
+};
+
+const resolveInputQubit = (
+  state: CompilerState,
+  frame: Frame,
+  token: string,
+  line: string,
+  parentFrame?: Frame,
+  skipParams = false,
+) => {
+  const canonical = scopedName(state, frame, token, line, parentFrame, skipParams);
+  const register = state.registers.get(canonical);
+  if (register) {
+    if (register.length !== 1) {
+      throw new Error(`Token '${stripCycle(token)}' is a ${register.length}-wire register in '${line}'`);
+    }
+    return register[0];
+  }
+  return ensureQubit(state, canonical);
+};
+
+const exclusivelyOwned = (state: CompilerState, qubit: number, canonical: string) => {
+  const keys = [...state.tokenToQubit.entries()].filter(([, index]) => index === qubit).map(([key]) => key);
+  const inOtherRegister = [...state.registers.entries()]
+    .some(([name, wires]) => name !== canonical && wires.includes(qubit));
+  return !inOtherRegister && keys.length > 0 && keys.every((key) => key === canonical || key.startsWith(`${canonical}[`));
+};
+
+const releaseToken = (
+  state: CompilerState,
+  frame: Frame,
+  token: string,
+  line: string,
+  parentFrame?: Frame,
+) => {
+  const base = stripCycle(token);
+  if (frame.released.has(base)) {
+    throw new Error(`Token '${base}' was released by FREE or DELETETOKEN in '${line}'`);
+  }
+  if (frame.aliases.has(base)) {
+    frame.aliases.delete(base);
+    frame.released.add(base);
+    state.log.push(`Released alias ${base}.`);
+    return;
+  }
+  const canonical = scopedName(state, frame, token, line, parentFrame);
+  frame.released.add(base);
+  const register = state.registers.get(canonical);
+  const wires = register ?? (state.tokenToQubit.has(canonical) ? [state.tokenToQubit.get(canonical)!] : []);
+  if (register) {
+    register.forEach((_, index) => frame.released.add(`${base}[${index}]`));
+  }
+  const reusable = wires.length > 0 && wires.every((qubit) => (
+    state.knownZero.has(qubit) && exclusivelyOwned(state, qubit, canonical)
+  ));
+  if (reusable) {
+    wires.forEach((qubit) => {
+      [...state.tokenToQubit.entries()].forEach(([key, index]) => {
+        if (index === qubit) state.tokenToQubit.delete(key);
+      });
+      state.knownZero.add(qubit);
+      state.reusableQubits.push(qubit);
+    });
+    state.registers.delete(canonical);
+    [...frame.aliases.entries()].forEach(([alias, target]) => {
+      if (target === canonical || target.startsWith(`${canonical}[`)) {
+        frame.aliases.delete(alias);
+        frame.released.add(alias);
+      }
+    });
+  }
+  state.log.push(`Released ${base}${reusable ? ' and returned its |0⟩ wire for reuse' : ''}.`);
+};
 
 const returnRegistersForProcess = (process: ProtocolProcess): string[] => {
+  let returns: string[] | undefined;
+  const masters: string[] = [];
   for (const line of process.lines) {
     try {
       const command = parseCommand(line);
-      if (command.op === 'RETURNVALS') return command.args.map(stripCycle);
+      if (command.op === 'RETURNVALS') returns = command.args.map(stripCycle);
+      if (command.op === 'MASTERVAL') masters.push(...command.args.map(stripCycle));
     } catch {
       // Ignore malformed lines while scanning for the child's return register list.
     }
   }
-  return [];
+  if (!returns) return masters;
+  masters.forEach((name) => {
+    if (!returns!.includes(name)) {
+      throw new Error(`MASTERVAL '${name}' is not listed in RETURNVALS`);
+    }
+  });
+  return returns;
 };
 
 export const getReturnValTokens = (source: string): string[] => returnRegistersForProcess(parseProtocol(source));
@@ -364,7 +576,10 @@ const executeProcess = (
   passedParams: string[] = [],
   parentFrame?: Frame,
   outputBindings: Map<string, string> = new Map(),
+  callSite = '',
+  skipCallParams = false,
 ): string[] => {
+  const enclosingFrameCycle = state.frameCycle;
   const scope = `${process.name}#${state.processRuns}`;
   if (!state.rootScope) state.rootScope = scope;
   state.processRuns += 1;
@@ -374,24 +589,36 @@ const executeProcess = (
     let resolved: string;
     // RUNCHILD -I tokens re-scope through the parent frame; top-level PARAMS keep their declared names.
     if (provided !== undefined && parentFrame) {
-      resolved = scopedName(parentFrame, provided, parentFrame);
+      resolved = scopedName(state, parentFrame, provided, callSite || process.name, parentFrame, skipCallParams);
     } else {
       resolved = param.name;
     }
     params.set(param.name, resolved);
   });
-  const frame: Frame = { process, scope, aliases: new Map(), params, declaredChildren: new Map() };
+  const frame: Frame = {
+    process,
+    scope,
+    aliases: new Map(),
+    params,
+    declaredChildren: new Map(),
+    released: new Set(),
+    masterTokens: [],
+    returnBases: [],
+  };
   outputBindings.forEach((parentToken, childRegister) => {
     frame.aliases.set(childRegister, parentToken);
   });
-  process.params.forEach((param) => ensureQubit(state, params.get(param.name)!));
+  process.params.forEach((param) => ensureQubit(state, params.get(param.name)!, false));
   let returns: string[] = [];
 
   state.log.push(`MAIN-PROCESS ${process.name} compiled in scope ${scope}.`);
+  state.frameCycle = 0;
 
   // Line dispatch is ordered: workspace/cycle ops run before gates so pending RESETs flush at INCREASECYCLE and primitives.
+  try {
   for (const line of process.lines) {
     const command = parseCommand(line);
+    const skipParams = command.noParameterSubstitution;
     state.parsed.push(command);
 
     if (command.op === 'MAIN-PROCESS') {
@@ -401,35 +628,59 @@ const executeProcess = (
     }
 
     if (command.op === 'INCREASECYCLE') {
-      flushCycleZeros(state, `INCREASECYCLE end of cycle ${state.currentCycle}`);
-      state.currentCycle += 1;
-      state.log.push(`Cycle increased to ${state.currentCycle}; workspace registers prepared for the new cycle.`);
+      flushCycleZeros(state, `INCREASECYCLE end of cycle ${state.frameCycle}`);
+      state.frameCycle += 1;
+      state.timelineCycle += 1;
+      emitGate(state, 'CYCLE', [], [], line);
+      state.log.push(`Cycle increased to ${state.frameCycle}; workspace registers prepared for the new cycle.`);
       continue;
     }
 
     if (command.op === 'SET') {
       const [target, value] = command.args;
-      const targetName = scopedName(frame, target, parentFrame);
       const targetBase = stripCycle(target);
       if (!value) throw new Error(`SET requires a value in '${line}'`);
+      const prepared = preparedConstant(value);
+      if (prepared && !isPowerOfTwoDimension(prepared.dimension)) {
+        throw new Error(`Dimension ${prepared.dimension} is not a power of two in '${line}'`);
+      }
+      const targetName = scopedName(state, frame, target, line, parentFrame, skipParams);
       // State-typed PARAM defaults are runtime controls; non-param constants lower to initializer gates during compile.
-      if (isConstant(value)) {
+      if (prepared) {
+        const width = Math.log2(prepared.dimension);
         const declaredParam = frame.process.params.find((param) => param.name === targetBase);
         if (declaredParam?.type === 'state') {
-          ensureQubit(state, targetName);
-          state.log.push(`SET ${targetBase} default ${value} at cycle ${state.currentCycle} (parametric default; runtime start state).`);
+          if (width !== 1) {
+            throw new Error(`SET cannot widen state parameter '${targetBase}' to dimension ${prepared.dimension} in '${line}'`);
+          }
+          ensureQubit(state, targetName, false);
+          state.log.push(`SET ${targetBase} default ${value} at cycle ${state.frameCycle} (parametric default; runtime start state).`);
           continue;
         }
-        const qubit = ensureQubit(state, targetName);
-        const normalizedValue = value.replace(/^\$/, '').toLowerCase();
-        if (normalizedValue.startsWith('0p')) scheduleCycleZero(state, qubit);
-        if (normalizedValue.startsWith('1p')) emitGate(state, 'X', [qubit], [], line);
-        if (normalizedValue.startsWith('sp')) emitGate(state, 'H', [qubit], [], line);
-        state.log.push(`SET ${stripCycle(target)} to ${value} at cycle ${state.currentCycle}.`);
+        if (width === 1) {
+          const qubit = ensureQubit(state, targetName);
+          if (prepared.kind === '0p') scheduleCycleZero(state, qubit);
+          if (prepared.kind === '1p') emitGate(state, 'X', [qubit], [], line);
+          if (prepared.kind === 'sp') emitGate(state, 'H', [qubit], [], line);
+        } else {
+          if (state.registers.has(targetName) || state.tokenToQubit.has(targetName)) {
+            throw new Error(`Register '${targetBase}' already exists in '${line}'`);
+          }
+          // Register order is MSB first. |1⟩ is basis index 1, so only the last wire is flipped.
+          const qubits = Array.from({ length: width }, (_, index) => ensureQubit(state, `${targetName}[${index}]`));
+          state.registers.set(targetName, qubits);
+          if (prepared.kind === '0p') qubits.forEach((qubit) => scheduleCycleZero(state, qubit));
+          if (prepared.kind === '1p') {
+            qubits.slice(0, -1).forEach((qubit) => scheduleCycleZero(state, qubit));
+            emitGate(state, 'X', [qubits[width - 1]], [], line);
+          }
+          if (prepared.kind === 'sp') qubits.forEach((qubit) => emitGate(state, 'H', [qubit], [], line));
+        }
+        state.log.push(`SET ${targetBase} to ${value} at cycle ${state.frameCycle}.`);
       } else {
-        const valueName = scopedName(frame, value, parentFrame);
-        frame.aliases.set(stripCycle(target), valueName);
-        state.log.push(`SET ${stripCycle(target)} as alias of ${stripCycle(value)}.`);
+        const valueName = scopedName(state, frame, value, line, parentFrame, skipParams);
+        frame.aliases.set(targetBase, valueName);
+        state.log.push(`SET ${targetBase} as alias of ${stripCycle(value)}.`);
       }
       continue;
     }
@@ -437,15 +688,18 @@ const executeProcess = (
     if (command.op === 'CREATETOKEN') {
       // CREATETOKEN must claim wires up front so later gate rows resolve stable indices during the same compile pass.
       command.inputs.forEach((token) => {
-        ensureQubit(state, scopedName(frame, token, parentFrame));
+        ensureQubit(state, scopedName(state, frame, token, line, parentFrame, skipParams));
       });
       state.log.push(`CREATETOKEN created ${command.inputs.join(', ')}.`);
       continue;
     }
 
     if (command.op === 'DELETETOKEN' || command.op === 'FREE') {
-      // Lifetime hints are logged for parity; compaction drops unused wires after expansion.
-      state.log.push(`${command.op} acknowledged for ${command.inputs.join(', ')}.`);
+      const names = command.inputs.length > 0
+        ? command.inputs
+        : command.args.filter((arg) => !arg.startsWith('-'));
+      if (names.length === 0) throw new Error(`${command.op} requires a token in '${line}'`);
+      names.forEach((token) => releaseToken(state, frame, token, line, parentFrame));
       continue;
     }
 
@@ -472,7 +726,7 @@ const executeProcess = (
       command.outputs.forEach((output, index) => {
         const childRegister = childReturnRegisters[index];
         if (!childRegister) return;
-        const parentToken = scopedName(frame, stripCycle(output), parentFrame);
+        const parentToken = scopedName(state, frame, stripCycle(output), line, parentFrame, skipParams);
         const qubit = ensureQubit(state, parentToken);
         if (!preparedOutputQubits.has(qubit)) {
           preparedOutputQubits.add(qubit);
@@ -480,8 +734,8 @@ const executeProcess = (
         }
         childOutputBindings.set(childRegister, parentToken);
       });
-      flushCycleZeros(state, `prepare outputs before RUNCHILD ${childName} at cycle ${state.currentCycle}`);
-      const childReturns = executeProcess(child, state, library, command.inputs, frame, childOutputBindings);
+      flushCycleZeros(state, `prepare outputs before RUNCHILD ${childName} at cycle ${state.frameCycle}`);
+      const childReturns = executeProcess(child, state, library, command.inputs, frame, childOutputBindings, line, skipParams);
       command.outputs.forEach((output, index) => {
         const returned = childReturns[index];
         if (returned) frame.aliases.set(stripCycle(output), returned);
@@ -502,78 +756,170 @@ const executeProcess = (
     }
 
     if (command.op === 'RETURNVALS') {
-      returns = command.args.map((token) => scopedName(frame, token, parentFrame));
+      frame.returnBases = command.args.map(stripCycle);
+      returns = frame.returnBases.map((token) => scopedName(state, frame, token, line, parentFrame, skipParams));
       state.log.push(`RETURNVALS ${command.args.join(', ')}.`);
+      continue;
+    }
+
+    if (command.op === 'MASTERVAL') {
+      command.args.forEach((token) => {
+        frame.masterTokens.push({ name: stripCycle(token), line });
+      });
+      state.log.push(`MASTERVAL ${command.args.join(', ')}.`);
+      continue;
+    }
+
+    if (command.op === 'COMPILEPROCESS') {
+      const childName = command.args[0];
+      if (!childName) throw new Error(`COMPILEPROCESS requires a process name in '${line}'`);
+      const child = library.get(childName);
+      if (!child) throw new Error(`Unknown child process '${childName}'`);
+      if (state.verifying.has(childName)) {
+        state.log.push(`COMPILEPROCESS ${childName} skipped because it is already being verified.`);
+        continue;
+      }
+      state.verifying.add(childName);
+      const scratch = createCompilerState();
+      scratch.verifying = state.verifying;
+      try {
+        executeProcess(child, scratch, library);
+        state.log.push(`COMPILEPROCESS verified '${childName}' (${scratch.gates.length} gate(s)) without inlining.`);
+      } finally {
+        state.verifying.delete(childName);
+      }
+      continue;
+    }
+
+    if (command.op === 'SAVE_STATE' || command.op === 'LOAD_STATE') {
+      const checkpoint = command.args[0];
+      if (!checkpoint) throw new Error(`${command.op} requires a checkpoint name in '${line}'`);
+      flushCycleZeros(state, `prepare workspace before ${command.op} at cycle ${state.frameCycle}`);
+      emitGate(state, command.op, [], [], line, undefined, checkpoint);
+      state.log.push(`${command.op} ${checkpoint}.`);
+      continue;
+    }
+
+    if (command.op === 'JOIN') {
+      if (command.inputs.length < 2 || command.outputs.length !== 1) {
+        throw new Error(`JOIN requires at least two inputs and one output in '${line}'`);
+      }
+      const wires = command.inputs.flatMap((token) => resolveWires(state, frame, token, line, parentFrame, skipParams));
+      const outputName = scopedName(state, frame, command.outputs[0], line, parentFrame, skipParams);
+      if (state.tokenToQubit.has(outputName)) {
+        throw new Error(`JOIN output '${stripCycle(command.outputs[0])}' is already a wire in '${line}'`);
+      }
+      state.registers.set(outputName, wires);
+      state.log.push(`JOIN ${command.inputs.join(', ')} into ${stripCycle(command.outputs[0])} (${wires.length} wires).`);
+      continue;
+    }
+
+    if (command.op === 'SPLIT') {
+      const positional = command.args.filter((arg) => !arg.startsWith('-'));
+      const [compositeToken, componentToken, dimToken] = positional;
+      if (!compositeToken || !componentToken || dimToken === undefined) {
+        throw new Error(`SPLIT requires a register, a component name, and a dimension in '${line}'`);
+      }
+      const dimension = Number(dimToken);
+      if (!isPowerOfTwoDimension(dimension)) {
+        throw new Error(`Dimension ${dimToken} is not a power of two in '${line}'`);
+      }
+      const width = Math.log2(dimension);
+      const compositeName = scopedName(state, frame, compositeToken, line, parentFrame, skipParams);
+      const wires = state.registers.get(compositeName);
+      if (!wires) throw new Error(`SPLIT register '${stripCycle(compositeToken)}' is not a joined register in '${line}'`);
+      if (width > wires.length) {
+        throw new Error(`SPLIT dimension ${dimension} exceeds register '${stripCycle(compositeToken)}' in '${line}'`);
+      }
+      const componentName = scopedName(state, frame, componentToken, line, parentFrame, skipParams);
+      if (state.registers.has(componentName) || state.tokenToQubit.has(componentName)) {
+        throw new Error(`SPLIT component '${stripCycle(componentToken)}' already exists in '${line}'`);
+      }
+      state.registers.set(componentName, wires.slice(0, width));
+      const rest = wires.slice(width);
+      if (rest.length === 0) state.registers.delete(compositeName);
+      else state.registers.set(compositeName, rest);
+      state.log.push(`SPLIT ${stripCycle(compositeToken)} into ${stripCycle(componentToken)} (dimension ${dimension}).`);
       continue;
     }
 
     if (command.op === 'MEASURE') {
       // Protocols omit -I on MEASURE to collapse all wires before RETURNVALS reads classical bits.
       if (command.inputs.length) {
-        command.inputs.forEach((token) => emitGate(state, 'MEASURE', [resolveInputQubit(state, frame, token, parentFrame)], [], line));
+        command.inputs.forEach((token) => emitGate(state, 'MEASURE', [resolveInputQubit(state, frame, token, line, parentFrame, skipParams)], [], line));
       } else {
         state.tokenToQubit.forEach((qubit) => emitGate(state, 'MEASURE', [qubit], [], line));
       }
       continue;
     }
 
-    if (command.op === 'SAVE_STATE' || command.op === 'LOAD_STATE' || command.op === 'MASTERVAL' || command.op === 'COMPILEPROCESS') {
-      // Checkpoint/process-control opcodes are accepted for source fidelity but not lowered to gates yet.
-      state.log.push(`${command.op} parsed: ${command.args.join(' ')}.`);
-      continue;
-    }
-
-    if (command.op === 'JOIN' || command.op === 'SPLIT') {
-      state.log.push(`${command.op} parsed for register memory; visual lowering is deferred.`);
-      continue;
-    }
-
     if (primitiveGates.has(command.op)) {
-      flushCycleZeros(state, `prepare workspace before gate at cycle ${state.currentCycle}`);
+      flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      const loweredPhase = command.reverse && command.op === 'S'
+        ? -Math.PI / 2
+        : command.reverse && command.op === 'T'
+          ? -Math.PI / 4
+          : command.op === 'PHASE'
+            ? command.phase ?? 0
+            : undefined;
+      const loweredType: GateType = loweredPhase !== undefined && command.op !== 'PHASE' ? 'PHASE' : command.op as GateType;
       if (command.op === 'SWAP') {
         const swapQubits = command.inputs
           .slice(0, 2)
-          .map((input) => resolveInputQubit(state, frame, input, parentFrame));
+          .map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams));
         if (swapQubits.length < 2) throw new Error('SWAP requires two input qubits.');
         if (command.outputs.length > 0) {
           if (command.outputs.length !== command.inputs.length) {
             throw new Error('SWAP outputs must match inputs.');
           }
-          const swapOutputs = command.outputs.map((output) => resolveInputQubit(state, frame, output, parentFrame));
+          const swapOutputs = command.outputs.map((output) => resolveInputQubit(state, frame, output, line, parentFrame, skipParams));
           swapQubits.forEach((inputQubit, index) => {
             if (swapOutputs[index] !== inputQubit) {
               throw new Error('SWAP outputs must match inputs.');
             }
           });
         }
-        emitGate(state, 'SWAP', swapQubits, [], line);
+        emitGate(state, 'SWAP', swapQubits, [], line, undefined, undefined, command.reverse);
         continue;
       }
       // For primitive and derived AST gates, -O names the mutated target and -I names controls/inputs.
       const targetToken = command.outputs[0] ?? command.inputs[0];
-      const target = resolveInputQubit(state, frame, targetToken, parentFrame);
+      const target = resolveInputQubit(state, frame, targetToken, line, parentFrame, skipParams);
       const controls = command.inputs
-        .map((input) => resolveInputQubit(state, frame, input, parentFrame))
+        .map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams))
         // When -O names the mutated wire, drop it from the control list so self-controlled ops do not deadlock.
         .filter((qubit) => qubit !== target);
-      emitGate(state, command.op as GateType, [target], controls, line, command.op === 'PHASE' ? command.phase ?? 0 : undefined);
+      emitGate(state, loweredType, [target], controls, line, loweredPhase, undefined, command.reverse);
       continue;
     }
 
     // Derived gates share the same -I/-O lowering as primitives but never carry PHASE metadata.
     if (derivedGates.has(command.op)) {
-      flushCycleZeros(state, `prepare workspace before gate at cycle ${state.currentCycle}`);
-      const target = resolveInputQubit(state, frame, command.outputs[0], parentFrame);
+      flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      const target = resolveInputQubit(state, frame, command.outputs[0], line, parentFrame, skipParams);
       const controls = command.inputs
-        .map((input) => resolveInputQubit(state, frame, input, parentFrame))
+        .map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams))
         .filter((qubit) => qubit !== target);
       emitGate(state, command.op as GateType, [target], controls, line);
       continue;
     }
   }
 
+  if (frame.returnBases.length === 0) {
+    returns = frame.masterTokens.map((entry) => scopedName(state, frame, entry.name, entry.line, parentFrame));
+  } else {
+    frame.masterTokens.forEach((entry) => {
+      if (!frame.returnBases.includes(entry.name)) {
+        throw new Error(`MASTERVAL '${entry.name}' is not listed in RETURNVALS in '${entry.line}'`);
+      }
+    });
+  }
+
   flushCycleZeros(state, `end of process ${process.name}`);
   return returns;
+  } finally {
+    state.frameCycle = enclosingFrameCycle;
+  }
 };
 
 // Compaction removes unused symbolic registers after expansion so UI labels and state vectors use dense indices.
@@ -591,7 +937,7 @@ const compactQubitLayout = (
 
   const sorted = [...used].sort((left, right) => left - right);
   if (sorted.length === 0) {
-    return { gates, tokenMap, processParams, qubitCount: 0 };
+    return { gates, tokenMap, processParams, qubitCount: 0, remap: new Map<number, number>() };
   }
 
   // Remap compacts holes left by unused symbolic registers while preserving gate step order.
@@ -613,6 +959,7 @@ const compactQubitLayout = (
       qubitIndex: remap.get(param.qubitIndex)!,
     })),
     qubitCount: sorted.length,
+    remap,
   };
 };
 
@@ -622,18 +969,7 @@ export const compileQpuProtocol = (source: string, librarySources: Record<string
   const library = processLibraryFromSources(librarySources);
   // The file being compiled is always addressable as a child of itself (e.g. recursive RUNCHILD tests).
   library.set(main.name, main);
-  const state: CompilerState = {
-    gates: [],
-    parsed: [],
-    log: [],
-    tokenToQubit: new Map(),
-    resetQubits: new Set(),
-    pendingCycleZeros: new Set(),
-    lastReturns: [],
-    currentCycle: 0,
-    processRuns: 0,
-    rootScope: '',
-  };
+  const state = createCompilerState();
 
   executeProcess(main, state, library);
 
@@ -659,9 +995,26 @@ export const compileQpuProtocol = (source: string, librarySources: Record<string
 
   // RETURNVALS names may be bare or scoped after child expansion; match by suffix when compacting.
   const returnValues: ReturnValue[] = returnRegistersForProcess(main).flatMap((name) => {
-    const entry = Object.entries(compacted.tokenMap).find(([token]) => token === name || token.endsWith(`/${name}`));
-    if (entry === undefined) return [];
-    return [{ name, qubitIndex: entry[1] }];
+    const register = [...state.registers.entries()].find(([key]) => key === name || key.endsWith(`/${name}`));
+    if (register) {
+      const wires = register[1].flatMap((qubit) => {
+        const qubitIndex = compacted.remap.get(qubit);
+        return qubitIndex === undefined ? [] : [qubitIndex];
+      });
+      if (wires.length === 1) return [{ name, qubitIndex: wires[0] }];
+      return wires.map((qubitIndex, index) => ({ name: `${name}[${index}]`, qubitIndex }));
+    }
+    const exact = Object.entries(compacted.tokenMap).find(([token]) => token === name || token.endsWith(`/${name}`));
+    if (exact) return [{ name, qubitIndex: exact[1] }];
+    const wires = Object.entries(compacted.tokenMap)
+      .map(([token, qubitIndex]) => {
+        const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = token.match(new RegExp(`(?:^|/)${escaped}\\[(\\d+)\\]$`));
+        return match ? { index: Number(match[1]), qubitIndex } : undefined;
+      })
+      .filter((wire): wire is { index: number; qubitIndex: number } => wire !== undefined)
+      .sort((left, right) => left.index - right.index);
+    return wires.map((wire) => ({ name: `${name}[${wire.index}]`, qubitIndex: wire.qubitIndex }));
   });
 
   return {
@@ -673,6 +1026,7 @@ export const compileQpuProtocol = (source: string, librarySources: Record<string
       : compacted.qubitCount,
     parsed: state.parsed,
     log: state.log,
+    warnings: state.warnings,
     tokenMap: compacted.tokenMap,
     processParams: compacted.processParams,
     returnValues,

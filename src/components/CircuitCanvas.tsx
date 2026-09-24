@@ -3,12 +3,12 @@ import { CircuitGate, GateType, MeasurementMap, ParticleStartState } from '../si
 import { CircuitGlyph } from './circuit/CircuitGlyph';
 import {
   circuitColumnCount,
+  classicalWireQubits,
   gateSpanQubits,
   MAX_SLOT_REM,
   MIN_SLOT_REM,
   needsConnector,
   startStateKet,
-  wireKindHalves,
 } from './circuitLayout';
 
 type CircuitCanvasProps = {
@@ -41,8 +41,15 @@ export function CircuitCanvas({
   const trackingGates = (wireGates ?? gates).slice().sort((a, b) => a.step - b.step);
   const maxStep = trackingGates.reduce((highest, gate) => Math.max(highest, gate.step), -1);
   const columns = circuitColumnCount(sorted.length, maxStep);
-  const wireKinds = wireKindHalves(qubitCount, trackingGates, startStates, columns, measurements);
   const activeGate = activeStep >= 0 ? sorted.find((gate) => gate.step === activeStep) : undefined;
+  const measureGates = sorted.filter((gate) => gate.type === 'MEASURE');
+  const classicalQubits = classicalWireQubits(qubitCount, trackingGates, measurements);
+  const showClassical = classicalQubits.length > 0;
+  const classicalRow = qubitCount + 1;
+  const rowCount = qubitCount + (showClassical ? 1 : 0);
+  const measuredWithoutGate = classicalQubits.filter(
+    (qubit) => !measureGates.some((gate) => gate.targets.includes(qubit)),
+  );
 
   const handleDrop = (event: React.DragEvent, qubit: number) => {
     event.preventDefault();
@@ -66,6 +73,7 @@ export function CircuitCanvas({
           style={{
             ['--columns' as string]: columns,
             ['--qubits' as string]: qubitCount,
+            ['--rows' as string]: rowCount,
             ['--slot-min' as string]: `${MIN_SLOT_REM}rem`,
             ['--slot-max' as string]: `${MAX_SLOT_REM}rem`,
           }}
@@ -75,13 +83,71 @@ export function CircuitCanvas({
               (['incoming', 'outgoing'] as const).map((half) => (
                 <span
                   aria-hidden="true"
-                  className={`circuit-wire ${half} ${wireKinds[qubit][column][half]}`}
+                  className={`circuit-wire ${half} quantum`}
                   key={`wire-${qubit}-${column}-${half}`}
                   style={{ gridColumn: column + 2, gridRow: qubit + 1 }}
                 />
               )),
             ),
           )}
+
+          {showClassical &&
+            Array.from({ length: columns }, (_, column) =>
+              (['incoming', 'outgoing'] as const).map((half) => (
+                <span
+                  aria-hidden="true"
+                  className={`circuit-wire ${half} classical`}
+                  key={`c-wire-${column}-${half}`}
+                  style={{ gridColumn: column + 2, gridRow: classicalRow }}
+                />
+              )),
+            )}
+
+          {showClassical &&
+            measureGates.flatMap((gate) =>
+              gate.targets.map((qubit) => (
+                <span
+                  aria-hidden="true"
+                  className="circuit-measure-drop"
+                  key={`drop-${gate.id}-${qubit}`}
+                  style={{ gridColumn: gate.step + 2, gridRow: `${qubit + 1} / ${classicalRow + 1}` }}
+                >
+                  <span className="circuit-measure-bit">{qubit}</span>
+                </span>
+              )),
+            )}
+
+          {showClassical &&
+            measuredWithoutGate.map((qubit) => (
+              <span
+                aria-hidden="true"
+                className="circuit-measure-drop"
+                key={`runtime-drop-${qubit}`}
+                style={{ gridColumn: columns + 1, gridRow: `${qubit + 1} / ${classicalRow + 1}` }}
+              >
+                <span className="circuit-measure-bit">{qubit}</span>
+              </span>
+            ))}
+
+          {sorted.filter((gate) => gate.type === 'CYCLE').map((gate) => (
+            <span
+              className="circuit-cycle-slice"
+              key={gate.id}
+              style={{ gridColumn: gate.step + 2, gridRow: `1 / ${rowCount + 1}` }}
+            >
+              {gate.cycle ?? ''}
+            </span>
+          ))}
+
+          {sorted.filter((gate) => gate.type === 'SAVE_STATE' || gate.type === 'LOAD_STATE').map((gate) => (
+            <span
+              className="circuit-checkpoint"
+              key={gate.id}
+              style={{ gridColumn: gate.step + 2, gridRow: 1 }}
+            >
+              {gate.type === 'SAVE_STATE' ? 'save' : 'load'}
+            </span>
+          ))}
 
           {sorted.filter(needsConnector).map((gate) => {
             const { min, max } = gateSpanQubits(gate);
@@ -109,6 +175,13 @@ export function CircuitCanvas({
               </div>
             );
           })}
+
+          {showClassical && (
+            <div className="circuit-label-cell circuit-classical-label" style={{ gridColumn: 1, gridRow: classicalRow }}>
+              <span className="circuit-q">c</span>
+              <span className="circuit-c-width">/{qubitCount}</span>
+            </div>
+          )}
 
           <div className={`circuit-drop-layer ${selectedGate ? 'ready' : ''}`}>
             {Array.from({ length: qubitCount }, (_, qubit) => (
@@ -150,8 +223,8 @@ export function CircuitCanvas({
         </div>
       </div>
       <p className="canvas-tip">
-        Classical bits (0p, 1p, or measured) use double lines; superposition uses a single line. Measure is the meter
-        symbol. Active steps use a red outline; measured particles turn red on the wire.
+        Qubit wires stay single, and a measured qubit can still take later gates. The double stroke down to c marks the time of that measurement and the bit where the result lands. Inverse gates wear a dagger: blue in general, purple on the active step.
+        Active steps use a red outline; measured particles turn red on their wire.
       </p>
     </section>
   );

@@ -48,11 +48,9 @@ the documented style. Supplying flags in an unusual order may still parse, but
 \begin{lstlisting}
 PHASE=pi/4 -I Q -O Q -$R
 \end{lstlisting}
-The language recognizes this marker and preserves it on the instruction record
-as a request not to substitute parameters. The current compiler does not yet
-change address resolution or gate execution because of the marker. It is
-therefore compatibility syntax, not a reliable way to freeze a reference.
-Write explicit token and parameter bindings instead.
+The language recognizes this marker and, on that instruction only, resolves
+names as locals instead of substituting \code{PARAMS} bindings. Aliases created
+by \code{SET} still apply.
 
 \subsection{Positional arguments}
 

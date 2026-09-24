@@ -77,10 +77,11 @@ Boolean gates above are combinational. A \emph{sequential} circuit also depends
 on stored state from an earlier step, as in counters and latches.
 
 QPU cycle suffixes can document successive stages, and INCREASECYCLE marks a
-workspace boundary, but the current compiled circuit is still one ordered gate
-sequence. Accepted \code{SAVE_STATE} and \code{LOAD_STATE} syntax does not yet implement a
-classical memory checkpoint. When modeling stateful behavior, expose previous
-state explicitly as PARAMS and return next state explicitly through RETURNVALS.
+workspace boundary, but the compiled circuit is still one ordered gate
+sequence. \code{SAVE_STATE} and \code{LOAD_STATE} copy and restore the simulator
+state vector. They are not quantum gates. When modeling stateful behavior
+inside the unitary circuit, expose previous state as PARAMS and return next
+state through RETURNVALS.
 
 \subsection{Why ordinary classical gates can lose information}
 

@@ -94,7 +94,7 @@ export const gateDocs: Record<string, GateDoc> = {
   },
   H: {
     how: 'H turns a definite 0 or 1 into an even mix. Measuring |+⟩ gives 0 or 1 with 50% each. H undoes itself: H followed by H returns the starting state.',
-    target: `${singleWireTarget} On the canvas the wire turns from a double line (classical) to a single line (superposition).`,
+    target: `${singleWireTarget} On the canvas every qubit wire stays a single line.`,
     syntax: ['H -I Q -O Q'],
     table: ketTable(
       ['t', "t'"],
@@ -122,7 +122,7 @@ export const gateDocs: Record<string, GateDoc> = {
   },
   MEASURE: {
     how: 'M reads the wire. A definite 0 or 1 is read as itself; a superposition is read as 0 or 1 at random, weighted by its amplitudes, and becomes that bit.',
-    target: 'The measured wire is the target. Afterwards it is a classical bit (double line on the canvas) and the superposition is gone for good. Measuring one half of an entangled pair also fixes the other half.',
+    target: 'The measured wire is the target, and the meter stays on that qubit wire. A double stroke, not an arrow, drops to the c lane and numbers the bit read at that time. c is a clock for measurements, the only double line, and it cannot take a gate. Later gates can still run on the qubit. Measuring one half of an entangled pair also fixes the other half.',
     syntax: ['MEASURE -I Q'],
     table: ketTable(['t before', 'reading'], [['|0⟩', '0 always'], ['|1⟩', '1 always'], ['|+⟩', '0 or 1 (50% each)']], undefined, ['t', 't']),
   },
@@ -346,7 +346,7 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
     {
       heading: 'The targets (outputs)',
       body: `${outputList} ${outputs.length === 1 ? 'is the target' : 'are the targets'}: the wires this process writes. Inputs are only read unless the process itself changes them. ${measures
-        ? 'It measures inside the process, so its outputs end as classical bits and it cannot be undone.'
+        ? 'It measures inside the process. Each meter marks that time on the c lane. The collapse cannot be undone, but the qubit wire stays available for later gates.'
         : 'It contains no MEASURE, so it is reversible as long as it does not SET its outputs and returns every helper wire to 0.'}`,
     },
   ];

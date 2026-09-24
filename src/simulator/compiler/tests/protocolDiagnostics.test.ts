@@ -56,20 +56,16 @@ RETURNVALS Q`);
     }));
   });
 
-  it('warns about accepted-only and inactive compatibility syntax', () => {
+  it('executes join, parameter lock, and Tdg without inactive-syntax warnings', () => {
     const report = analyzeQpuProtocol(`MAIN-PROCESS Compatibility
 JOIN -I A B -O AB
 PHASE=pi/2 -I A -O A -$R
-BT -I B -O B
+Tdg -I B -O B
 RETURNVALS A B`);
 
     expect(report.canCompile).toBe(true);
     expect(report.errorCount).toBe(0);
-    expect(report.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
-      'ACCEPTED_ONLY_OPERATION',
-      'INACTIVE_PARAMETER_FLAG',
-      'INACTIVE_REVERSE_PREFIX',
-    ]);
+    expect(report.diagnostics).toEqual([]);
   });
 
   it('recommends names and outputs without blocking compilation', () => {
@@ -129,6 +125,35 @@ RETURNVALS Result`);
       line: 2,
       source: 'DECLARECHILD MissingChild',
       suggestion: expect.stringContaining('register'),
+    }));
+  });
+
+  it('reports a released-token error on the instruction line', () => {
+    const report = analyzeQpuProtocol(`MAIN-PROCESS Released
+SET Q 0p
+FREE -I Q
+H -I Q -O Q
+RETURNVALS Q`);
+
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'error',
+      code: 'COMPILE_ERROR',
+      line: 4,
+      source: 'H -I Q -O Q',
+    }));
+  });
+
+  it('warns when dg or inv is applied to measurement', () => {
+    const report = analyzeQpuProtocol(`MAIN-PROCESS Measured
+SET Q 0p
+MEASUREdg -I Q
+RETURNVALS Q`);
+
+    expect(report.canCompile).toBe(true);
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'warning',
+      code: 'INACTIVE_INVERSE_MARKER',
+      line: 3,
     }));
   });
 

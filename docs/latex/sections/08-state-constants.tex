@@ -65,11 +65,13 @@ The language also recognizes:
 1p_dim8
 sp_dim4
 \end{lstlisting}
-The suffix must be \code{_dim} followed by one or more decimal digits. These
-forms preserve compatibility with protocols that annotate a state constant's
-intended dimension. In the current simulator they still perform the same
-single-wire preparation as their unsuffixed forms; the dimension number does
-not allocate a multi-qubit register or change vector size.
+The suffix must be \code{_dim} followed by a power of two that is at least 2.
+That number is a Hilbert-space dimension, so \code{_dim4} prepares two qubits
+and \code{_dim8} prepares three. \code{0p} prepares every wire in $\ket0$,
+\code{1p} flips only the least-significant wire, and \code{sp} applies H to
+every wire. \code{_dim2} is the same one-wire preparation as the unsuffixed
+constant. Any other dimension is rejected. Wire $k$ of register \code{R} is
+named \code{R[k]}.
 
 \subsection{Constants and state parameters}
 
