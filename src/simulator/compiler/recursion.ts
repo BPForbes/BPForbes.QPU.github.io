@@ -24,6 +24,8 @@ export type ProcessExecutionContext = {
   callStack: string[];
   /** How this recursive child expands: TCO loop vs stacked frames. */
   recursionMode?: RecursionMode;
+  /** Identity of the call site that started this recursion chain. */
+  recursionInvocation?: string;
 };
 
 export type WhenOperator = '==' | '!=' | '<' | '<=' | '>' | '>=';

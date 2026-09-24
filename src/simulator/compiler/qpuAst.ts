@@ -411,6 +411,8 @@ type CompilerState = {
   verifying: Set<string>;
   /** Active REC/TREC frame; stamped onto every gate emitted while set. */
   activeRecursion?: RecursionFrameMeta;
+  /** Counter for RecursionFrameMeta.invocation ids. */
+  nextRecursionInvocation: number;
 };
 
 const createCompilerState = (): CompilerState => ({
@@ -432,6 +434,7 @@ const createCompilerState = (): CompilerState => ({
   processRuns: 0,
   rootScope: '',
   verifying: new Set(),
+  nextRecursionInvocation: 0,
 });
 
 // Gates shown in the circuit UI; cycle workspace prep is compiler-internal and never rendered.
@@ -717,6 +720,7 @@ const executeProcess = (
     rootDepth: frameContext.rootDepth,
     level: frameContext.level ?? 0,
     mode: frameContext.recursionMode,
+    invocation: frameContext.recursionInvocation,
   };
   const enclosingRecursion = state.activeRecursion;
   const syncActiveRecursion = () => {
@@ -730,6 +734,7 @@ const executeProcess = (
       level: recursionState.level,
       rootDepth: recursionState.rootDepth,
       mode: recursionState.mode ?? 'stack',
+      ...(recursionState.invocation ? { invocation: recursionState.invocation } : {}),
     };
   };
   syncActiveRecursion();
@@ -750,6 +755,10 @@ const executeProcess = (
   ): { condition?: { qubit: number; equals: 0 | 1 }; branch?: ClassicalBranchMeta } => {
     const active = branchStack[branchStack.length - 1];
     if (active) {
+      // A gate holds one condition, so an inline -IF here would silently replace the block's test.
+      if (commandCondition) {
+        throw new Error(`-IF inside an IF block is not supported (a gate carries one condition) in '${line}'`);
+      }
       const qubit = resolveInputQubit(state, frame, active.token, line, parentFrame, skipParams);
       return {
         condition: { qubit, equals: active.equals },
@@ -819,6 +828,10 @@ const executeProcess = (
     }
 
     if (command.op === 'IF') {
+      // Nested blocks would need a conjunction of conditions; reject rather than drop the outer test.
+      if (branchStack.length > 0) {
+        throw new Error(`Nested IF blocks are not supported; close the outer IF with ENDIF first ('${line}')`);
+      }
       const header = parseIfHeader([command.op, ...command.args]);
       branchStack.push({
         groupId: `branch-${nextBranchGroup}`,
@@ -940,6 +953,10 @@ const executeProcess = (
     }
 
     if (command.op === 'RUNCHILD' || command.op === 'CALL' || command.op === 'RECUR') {
+      // Child gates compile in their own frame and would not inherit this block's condition.
+      if (branchStack.length > 0) {
+        throw new Error(`${command.op} inside an IF block is not supported; its gates would run unconditionally ('${line}')`);
+      }
       const isRecur = command.op === 'RECUR';
       const childName = isRecur ? process.name : command.args[0];
       if (!childName) throw new Error(`${command.op} requires a process name`);
@@ -1041,6 +1058,10 @@ const executeProcess = (
             level: plan.level,
             callStack: frameContext.callStack,
             recursionMode: plan.recursionMode,
+            // Frames of one chain share the id; a fresh RUNCHILD starts a new one.
+            recursionInvocation: selfCall && recursionState.invocation
+              ? recursionState.invocation
+              : `rec-${state.nextRecursionInvocation++}`,
           }
         : {
             rootProcess: frameContext.rootProcess,
@@ -1294,6 +1315,13 @@ const compactQubitLayout = (
       ...gate,
       targets: gate.targets.map((qubit) => remap.get(qubit)!),
       controls: gate.controls.map((qubit) => remap.get(qubit)!),
+      // Feed-forward reads a measured wire, so it must follow the same compaction.
+      ...(gate.condition
+        ? { condition: { ...gate.condition, qubit: remap.get(gate.condition.qubit) ?? gate.condition.qubit } }
+        : {}),
+      ...(gate.branch
+        ? { branch: { ...gate.branch, sourceQubit: remap.get(gate.branch.sourceQubit) ?? gate.branch.sourceQubit } }
+        : {}),
     })),
     tokenMap: Object.fromEntries(
       Object.entries(tokenMap).flatMap(([token, qubit]) => {

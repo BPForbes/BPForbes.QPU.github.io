@@ -10,6 +10,7 @@ import type {
   GateCondition,
   RecursionFrameMeta,
 } from '../../simulator/types';
+import { sameExpansion } from './recursionVisuals';
 
 export type GateWrapperTool = 'rec' | 'if' | 'else';
 
@@ -35,8 +36,7 @@ export type WrapperDraft = {
 export const gateHasWrappers = (gate: CircuitGate): boolean =>
   Boolean(gate.condition || gate.branch || gate.recursion);
 
-const sameRecursionGroup = (a: RecursionFrameMeta, b: RecursionFrameMeta) =>
-  a.process === b.process && a.rootDepth === b.rootDepth && a.mode === b.mode;
+const sameRecursionGroup = sameExpansion;
 
 export const createBranchMeta = (
   kind: 'if' | 'else',
@@ -58,6 +58,7 @@ export const createRecursionMeta = (depth: number, process = 'Canvas'): Recursio
     level: 0,
     rootDepth: clamped,
     mode: 'stack',
+    invocation: `canvas-${crypto.randomUUID()}`,
   };
 };
 

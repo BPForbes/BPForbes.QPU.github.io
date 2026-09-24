@@ -15,6 +15,7 @@ import {
   buildVisualCircuitColumns,
   recursionFrameForColumn,
   recursionFrameForStep,
+  sameExpansion,
 } from './components/circuit/recursionVisuals';
 import {
   applyWrappersToGateList,
@@ -446,11 +447,7 @@ function App() {
   const removeGate = (gateId: string) => {
     const target = gates.find((gate) => gate.id === gateId);
     const nextSource = target?.recursion
-      ? gates.filter((gate) => !(
-        gate.recursion
-        && gate.recursion.process === target.recursion!.process
-        && gate.recursion.rootDepth === target.recursion!.rootDepth
-      ))
+      ? gates.filter((gate) => !(gate.recursion && sameExpansion(gate.recursion, target.recursion!)))
       : gates.filter((gate) => gate.id !== gateId);
     const nextGates = nextSource.map((gate, step) => ({ ...gate, step }));
     setGates(nextGates);

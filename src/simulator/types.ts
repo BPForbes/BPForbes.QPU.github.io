@@ -153,6 +153,11 @@ export type RecursionFrameMeta = {
   level: number;
   rootDepth: number;
   mode: 'tco' | 'stack';
+  /**
+   * Unique per call site that starts a recursion chain, so two calls to the
+   * same child with the same DEPTH stay separate on the canvas.
+   */
+  invocation?: string;
 };
 
 export type CircuitGate = {

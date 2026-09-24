@@ -31,8 +31,11 @@ export type VisualCircuitColumn = {
 
 const isRecursiveCycle = (gate: CircuitGate) => gate.type === 'CYCLE' && Boolean(gate.recursion);
 
-const sameExpansion = (a: RecursionFrameMeta, b: RecursionFrameMeta) =>
-  a.process === b.process && a.rootDepth === b.rootDepth && a.mode === b.mode;
+export const sameExpansion = (a: RecursionFrameMeta, b: RecursionFrameMeta) =>
+  a.process === b.process
+  && a.rootDepth === b.rootDepth
+  && a.mode === b.mode
+  && a.invocation === b.invocation;
 
 /**
  * Collapse contiguous unrolled REC/TREC frames into one visual column per

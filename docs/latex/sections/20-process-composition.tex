@@ -318,10 +318,14 @@ Rules:
   \code{IF} left open at the end of the process, is a compile error.
   \item The token must be measured before the first conditioned gate runs;
   otherwise the simulator stops with ``requires q$n$ to be measured first''.
-  \item Only the innermost open block controls a gate. Blocks may be written
-  inside each other, but the inner condition \emph{replaces} the outer one;
-  it is not combined with it. A gate's own \code{-IF} inside a block is also
-  replaced by the block's condition.
+  \item A gate carries exactly one condition, so these forms are compile
+  errors rather than silently dropping a test: an \code{IF} inside another
+  open \code{IF}; a gate with its own \code{-IF} inside a block; and
+  \code{RUNCHILD}, \code{CALL}, or \code{RECUR} inside a block (the child's
+  gates would not inherit the condition). Close the block with \code{ENDIF}
+  first, or condition the child's gates inside the child.
+  \item Conditions inside a custom gate's process are evaluated the same way
+  when the custom gate runs.
   \item Both branches remain in the compiled forward sequence. At run time the
   gate whose condition fails is skipped (the run log says ``skipped because
   classical condition was false''); nothing is removed and nothing forks.

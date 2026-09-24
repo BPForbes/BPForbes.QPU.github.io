@@ -2,6 +2,7 @@
 import { Complex, magnitudeSquared, ONE, ZERO } from './complex';
 import { applyGate as applyRegisteredGate, getGateDefinition } from './gates/registry';
 import { applySingleQubitGate, applyStartState, hasBit, measureQubit, padStateVector } from './gates/operations';
+import { conditionSatisfied } from './gates/conditions';
 import { applyInverseAwareDefinition } from './gates/inverse';
 import { buildOperationTransition, snapshotAllParticles } from './physics/particleTracking';
 import { CircuitGate, ExecutionResult, MeasurementMap, OperationTransition, ParticleStartState, StateCheckpoint } from './types';
@@ -39,19 +40,7 @@ export const projectStateOntoQubits = (
   return probabilities.map((probability) => (probability > 0 ? { re: Math.sqrt(probability), im: 0 } : ZERO));
 };
 
-export const conditionSatisfied = (
-  gate: CircuitGate,
-  measurements: MeasurementMap,
-): boolean => {
-  if (!gate.condition) return true;
-  const value = measurements[gate.condition.qubit];
-  if (value === undefined) {
-    throw new Error(
-      `Conditional gate requires q${gate.condition.qubit} to be measured first.`,
-    );
-  }
-  return value === gate.condition.equals;
-};
+export { conditionSatisfied };
 
 // When the compiler does not supply explicit param indices, start states bind to the first N simulator wires.
 const resolveParamQubitIndices = (
