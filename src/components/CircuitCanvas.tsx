@@ -230,15 +230,20 @@ export function CircuitCanvas({
           {visualColumns.flatMap((column) =>
             column.displayGates
               .filter((gate) => gate.type === 'SAVE_STATE' || gate.type === 'LOAD_STATE')
-              .map((gate) => (
-                <span
-                  className="circuit-checkpoint"
-                  key={gate.id}
-                  style={{ gridColumn: column.column + 2, gridRow: 1 }}
-                >
-                  {gate.type === 'SAVE_STATE' ? 'save' : 'load'}
-                </span>
-              )),
+              .map((gate) => {
+                const label = `${gate.type === 'SAVE_STATE' ? 'SAVE_STATE' : 'LOAD_STATE'} ${gate.checkpoint ?? ''}`.trim();
+                // Whole-register checkpoint: a quiet dotted marker across every wire, not a gate box.
+                return (
+                  <span
+                    aria-label={label}
+                    className={`circuit-checkpoint ${columnIsActive(column, activeStep) ? 'active' : ''}`}
+                    key={gate.id}
+                    role="img"
+                    style={{ gridColumn: column.column + 2, gridRow: `1 / ${qubitCount + (showClassical ? 2 : 1)}` }}
+                    title={`${label} — checkpoint marker; ${gate.type === 'SAVE_STATE' ? 'snapshots' : 'restores'} the whole state here.`}
+                  />
+                );
+              }),
           )}
 
           {visualColumns.flatMap((column) =>

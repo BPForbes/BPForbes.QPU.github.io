@@ -192,16 +192,13 @@ button { font: inherit; }
 }
 .circuit-checkpoint {
   justify-self: center;
-  align-self: start;
-  z-index: 4;
-  border: 2px solid #111;
-  background: #fff;
-  color: #111;
-  font-size: .58rem;
-  font-weight: 800;
-  padding: .12rem .2rem;
-  pointer-events: none;
+  width: 0;
+  border-left: 2px dotted #94a3b8;
+  /* Stop just past the first and last wires instead of running to the cell edges. */
+  margin-block: .35rem calc(var(--row-h) / 2 - .5rem);
+  z-index: 1;
 }
+.circuit-checkpoint.active { border-left-color: #f87171; }
 .circuit-label-cell {
   position: relative;
   display: grid;
