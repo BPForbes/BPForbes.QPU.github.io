@@ -196,6 +196,7 @@ button { font: inherit; }
   z-index: 2;
 }
 .circuit-measure-drop {
+  position: relative;
   justify-self: center;
   align-self: stretch;
   width: .42rem;
@@ -207,7 +208,28 @@ button { font: inherit; }
   pointer-events: none;
   z-index: 1;
 }
+.circuit-measure-drop::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  transform: translateX(-50%);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 7px solid #111;
+}
+.circuit-measure-bit {
+  position: absolute;
+  right: -.15rem;
+  bottom: .15rem;
+  transform: translateX(100%);
+  color: #111;
+  font-size: .62rem;
+  font-weight: 800;
+  line-height: 1;
+}
 .circuit-classical-label { pointer-events: none; }
+.circuit-c-width { font-size: .62rem; font-weight: 800; color: #334155; }
 .circuit-drop {
   cursor: copy;
   border-radius: .2rem;

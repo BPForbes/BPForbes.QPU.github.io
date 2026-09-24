@@ -122,7 +122,7 @@ export const gateDocs: Record<string, GateDoc> = {
   },
   MEASURE: {
     how: 'M reads the wire. A definite 0 or 1 is read as itself; a superposition is read as 0 or 1 at random, weighted by its amplitudes, and becomes that bit.',
-    target: 'The measured wire is the target. The meter drops onto that qubit’s classical line (c0, c1, …) at the bottom of the canvas. Those lines are the only double lines, and they cannot take a gate. A circuit measures as many of them as it has measured qubits. Measuring one half of an entangled pair also fixes the other half.',
+    target: 'The measured wire is the target, and the meter stays on that qubit wire. An arrow drops to the classical bus c and is numbered with the bit where the result lands. c is the only double line, and it cannot take a gate. Its width matches the number of qubit wires. Measuring one half of an entangled pair also fixes the other half.',
     syntax: ['MEASURE -I Q'],
     table: ketTable(['t before', 'reading'], [['|0⟩', '0 always'], ['|1⟩', '1 always'], ['|+⟩', '0 or 1 (50% each)']], undefined, ['t', 't']),
   },
