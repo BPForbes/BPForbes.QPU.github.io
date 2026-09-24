@@ -260,6 +260,7 @@ export const serializeCircuitToQpuProtocol = (
     }
   });
 
+  let cycle = 0;
   gates
     .slice()
     .sort((a, b) => a.step - b.step)
@@ -267,6 +268,7 @@ export const serializeCircuitToQpuProtocol = (
       // RESET on the canvas becomes explicit SET 0p lines because the protocol has no RESET opcode.
       if (gate.type === 'CYCLE') {
         lines.push('INCREASECYCLE');
+        cycle += 1;
         return;
       }
       if (gate.type === 'SAVE_STATE' || gate.type === 'LOAD_STATE') {
@@ -280,8 +282,8 @@ export const serializeCircuitToQpuProtocol = (
         return;
       }
 
-      const target = `${canvasParamRef(gate.targets[0])}:0`;
-      const controls = gate.controls.map((control) => `${canvasParamRef(control)}:0`);
+      const target = `${canvasParamRef(gate.targets[0])}:${cycle}`;
+      const controls = gate.controls.map((control) => `${canvasParamRef(control)}:${cycle}`);
       if (gate.type === 'MEASURE') {
         lines.push(`MEASURE -I ${canvasParamRef(gate.targets[0])}`);
         return;
@@ -289,7 +291,7 @@ export const serializeCircuitToQpuProtocol = (
       if (gate.type === 'SWAP') {
         if (gate.targets.length < 2) return;
         const [first, second] = gate.targets;
-        lines.push(`SWAP -I ${canvasParamRef(first)}:0 ${canvasParamRef(second)}:0 -O ${canvasParamRef(first)}:0 ${canvasParamRef(second)}:0`);
+        lines.push(`SWAP -I ${canvasParamRef(first)}:${cycle} ${canvasParamRef(second)}:${cycle} -O ${canvasParamRef(first)}:${cycle} ${canvasParamRef(second)}:${cycle}`);
         return;
       }
       if (
@@ -304,7 +306,7 @@ export const serializeCircuitToQpuProtocol = (
       ) {
         const op = gate.type === 'PHASE'
           ? `${gate.inverse ? 'PHASEdg' : 'PHASE'}=${gate.inverse ? -(gate.phase ?? 0) : gate.phase ?? 0}`
-          : `${gate.type}${gate.inverse ? 'dg' : ''}`;
+          : `${gate.type}${gate.inverse && gate.type !== 'NOT' ? 'dg' : ''}`;
         lines.push(`${op} -I ${target} -O ${target}`);
         return;
       }

@@ -419,19 +419,23 @@ const emitGate = (
     targets.forEach((qubit) => state.knownZero.add(qubit));
     return;
   }
-  if (type === 'CYCLE' || type === 'SAVE_STATE' || type === 'LOAD_STATE') return;
+  if (type === 'LOAD_STATE') {
+    state.knownZero.clear();
+    return;
+  }
+  if (type === 'CYCLE' || type === 'SAVE_STATE') return;
   targets.forEach((qubit) => state.knownZero.delete(qubit));
 };
 
 // Symbolic tokens lazily claim the next simulator wire; constants share keyed slots so 0p/1p/sp init once.
-const ensureQubit = (state: CompilerState, canonical: string) => {
+const ensureQubit = (state: CompilerState, canonical: string, knownZero = true) => {
   const key = isConstant(canonical) ? `const/${canonical.toLowerCase()}` : canonical;
   const existing = state.tokenToQubit.get(key);
   if (existing !== undefined) return existing;
   const recycled = !isConstant(canonical) && state.reusableQubits.length > 0;
   const next = recycled ? state.reusableQubits.pop()! : state.nextQubit++;
   state.tokenToQubit.set(key, next);
-  state.knownZero.add(next);
+  if (knownZero) state.knownZero.add(next);
   if (key === 'const/1p') emitGate(state, 'X', [next], [], 'initialize constant 1p');
   if (key === 'const/sp') emitGate(state, 'H', [next], [], 'initialize superposition sp');
   return next;
@@ -484,7 +488,9 @@ const resolveInputQubit = (
 
 const exclusivelyOwned = (state: CompilerState, qubit: number, canonical: string) => {
   const keys = [...state.tokenToQubit.entries()].filter(([, index]) => index === qubit).map(([key]) => key);
-  return keys.length > 0 && keys.every((key) => key === canonical || key.startsWith(`${canonical}[`));
+  const inOtherRegister = [...state.registers.entries()]
+    .some(([name, wires]) => name !== canonical && wires.includes(qubit));
+  return !inOtherRegister && keys.length > 0 && keys.every((key) => key === canonical || key.startsWith(`${canonical}[`));
 };
 
 const releaseToken = (
@@ -519,7 +525,6 @@ const releaseToken = (
       [...state.tokenToQubit.entries()].forEach(([key, index]) => {
         if (index === qubit) state.tokenToQubit.delete(key);
       });
-      state.pendingCycleZeros.delete(qubit);
       state.knownZero.add(qubit);
       state.reusableQubits.push(qubit);
     });
@@ -603,7 +608,7 @@ const executeProcess = (
   outputBindings.forEach((parentToken, childRegister) => {
     frame.aliases.set(childRegister, parentToken);
   });
-  process.params.forEach((param) => ensureQubit(state, params.get(param.name)!));
+  process.params.forEach((param) => ensureQubit(state, params.get(param.name)!, false));
   let returns: string[] = [];
 
   state.log.push(`MAIN-PROCESS ${process.name} compiled in scope ${scope}.`);
@@ -648,7 +653,7 @@ const executeProcess = (
           if (width !== 1) {
             throw new Error(`SET cannot widen state parameter '${targetBase}' to dimension ${prepared.dimension} in '${line}'`);
           }
-          ensureQubit(state, targetName);
+          ensureQubit(state, targetName, false);
           state.log.push(`SET ${targetBase} default ${value} at cycle ${state.frameCycle} (parametric default; runtime start state).`);
           continue;
         }
@@ -789,6 +794,7 @@ const executeProcess = (
     if (command.op === 'SAVE_STATE' || command.op === 'LOAD_STATE') {
       const checkpoint = command.args[0];
       if (!checkpoint) throw new Error(`${command.op} requires a checkpoint name in '${line}'`);
+      flushCycleZeros(state, `prepare workspace before ${command.op} at cycle ${state.frameCycle}`);
       emitGate(state, command.op, [], [], line, undefined, checkpoint);
       state.log.push(`${command.op} ${checkpoint}.`);
       continue;
@@ -931,7 +937,7 @@ const compactQubitLayout = (
 
   const sorted = [...used].sort((left, right) => left - right);
   if (sorted.length === 0) {
-    return { gates, tokenMap, processParams, qubitCount: 0 };
+    return { gates, tokenMap, processParams, qubitCount: 0, remap: new Map<number, number>() };
   }
 
   // Remap compacts holes left by unused symbolic registers while preserving gate step order.
@@ -953,6 +959,7 @@ const compactQubitLayout = (
       qubitIndex: remap.get(param.qubitIndex)!,
     })),
     qubitCount: sorted.length,
+    remap,
   };
 };
 
@@ -988,6 +995,15 @@ export const compileQpuProtocol = (source: string, librarySources: Record<string
 
   // RETURNVALS names may be bare or scoped after child expansion; match by suffix when compacting.
   const returnValues: ReturnValue[] = returnRegistersForProcess(main).flatMap((name) => {
+    const register = [...state.registers.entries()].find(([key]) => key === name || key.endsWith(`/${name}`));
+    if (register) {
+      const wires = register[1].flatMap((qubit) => {
+        const qubitIndex = compacted.remap.get(qubit);
+        return qubitIndex === undefined ? [] : [qubitIndex];
+      });
+      if (wires.length === 1) return [{ name, qubitIndex: wires[0] }];
+      return wires.map((qubitIndex, index) => ({ name: `${name}[${index}]`, qubitIndex }));
+    }
     const exact = Object.entries(compacted.tokenMap).find(([token]) => token === name || token.endsWith(`/${name}`));
     if (exact) return [{ name, qubitIndex: exact[1] }];
     const wires = Object.entries(compacted.tokenMap)

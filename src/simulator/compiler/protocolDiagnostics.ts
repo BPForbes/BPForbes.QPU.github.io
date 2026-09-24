@@ -115,7 +115,7 @@ const semanticErrorLine = (
   message: string,
   lines: NumberedProtocolLine[],
 ): NumberedProtocolLine | undefined => {
-  const quotedSource = message.match(/'([^']+)'/)?.[1];
+  const quotedSource = message.match(/ in '([^']+)'$/)?.[1] ?? message.match(/'([^']+)'/)?.[1];
   if (quotedSource) {
     const exact = lines.find((line) => line.text === quotedSource);
     if (exact) return exact;

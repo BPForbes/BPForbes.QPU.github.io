@@ -1,8 +1,10 @@
 import { readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
 import { compileQpuProtocol, visibleCircuitGates } from '../qpuAst';
+import { serializeCircuitToQpuProtocol } from '../qpuFormat';
 import { analyzeQpuProtocol } from '../protocolDiagnostics';
-import { createInitialState, measureAll, runCircuit } from '../../engine';
+import { createInitialState, measureAll, runCircuit, stepCircuitGate } from '../../engine';
+import type { CircuitGate } from '../../types';
 import { magnitudeSquared } from '../../complex';
 import type { ParticleStartState } from '../../types';
 
@@ -155,6 +157,64 @@ RETURNVALS Next`);
     expect(compiled.qubitCount).toBe(2);
   });
 
+  it('keeps a pending zero reset when a known-zero wire is freed', () => {
+    const compiled = compileQpuProtocol(`MAIN-PROCESS Recycled
+SET Q 1p
+SET Q 0p
+FREE -I Q
+X -I Fresh -O Fresh
+RETURNVALS Fresh`);
+    const executed = runCircuit(compiled.qubitCount, compiled.gates);
+    const measured = measureAll(executed.state, compiled.qubitCount, executed.measurements);
+    expect(measured.measurements[tokenQubit(compiled.tokenMap, 'Fresh')]).toBe(1);
+  });
+
+  it('does not recycle an input wire or a wire that still belongs to a register', () => {
+    const input = compileQpuProtocol(`PARAMS: Q:state
+MAIN-PROCESS Input
+FREE -I Q
+SET Next 0p
+X -I Next -O Next
+RETURNVALS Next`);
+    expect(input.qubitCount).toBe(2);
+    expect(input.processParams.map((param) => param.name)).toEqual(['Q']);
+    const startStates = Array.from({ length: input.qubitCount }, () => '0p' as ParticleStartState);
+    startStates[input.processParams[0].qubitIndex] = '1p';
+    const executed = runCircuit(input.qubitCount, input.gates, startStates, [input.processParams[0].qubitIndex]);
+    const measured = measureAll(executed.state, input.qubitCount, executed.measurements);
+    expect(measured.measurements[input.processParams[0].qubitIndex]).toBe(1);
+    expect(measured.measurements[tokenQubit(input.tokenMap, 'Next')]).toBe(1);
+
+    const joined = compileQpuProtocol(`MAIN-PROCESS JoinedFree
+SET A 0p
+SET B 0p
+JOIN -I A B -O AB
+FREE -I A
+SET Next 0p
+RETURNVALS Next`);
+    expect(joined.qubitCount).toBe(3);
+  });
+
+  it('returns the wires currently named by JOIN and SPLIT', () => {
+    const joined = compileQpuProtocol(`MAIN-PROCESS JoinedReturn
+SET A 0p
+SET B 1p
+JOIN -I A B -O AB
+RETURNVALS AB`);
+    expect(joined.returnValues.map((value) => value.name)).toEqual(['AB[0]', 'AB[1]']);
+    expect(joined.returnValues.map((value) => value.qubitIndex)).toEqual([
+      tokenQubit(joined.tokenMap, 'A'),
+      tokenQubit(joined.tokenMap, 'B'),
+    ]);
+
+    const split = compileQpuProtocol(`MAIN-PROCESS SplitReturn
+SET R 0p_dim4
+SPLIT R Low 2
+RETURNVALS R`);
+    expect(split.returnValues).toHaveLength(1);
+    expect(split.returnValues[0].name).toBe('R');
+  });
+
   it('joins wires and splits off a dimension-2 component', () => {
     const compiled = compileQpuProtocol(`MAIN-PROCESS Joined
 SET A 0p
@@ -237,12 +297,69 @@ RETURNVALS Q`);
     expect(executed.log.some((line) => line.startsWith('Loaded checkpoint'))).toBe(true);
   });
 
+  it('saves a queued zero preparation before the checkpoint marker', () => {
+    const compiled = compileQpuProtocol(`MAIN-PROCESS SavedZero
+SET Q 1p
+SET Q 0p
+SAVE_STATE zero
+X -I Q -O Q
+LOAD_STATE zero
+RETURNVALS Q`);
+    const executed = runCircuit(compiled.qubitCount, compiled.gates);
+    const probabilityOne = executed.state.reduce((sum, amplitude, index) => sum + (index % 2 === 1 ? magnitudeSquared(amplitude) : 0), 0);
+    expect(probabilityOne).toBeCloseTo(0, 8);
+  });
+
+  it('does not treat a loaded checkpoint as known zero', () => {
+    const compiled = compileQpuProtocol(`MAIN-PROCESS Loaded
+SET Q 1p
+SAVE_STATE mark
+SET Q 0p
+LOAD_STATE mark
+FREE -I Q
+X -I Fresh -O Fresh
+RETURNVALS Fresh`);
+    const executed = runCircuit(compiled.qubitCount, compiled.gates);
+    const measured = measureAll(executed.state, compiled.qubitCount, executed.measurements);
+    expect(compiled.qubitCount).toBe(2);
+    expect(measured.measurements[tokenQubit(compiled.tokenMap, 'Fresh')]).toBe(1);
+  });
+
+  it('shares a checkpoint store passed without other execution options', () => {
+    const store = {};
+    const save: CircuitGate = {
+      id: 'save', type: 'SAVE_STATE', step: 0, targets: [], controls: [], source: 'SAVE_STATE mark', checkpoint: 'mark',
+    };
+    const load: CircuitGate = {
+      id: 'load', type: 'LOAD_STATE', step: 1, targets: [], controls: [], source: 'LOAD_STATE mark', checkpoint: 'mark',
+    };
+    stepCircuitGate(createInitialState(1), 1, save, {}, { checkpoints: store });
+    const loaded = stepCircuitGate(createInitialState(1), 1, load, {}, { checkpoints: store });
+    expect(loaded.result.log.some((line) => line.startsWith('Loaded checkpoint'))).toBe(true);
+  });
+
   it('rejects a load of an unknown checkpoint', () => {
     const compiled = compileQpuProtocol(`MAIN-PROCESS Missing
 SET Q 0p
 LOAD_STATE absent
 RETURNVALS Q`);
     expect(() => runCircuit(compiled.qubitCount, compiled.gates)).toThrow(/Unknown checkpoint 'absent'/);
+  });
+});
+
+describe('canvas serialization', () => {
+  it('numbers wire suffixes from the cycle and skips dg on derived NOT', () => {
+    const source = serializeCircuitToQpuProtocol([
+      { id: 'h', type: 'H', step: 0, targets: [0], controls: [], source: 'H', inverse: true },
+      { id: 'cycle', type: 'CYCLE', step: 1, targets: [], controls: [], source: 'INCREASECYCLE' },
+      { id: 'x', type: 'X', step: 2, targets: [0], controls: [], source: 'X' },
+      { id: 'not', type: 'NOT', step: 3, targets: [0], controls: [], source: 'NOT', inverse: true },
+    ], 1);
+    expect(source).toContain('Hdg -I $Q0:0 -O $Q0:0');
+    expect(source).toContain('X -I $Q0:1 -O $Q0:1');
+    expect(source).toContain('NOT -I $Q0:1 -O $Q0:1');
+    expect(source).not.toContain('NOTdg');
+    expect(analyzeQpuProtocol(source).diagnostics.map((diagnostic) => diagnostic.code)).not.toContain('CYCLE_SUFFIX_MISMATCH');
   });
 });
 

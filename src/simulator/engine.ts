@@ -101,13 +101,23 @@ export type ApplyGateOptions = {
 const isExecutionOptions = (
   input: Record<string, string> | ApplyGateOptions | RunCircuitOptions,
 ): boolean => {
-  const candidate = input as { trackParticles?: unknown; librarySources?: unknown };
+  const candidate = input as {
+    trackParticles?: unknown;
+    librarySources?: unknown;
+    checkpoints?: unknown;
+  };
   return typeof candidate.trackParticles === 'boolean'
     || (
       candidate.librarySources !== undefined
       && candidate.librarySources !== null
       && typeof candidate.librarySources === 'object'
       && !Array.isArray(candidate.librarySources)
+    )
+    || (
+      candidate.checkpoints !== undefined
+      && candidate.checkpoints !== null
+      && typeof candidate.checkpoints === 'object'
+      && !Array.isArray(candidate.checkpoints)
     );
 };
 

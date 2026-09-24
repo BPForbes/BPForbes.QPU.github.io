@@ -128,6 +128,21 @@ RETURNVALS Result`);
     }));
   });
 
+  it('reports a released-token error on the instruction line', () => {
+    const report = analyzeQpuProtocol(`MAIN-PROCESS Released
+SET Q 0p
+FREE -I Q
+H -I Q -O Q
+RETURNVALS Q`);
+
+    expect(report.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'error',
+      code: 'COMPILE_ERROR',
+      line: 4,
+      source: 'H -I Q -O Q',
+    }));
+  });
+
   it('warns when dg or inv is applied to measurement', () => {
     const report = analyzeQpuProtocol(`MAIN-PROCESS Measured
 SET Q 0p

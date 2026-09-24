@@ -530,6 +530,7 @@ function App() {
     setStartStates(defaultStartStates);
     setGates([]);
     setSelectedGate('H');
+    setInverseMode(false);
     setTargetQubit(0);
     setControlQubit(1);
     setSecondControlQubit(2);
