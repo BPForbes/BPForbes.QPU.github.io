@@ -29,6 +29,11 @@ describe('bounded child-process recursion', () => {
     expect(compiled.log.some((line) => /TCO:.*REC auto-converted/i.test(line))).toBe(true);
     expect(compiled.log.some((line) => /TCO rewind/i.test(line))).toBe(true);
     expect(compiled.gates.every((gate) => gate.type !== 'REC' && gate.type !== 'RECUR' && gate.type !== 'EXIT')).toBe(true);
+    const recursiveGates = compiled.gates.filter((gate) => gate.recursion);
+    expect(recursiveGates.length).toBeGreaterThan(0);
+    expect(recursiveGates.every((gate) => gate.recursion?.mode === 'tco')).toBe(true);
+    expect(recursiveGates.every((gate) => gate.recursion?.process === 'RecursiveH')).toBe(true);
+    expect(new Set(recursiveGates.map((gate) => gate.recursion!.level)).size).toBe(3);
   });
 
   it('applies the expanded H gates to the qubit', () => {

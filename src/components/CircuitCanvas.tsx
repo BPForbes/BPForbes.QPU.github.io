@@ -2,6 +2,12 @@ import { isKnownGateType } from '../simulator/gates/registry';
 import { CircuitGate, GateType, MeasurementMap, ParticleStartState } from '../simulator/types';
 import { CircuitGlyph } from './circuit/CircuitGlyph';
 import {
+  describeRecursionExpansion,
+  recursionCycleLabel,
+  recursionCycleTitle,
+  recursionExpansionSummary,
+} from './circuit/recursionVisuals';
+import {
   circuitColumnCount,
   classicalWireQubits,
   gateSpanQubits,
@@ -50,6 +56,7 @@ export function CircuitCanvas({
   const measuredWithoutGate = classicalQubits.filter(
     (qubit) => !measureGates.some((gate) => gate.targets.includes(qubit)),
   );
+  const recursionSummary = recursionExpansionSummary(sorted);
 
   const handleDrop = (event: React.DragEvent, qubit: number) => {
     event.preventDefault();
@@ -67,6 +74,22 @@ export function CircuitCanvas({
         <p className="eyebrow">Circuit canvas</p>
         <h2 id="circuit-title">Standard circuit diagram</h2>
       </div>
+      {recursionSummary ? (
+        <p className={`circuit-recursion-banner ${recursionSummary.mode}`} title={describeRecursionExpansion(recursionSummary)}>
+          <strong>{recursionSummary.mode === 'tco' ? 'TCO expansion' : 'Stacked REC expansion'}</strong>
+          {' · '}
+          {recursionSummary.process}
+          {' −DEPTH '}
+          {recursionSummary.rootDepth}
+          {' → '}
+          {recursionSummary.stages}
+          {' stage'}
+          {recursionSummary.stages === 1 ? '' : 's'}
+          {' (L'}
+          {recursionSummary.levels.join(', L')}
+          {')'}
+        </p>
+      ) : null}
       <div className="canvas-scroll">
         <div
           className="circuit-board"
@@ -131,11 +154,18 @@ export function CircuitCanvas({
 
           {sorted.filter((gate) => gate.type === 'CYCLE').map((gate) => (
             <span
-              className="circuit-cycle-slice"
+              className={[
+                'circuit-cycle-slice',
+                gate.recursion ? `recursion-${gate.recursion.mode}` : '',
+                activeStep === gate.step ? 'active' : '',
+              ].filter(Boolean).join(' ')}
               key={gate.id}
               style={{ gridColumn: gate.step + 2, gridRow: `1 / ${rowCount + 1}` }}
+              title={recursionCycleTitle(gate)}
             >
-              {gate.cycle ?? ''}
+              {recursionCycleLabel(gate).split('\n').map((line) => (
+                <span className="circuit-cycle-line" key={line}>{line}</span>
+              ))}
             </span>
           ))}
 
@@ -206,9 +236,10 @@ export function CircuitCanvas({
               const isTarget = gate.targets.includes(qubit);
               return (
                 <span
-                  className={`circuit-slot ${activeStep === gate.step ? 'active' : ''} ${activeStep >= gate.step ? 'done' : ''}`}
+                  className={`circuit-slot ${activeStep === gate.step ? 'active' : ''} ${activeStep >= gate.step ? 'done' : ''} ${gate.recursion ? `recursion-${gate.recursion.mode}` : ''}`}
                   key={`${gate.id}-${qubit}`}
                   style={{ gridColumn: gate.step + 2, gridRow: qubit + 1 }}
+                  title={gate.recursion ? recursionCycleTitle({ ...gate, type: 'CYCLE' }) : undefined}
                 >
                   <CircuitGlyph
                     active={activeStep === gate.step}
@@ -223,8 +254,9 @@ export function CircuitCanvas({
         </div>
       </div>
       <p className="canvas-tip">
-        Qubit wires stay single, and a measured qubit can still take later gates. The double stroke down to c marks the time of that measurement and the bit where the result lands. Inverse gates wear a dagger: blue in general, purple on the active step.
-        Active steps use a red outline; measured particles turn red on their wire.
+        {recursionSummary
+          ? describeRecursionExpansion(recursionSummary)
+          : 'Qubit wires stay single, and a measured qubit can still take later gates. The double stroke down to c marks the time of that measurement and the bit where the result lands. Inverse gates wear a dagger: blue in general, purple on the active step. Active steps use a red outline; measured particles turn red on their wire.'}
       </p>
     </section>
   );

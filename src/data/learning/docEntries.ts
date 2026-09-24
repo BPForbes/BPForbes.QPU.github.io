@@ -234,6 +234,8 @@ export const gateDocEntry = (gateId: string): DocEntry | undefined => {
 };
 
 const CHILD_CALL = /^\s*(?:RUNCHILD|CALL|DECLARECHILD)\s+([A-Za-z_][\w-]*)/;
+const REC_DECL = /^\s*(REC|TREC)(?:\s+MAXDEPTH\s+(\d+))?/i;
+const HAS_RECUR = /^\s*(?:RECUR|RUNCHILD\s+\S+)/m;
 
 /** Child process names a protocol declares or runs, in first-use order. */
 export const childProcessNames = (source: string): string[] => {
@@ -243,6 +245,34 @@ export const childProcessNames = (source: string): string[] => {
     if (match) names.add(match[1]);
   });
   return [...names];
+};
+
+export type ProtocolRecursionInfo = {
+  declared: 'REC' | 'TREC' | null;
+  maxDepth?: number;
+  hasRecur: boolean;
+  usesDepthFlag: boolean;
+};
+
+/** Detect REC/TREC/RECUR/−DEPTH markers in protocol text for workbench copy. */
+export const protocolRecursionInfo = (source: string): ProtocolRecursionInfo => {
+  let declared: 'REC' | 'TREC' | null = null;
+  let maxDepth: number | undefined;
+  source.split(/\r?\n/).forEach((line) => {
+    const match = line.replace(/#.*$/, '').match(REC_DECL);
+    if (!match) return;
+    declared = match[1].toUpperCase() as 'REC' | 'TREC';
+    if (match[2]) maxDepth = Number(match[2]);
+  });
+  const stripped = source.replace(/#.*$/gm, '');
+  return {
+    declared,
+    maxDepth,
+    hasRecur: /^\s*RECUR\b/m.test(stripped) || (
+      declared !== null && HAS_RECUR.test(stripped)
+    ),
+    usesDepthFlag: /-DEPTH(?:\s*=\s*|\s+)\d+/i.test(stripped),
+  };
 };
 
 // Simulation runs the whole circuit once per row; wider processes rely on their .qpuio table.
@@ -345,6 +375,7 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
   const params = getProtocolParameterEntries(source).filter((param) => param.type === 'state').map((param) => param.name);
   const outputs = getReturnValTokens(source);
   const children = childProcessNames(source).filter((child) => child !== name);
+  const recursion = protocolRecursionInfo(source);
   const measures = /^\s*MEASURE\b/m.test(source);
   let gateCount: number | undefined;
   try {
@@ -355,6 +386,7 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
   const table = processTable(source, library, params.length, canonical);
   const inputs = params.join(', ') || 'no inputs';
   const outputList = outputs.join(', ') || 'no outputs';
+  const recursiveChild = recursion.declared !== null || recursion.hasRecur || recursion.usesDepthFlag;
 
   const sections: DocSection[] = [
     {
@@ -364,7 +396,7 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
     {
       heading: 'Main process or child process?',
       body: children.length > 0
-        ? `Here ${name} is the main process: it calls ${children.join(', ')} as child process${children.length === 1 ? '' : 'es'}. RUNCHILD copies the child's gates into this circuit at compile time, on the wires passed with -I (inputs) and -O (outputs). Open a child below to read it.`
+        ? `Here ${name} is the main process: it calls ${children.join(', ')} as child process${children.length === 1 ? '' : 'es'}. RUNCHILD copies the child's gates into this circuit at compile time, on the wires passed with -I (inputs) and -O (outputs)${recursion.usesDepthFlag ? '. Recursive children also need -DEPTH N so the compiler knows how many times to expand them' : ''}. Open a child below to read it.`
         : `${name} calls no child processes. Any other process can use it as a child: DECLARECHILD names it, and RUNCHILD copies its gates into the caller on the wires you pass.`,
     },
     {
@@ -374,6 +406,23 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
         : 'It contains no MEASURE, so it is reversible as long as it does not SET its outputs and returns every helper wire to 0.'}`,
     },
   ];
+
+  if (recursiveChild) {
+    const form = recursion.declared === 'TREC'
+      ? 'TREC (explicit tail form; always TCO)'
+      : recursion.declared === 'REC'
+        ? 'REC (auto-TCO when every RECUR is in tail position, like F#; otherwise stacked frames)'
+        : recursion.usesDepthFlag
+          ? 'a parent RUNCHILD with -DEPTH (the child supplies REC/TREC)'
+          : 'self-RECUR / self-RUNCHILD';
+    sections.splice(1, 0, {
+      heading: 'Bounded recursion and TCO',
+      body: `${name} uses ${form}${recursion.maxDepth !== undefined ? ` with MAXDEPTH ${recursion.maxDepth}` : ''}. `
+        + 'Root self-recursion is banned; only a child may expand itself. DEPTH, LEVEL, and ROOTDEPTH are read-only compile-time values for EXIT WHEN. '
+        + 'The canvas never shows a loop: RECUR unrolls into ordinary gates. Tail form reuses one compiler frame (TCO); non-tail REC nests scopes. '
+        + 'Compile RecursiveHParent (or any parent with RUNCHILD … -DEPTH N) to see L# / TCO badges on the cycle columns.',
+    });
+  }
 
   if (customGate) {
     const roles = [
@@ -386,21 +435,51 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
     });
   }
 
+  const runChildSyntax = recursiveChild && children.length === 0
+    ? `RUNCHILD ${name} -DEPTH ${recursion.maxDepth ?? 4} -I ${params.join(' ') || '…'}`
+    : children.length > 0 && recursion.usesDepthFlag
+      ? `RUNCHILD ${children[0]} -DEPTH 4 -I ${params.join(' ') || '…'}`
+      : `RUNCHILD ${name} -I ${params.join(' ') || '…'} -O ${outputs.join(' ') || '…'}`;
+
   return {
     key,
     kind,
     inputs: params,
     outputs,
     title: customGate ? `${customGate.id} · custom gate` : name,
-    subtitle: customGate ? `Custom gate from process ${name}` : children.length > 0 ? 'Process · calls child processes' : 'Process',
+    subtitle: customGate
+      ? `Custom gate from process ${name}`
+      : recursion.declared === 'TREC'
+        ? 'Process · TREC (tail / TCO)'
+        : recursion.declared === 'REC'
+          ? 'Process · bounded REC (auto-TCO when tail)'
+          : recursion.usesDepthFlag
+            ? 'Process · expands recursive child (−DEPTH)'
+            : children.length > 0
+              ? 'Process · calls child processes'
+              : 'Process',
     summary: customGate
       ? `A saved process that replays its gates on the wires you choose: ${inputs} in, ${outputList} out.`
-      : `${inputs} in, ${outputList} out.`,
+      : recursion.declared
+        ? `${inputs} in, ${outputList} out · compile-time recursion (${recursion.declared}).`
+        : recursion.usesDepthFlag
+          ? `${inputs} in, ${outputList} out · RUNCHILD with −DEPTH expands a recursive child.`
+          : `${inputs} in, ${outputList} out.`,
     table,
     syntax: [
       ...(customGate ? [`# Canvas: select ${customGate.id}, then Add gate to target`] : []),
-      `DECLARECHILD ${name}`,
-      `RUNCHILD ${name} -I ${params.join(' ') || '…'} -O ${outputs.join(' ') || '…'}`,
+      ...(recursion.declared
+        ? [
+            recursion.declared === 'TREC' ? 'TREC MAXDEPTH 16' : 'REC MAXDEPTH 16',
+            'EXIT WHEN DEPTH == 0',
+            'RECUR -I Q',
+            `DECLARECHILD ${name}`,
+            runChildSyntax,
+          ]
+        : [
+            `DECLARECHILD ${name}`,
+            runChildSyntax,
+          ]),
     ],
     sections,
     children,

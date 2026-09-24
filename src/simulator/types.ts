@@ -128,6 +128,18 @@ export type GateCondition = {
   equals: 0 | 1;
 };
 
+/**
+ * Compile-time recursion frame that produced this gate.
+ * REC/TREC/RECUR expand into ordinary gates; this metadata drives canvas badges.
+ */
+export type RecursionFrameMeta = {
+  process: string;
+  depth: number;
+  level: number;
+  rootDepth: number;
+  mode: 'tco' | 'stack';
+};
+
 export type CircuitGate = {
   id: string;
   type: GateType;
@@ -145,6 +157,8 @@ export type CircuitGate = {
   checkpoint?: string;
   /** Optional classical condition; evaluated only after the named qubit is measured. */
   condition?: GateCondition;
+  /** Present when this gate came from a bounded REC/TREC expansion. */
+  recursion?: RecursionFrameMeta;
 };
 
 export type MeasurementMap = Record<number, 0 | 1>;

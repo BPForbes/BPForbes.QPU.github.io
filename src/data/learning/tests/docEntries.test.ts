@@ -66,6 +66,18 @@ describe('workbench documentation entries', () => {
     expect(resolveDocEntry('process:NoSuchProcess')).toBeUndefined();
   });
 
+  it('documents bounded REC/TREC and parent −DEPTH expansion', () => {
+    const recursive = resolveDocEntry('process:RecursiveH');
+    expect(recursive?.subtitle).toMatch(/bounded REC/i);
+    expect(recursive?.sections.some((section) => section.heading === 'Bounded recursion and TCO')).toBe(true);
+    expect(recursive?.syntax?.some((line) => /REC MAXDEPTH|RECUR/.test(line))).toBe(true);
+
+    const parent = resolveDocEntry('process:RecursiveHParent');
+    expect(parent?.subtitle).toMatch(/−DEPTH|DEPTH/i);
+    expect(parent?.sections.some((section) => section.heading === 'Bounded recursion and TCO')).toBe(true);
+    expect(parent?.syntax?.some((line) => /-DEPTH/.test(line))).toBe(true);
+  });
+
   it('builds a custom gate entry with a simulated truth table and usage syntax', () => {
     const source = [
       'PARAMS: A:state B:state',

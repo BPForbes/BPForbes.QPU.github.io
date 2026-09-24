@@ -18,6 +18,11 @@ import {
   type PlaygroundViewId,
 } from './components/PlaygroundScrubber';
 import { MAX_PLAY_SPEED, MIN_PLAY_SPEED, playDelayMs } from './components/circuitLayout';
+import {
+  describeRecursionExpansion,
+  recursionCycleTitle,
+  recursionExpansionSummary,
+} from './components/circuit/recursionVisuals';
 import { examples, learningSteps } from './data/examples';
 import {
   docHref,
@@ -761,7 +766,15 @@ function App() {
         : `${result.qubitCount} register(s)`;
       setCompileSummary(`Compiled ${result.parsed.length} QPU instruction(s) into ${result.gates.length} runnable gate(s) over ${registerSummary} with ${paramSummary}.`);
       resetRuntime(result.qubitCount, `Compiled ${label}. ${result.log[0] ?? ''}`, nextStartStates, result.processParams);
-      setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared')).slice(0, 24)]);
+      const compileLog = result.log.filter(
+        (entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'),
+      );
+      const recursionLog = compileLog.filter((entry) => /TCO|DEPTH=|RECUR|REC |TREC /i.test(entry));
+      const otherLog = compileLog.filter((entry) => !/TCO|DEPTH=|RECUR|REC |TREC /i.test(entry));
+      setLog((current) => [
+        ...current,
+        ...[...recursionLog, ...otherLog].slice(0, 32),
+      ]);
       if (!options?.skipCatalogRegister) {
         registerCatalogProcess({
           name: extractMainProcessName(source) ?? label,
@@ -973,6 +986,12 @@ function App() {
     }
     if (docFocus === 'circuit' && activeCanvasGate) {
       const wires = activeCanvasGate.targets.map((qubit) => `q${qubit}`).join(' and ');
+      const recursionNote = activeCanvasGate.recursion
+        ? recursionCycleTitle({ ...activeCanvasGate, type: 'CYCLE' })
+        : undefined;
+      const cycleNote = activeCanvasGate.type === 'CYCLE'
+        ? (recursionNote ?? `Logical cycle ${activeCanvasGate.cycle ?? ''} boundary from INCREASECYCLE. This advances the stage; it does not loop.`)
+        : undefined;
       return (
         <aside aria-label={`About step ${cursor}`} className="workbench-docs">
           <div className="workbench-docs-heading">
@@ -982,9 +1001,14 @@ function App() {
           <p>
             {activeCanvasGate.type === 'RESET'
               ? `This step is the compiler's internal RESET, inserted by SET: it forces ${wires} to |0⟩. It is hidden on the canvas and is not reversible.`
-              : `This step runs ${activeCanvasGateId} on ${wires}. There are no workbench notes for it.`}
+              : cycleNote
+                ? cycleNote
+                : recursionNote
+                  ? `${activeCanvasGateId} on ${wires || 'this column'}. ${recursionNote}`
+                  : `This step runs ${activeCanvasGateId} on ${wires}. There are no workbench notes for it.`}
           </p>
           {activeCanvasGate.type === 'RESET' ? <DocLink target={docTargets.resetSemantics} /> : null}
+          {activeCanvasGate.recursion ? <DocLink target={docTargets.processes} /> : null}
         </aside>
       );
     }
@@ -1010,6 +1034,7 @@ function App() {
       />
     );
   })();
+  const recursionSummary = recursionExpansionSummary(orderedGates);
 
   return (
     <main className={embedMode ? 'app-shell embed-shell' : 'app-shell'}>
@@ -1131,6 +1156,13 @@ function App() {
                 </label>
               ) : null}
             </div>
+            {recursionSummary ? (
+              <p className={`circuit-recursion-banner ${recursionSummary.mode}`} title={uiTips.recursionDepth}>
+                <strong>{recursionSummary.mode === 'tco' ? 'TCO on canvas' : 'Stacked REC on canvas'}</strong>
+                {' · '}
+                {describeRecursionExpansion(recursionSummary)}
+              </p>
+            ) : null}
             {workbenchDocs}
             {protocolDoc ? (
               <WorkbenchDocs
@@ -1422,6 +1454,26 @@ function App() {
               <p className="help-links"><DocLink target={docTargets.processes} /></p>
             </article>
             <article>
+              <h3>Bounded recursion and TCO</h3>
+              <p>
+                Child processes may declare <code>REC</code> or <code>TREC</code> and call <code>RECUR</code> (or self-
+                <code>RUNCHILD</code>). The parent must pass <code>-DEPTH N</code>. Expansion is compile-time only: the canvas
+                shows ordinary gates, with green <strong>TCO</strong> or amber <strong>REC</strong> cycle badges labeled
+                <code>L#</code> for LEVEL.
+              </p>
+              <ul>
+                <li><strong>REC</strong> auto-converts to TCO when every recursive call is in tail position (F#-style).</li>
+                <li><strong>TREC</strong> requires that tail form and always uses iterative frame rewind.</li>
+                <li>Non-tail <code>REC</code> keeps stacked nested scopes; gate count is still O(DEPTH).</li>
+                <li><code>EXIT WHEN DEPTH|LEVEL|ROOTDEPTH …</code> is a compile-time base case, not a runtime loop.</li>
+              </ul>
+              <p>
+                Try the <strong>Recursive H (TCO expanded)</strong> canvas example, or compile <strong>RecursiveHParent</strong>
+                from the protocol list (do not compile RecursiveH alone as the root — RECUR needs a child frame).
+              </p>
+              <p className="help-links"><DocLink target={docTargets.processes} /></p>
+            </article>
+            <article>
               <h3>How circuits are built</h3>
               <p>Use the circuit builder to drag a gate onto a qubit wire, or select a gate, target, and controls from the workbench. Play Sequence advances one gate at a time at the speed meter, including Measure (M) gates. Run all skips to the finished state.</p>
               <ul>
@@ -1438,6 +1490,7 @@ function App() {
                 <li>Primitive gates include X, Y, Z, H, S, T, RX, RY, RZ, CNOT, CCNOT, CZ, CY, CPHASE, SWAP, and PHASE.</li>
                 <li>Derived Boolean gates include NOT, AND, NAND, OR, and XOR.</li>
                 <li>Child protocols can be declared, run, and accepted through DECLARECHILD, RUNCHILD, and ACCEPTVALS.</li>
+                <li>Bounded child recursion uses REC or TREC with RECUR / EXIT WHEN; parents pass -DEPTH (auto-TCO when tail).</li>
                 <li>Constants <code>0p</code>, <code>1p</code>, and <code>sp</code> initialize zero, one, and superposition registers.</li>
               </ul>
             </article>

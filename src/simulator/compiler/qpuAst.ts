@@ -1,7 +1,7 @@
 // QPU protocol compiler: child processes and cycles expand into flat gates so the simulator and UI share one execution model.
 import { assertGateArity } from '../gates/arity';
 import { astDerivedGateIds, astPrimitiveGateIds } from '../gates/metadata';
-import { CircuitGate, GateType, QpuOperation } from '../types';
+import { CircuitGate, GateType, QpuOperation, RecursionFrameMeta } from '../types';
 import {
   analyzeRecursionForm,
   evaluateWhenClause,
@@ -389,6 +389,8 @@ type CompilerState = {
   processRuns: number;
   rootScope: string;
   verifying: Set<string>;
+  /** Active REC/TREC frame; stamped onto every gate emitted while set. */
+  activeRecursion?: RecursionFrameMeta;
 };
 
 const createCompilerState = (): CompilerState => ({
@@ -484,6 +486,7 @@ const emitGate = (
     checkpoint,
     inverse: inverse || undefined,
     condition,
+    recursion: state.activeRecursion ? { ...state.activeRecursion } : undefined,
   });
   if (type === 'RESET') {
     targets.forEach((qubit) => state.knownZero.add(qubit));
@@ -693,6 +696,21 @@ const executeProcess = (
     level: frameContext.level ?? 0,
     mode: frameContext.recursionMode,
   };
+  const enclosingRecursion = state.activeRecursion;
+  const syncActiveRecursion = () => {
+    if (recursionState.depth === undefined || recursionState.rootDepth === undefined) {
+      state.activeRecursion = undefined;
+      return;
+    }
+    state.activeRecursion = {
+      process: process.name,
+      depth: recursionState.depth,
+      level: recursionState.level,
+      rootDepth: recursionState.rootDepth,
+      mode: recursionState.mode ?? 'stack',
+    };
+  };
+  syncActiveRecursion();
 
   const depthNote = recursionState.depth !== undefined
     ? ` DEPTH=${recursionState.depth} LEVEL=${recursionState.level}${recursionState.mode ? ` mode=${recursionState.mode}` : ''}`
@@ -882,6 +900,7 @@ const executeProcess = (
         recursionState.rootDepth = plan.rootDepth;
         recursionState.level = plan.level;
         recursionState.mode = 'tco';
+        syncActiveRecursion();
         state.frameCycle = 0;
         lineIndex = 0;
         state.log.push(
@@ -1164,6 +1183,7 @@ const executeProcess = (
   return returns;
   } finally {
     state.frameCycle = enclosingFrameCycle;
+    state.activeRecursion = enclosingRecursion;
   }
 };
 

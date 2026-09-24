@@ -221,6 +221,51 @@ export const examples: ExampleCircuit[] = [
     ],
   },
   {
+    name: 'Recursive H (TCO expanded)',
+    description:
+      'What RecursiveHParent looks like after compile: four Hadamards separated by INCREASECYCLE, tagged as TCO LEVEL 0…3. Compile RecursiveHParent from the protocol list for the live log; this canvas starter shows the badges without editing text.',
+    step: 6,
+    qubitCount: 1,
+    gates: [
+      gate('rh-h0', 'H', 0, [0], [], {
+        cycle: 0,
+        recursion: { process: 'RecursiveH', depth: 4, level: 0, rootDepth: 4, mode: 'tco' },
+        source: 'H -I Q -O Q',
+      }),
+      {
+        ...cycle('rh-c0', 1, 1),
+        recursion: { process: 'RecursiveH', depth: 4, level: 0, rootDepth: 4, mode: 'tco' },
+      },
+      gate('rh-h1', 'H', 2, [0], [], {
+        cycle: 1,
+        recursion: { process: 'RecursiveH', depth: 3, level: 1, rootDepth: 4, mode: 'tco' },
+        source: 'H -I Q -O Q',
+      }),
+      {
+        ...cycle('rh-c1', 3, 2),
+        recursion: { process: 'RecursiveH', depth: 3, level: 1, rootDepth: 4, mode: 'tco' },
+      },
+      gate('rh-h2', 'H', 4, [0], [], {
+        cycle: 2,
+        recursion: { process: 'RecursiveH', depth: 2, level: 2, rootDepth: 4, mode: 'tco' },
+        source: 'H -I Q -O Q',
+      }),
+      {
+        ...cycle('rh-c2', 5, 3),
+        recursion: { process: 'RecursiveH', depth: 2, level: 2, rootDepth: 4, mode: 'tco' },
+      },
+      gate('rh-h3', 'H', 6, [0], [], {
+        cycle: 3,
+        recursion: { process: 'RecursiveH', depth: 1, level: 3, rootDepth: 4, mode: 'tco' },
+        source: 'H -I Q -O Q',
+      }),
+      {
+        ...cycle('rh-c3', 7, 4),
+        recursion: { process: 'RecursiveH', depth: 1, level: 3, rootDepth: 4, mode: 'tco' },
+      },
+    ],
+  },
+  {
     name: 'Quantum teleportation',
     description:
       'Alice and Bob share a Bell pair. Alice measures her message and half of the pair, then Bob applies X/Z conditioned on those classical bits (-IF). Forward-only feed-forward; no loops.',
