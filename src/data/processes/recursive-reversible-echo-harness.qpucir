@@ -1,9 +1,9 @@
 PARAMS: A:state B:state C:state
 MAIN-PROCESS RecursiveReversibleEchoHarness
 DECLARECHILD RecursiveReversibleEcho
-SET A 1p
-SET B 0p
-SET C 1p
+# Prepare |101⟩ from the all-zero start state used by the canvas.
+X -I A -O A
+X -I C -O C
 # ==============================================
 # RECURSION TEST
 # ==============================================

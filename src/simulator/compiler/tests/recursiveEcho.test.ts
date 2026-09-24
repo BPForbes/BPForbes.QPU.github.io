@@ -27,7 +27,8 @@ describe('RecursiveReversibleEcho stress circuit', () => {
 
   it('returns |101⟩ after the echo and finishes classically as 100', () => {
     const compiled = compileQpuProtocol(recursiveEchoHarness, library);
-    const executed = runCircuit(compiled.qubitCount, compiled.gates, ['1p', '0p', '1p']);
+    // Canvas/UI start from |000⟩; the harness prepares |101⟩ with explicit X gates.
+    const executed = runCircuit(compiled.qubitCount, compiled.gates, ['0p', '0p', '0p']);
     expect(executed.measurements[0]).toBe(1);
     expect(executed.measurements[1]).toBe(0);
     expect(executed.measurements[2]).toBe(0);
