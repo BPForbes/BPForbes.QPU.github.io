@@ -10,12 +10,12 @@ import {
   getCustomGateRecord,
   listCustomGateRecords,
   readStore,
-  removeCustomGateRecord,
+  removeCustomGateRecord as removeStoredRecord,
   writeStore,
   type CustomGateRecord,
 } from './customGateStore';
 
-export { getCustomGateRecord, listCustomGateRecords, removeCustomGateRecord, type CustomGateRecord };
+export { getCustomGateRecord, listCustomGateRecords, type CustomGateRecord };
 import { applyInverseAwareDefinition, invertCircuitGate } from './inverse';
 
 const assertCustomGateIdAvailable = (trimmedId: string) => {
@@ -94,9 +94,12 @@ export const registerCustomGate = ({
     ...reversibilityFields(compiled),
   };
 
-  const next = readStore().filter((existing) => existing.id.toLowerCase() !== trimmedId.toLowerCase());
+  const previous = readStore();
+  const replacing = previous.some((existing) => existing.id.toLowerCase() === trimmedId.toLowerCase());
+  const next = previous.filter((existing) => existing.id.toLowerCase() !== trimmedId.toLowerCase());
   next.push(record);
   writeStore(next);
+  if (replacing) recheckOtherGates(trimmedId);
   return record;
 };
 
@@ -291,16 +294,36 @@ const recheckRecord = (record: CustomGateRecord): CustomGateRecord => {
   }
 };
 
-const refreshStaleReversibility = (records: CustomGateRecord[]): CustomGateRecord[] => {
-  if (!records.some(isStale)) return records;
-  // Records are stored in registration order; saving after each one lets inner gates be re-checked before the gates that use them.
+/**
+ * Re-check the selected records in registration order. Saving after each one lets an inner gate's
+ * new result be seen by the gates registered after it that use it.
+ */
+const recheckRecords = (records: CustomGateRecord[], shouldRecheck: (record: CustomGateRecord) => boolean) => {
+  if (!records.some(shouldRecheck)) return records;
   const next = [...records];
   next.forEach((record, index) => {
-    if (!isStale(record)) return;
+    if (!shouldRecheck(record)) return;
     next[index] = recheckRecord(record);
     writeStore(next);
   });
   return next;
+};
+
+const refreshStaleReversibility = (records: CustomGateRecord[]) => recheckRecords(records, isStale);
+
+/**
+ * A gate's result depends on the stored results of the custom gates it uses, so replacing or removing
+ * a gate re-checks every other gate. Rechecking a gate that does not use it leaves its result unchanged.
+ */
+const recheckOtherGates = (changedId: string) => {
+  recheckRecords(readStore(), (record) => record.id.toLowerCase() !== changedId.toLowerCase());
+};
+
+/** Remove a custom gate and re-check the gates that may have used it. */
+export const removeCustomGateRecord = (id: string) => {
+  removeStoredRecord(id);
+  recheckOtherGates(id);
+  return readStore();
 };
 
 export const buildCustomGateDefinitions = () =>
