@@ -21,9 +21,11 @@ $\ket0$ or $\ket1$\\\bottomrule
 
 \begin{beginnerbox}[Three ways to measure in the builder]
 \begin{description}
-  \item[The meter] A step \emph{in the circuit}, like any other
-  gate. It runs every time the circuit runs and is saved in the protocol as
-  \code{MEASURE}.
+  \item[The meter] A step \emph{in the circuit}, drawn on the qubit wire.
+  A double stroke drops from that column to the \textbf{c} lane and numbers
+  the bit that was read. \textbf{c} records the time of the measurement.
+  The qubit wire stays a single line, and later gates on that particle still
+  run. The meter is saved in the protocol as \code{MEASURE}.
   \item[\textbf{Measure target}] Measures the selected \textbf{Target
   particle} once, right now. Nothing is added to the circuit.
   \item[\textbf{Measure all}] Measures every wire not yet measured, right now.

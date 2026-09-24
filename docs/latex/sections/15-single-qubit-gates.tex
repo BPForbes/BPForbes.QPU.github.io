@@ -186,6 +186,11 @@ marker emits the ordinary gate, which is already its own inverse:
 X,\ Y,\ Z,\ H,\ \mathrm{CNOT},\ \mathrm{CCNOT},\
 \mathrm{CZ},\ \mathrm{CY},\ \mathrm{SWAP}.
 \]
+On the canvas the dagger prints $\dagger$ and uses a blue outline. While that
+step is active the outline is purple. A forward gate uses a red outline only
+while its step is active. The palette \textbf{Inverse} toggle drops the dagger
+instead of the forward gate.
+
 A \code{dg} or \code{inv} marker on a derived gate such as \code{ANDdg} is an
 unknown opcode. \code{MEASUREdg} parses and warns, because measurement has no
 inverse. Compiler-internal \code{RESET} remains unavailable in source.
