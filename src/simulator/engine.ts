@@ -179,7 +179,19 @@ const applyInverseOrRegistered = (
   measurements: MeasurementMap,
   librarySources: Record<string, string>,
 ): ExecutionResult => {
-  const satisfied = conditionSatisfied(gate, measurements, state, qubitCount);
+  // Predicates may use custom gates, so hand the evaluator the same registry-aware path.
+  const runPredicateGate = (
+    probe: CircuitGate,
+    probeState: Complex[],
+    probeQubitCount: number,
+    probeMeasurements: MeasurementMap,
+  ): ExecutionResult => {
+    const probeDefinition = getGateDefinition(String(probe.type));
+    return probeDefinition
+      ? applyInverseAwareDefinition(probeDefinition, probeState, probeQubitCount, probe, probeMeasurements, librarySources)
+      : applyRegisteredGate(probeState, probeQubitCount, probe, probeMeasurements, librarySources);
+  };
+  const satisfied = conditionSatisfied(gate, measurements, state, qubitCount, runPredicateGate);
   // Recorded per gate so the canvas can mark gate-expression branches taken/skipped.
   const conditionOutcomes = gate.condition ? { [gate.id]: satisfied } : undefined;
   if (!satisfied) {

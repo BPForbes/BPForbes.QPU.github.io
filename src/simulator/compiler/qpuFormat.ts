@@ -340,6 +340,12 @@ export const serializeCircuitToQpuProtocol = (
         pushGateLine(`${op} -I ${target} -O ${target}${conditionSuffix}`);
         return;
       }
+      // Custom gates bind -I to PARAMS and -O to every RETURNVAL, in order.
+      if (gate.customGateId) {
+        const outputs = gate.targets.map((qubit) => `${canvasParamRef(qubit)}:${cycle}`);
+        pushGateLine(`${op} -I ${controls.join(' ')} -O ${outputs.join(' ')}${conditionSuffix}`);
+        return;
+      }
       pushGateLine(`${op} -I ${controls.join(' ')} -O ${target}${conditionSuffix}`);
     });
 

@@ -121,12 +121,53 @@ with the target's \emph{name} start set to \code{0p} and then \code{1p}. If
 the target does not return, look for one of the three problems above.
 \end{beginnerbox}
 
+\subsection{Using a custom gate in protocol text and IF / ELSE}
+\hypertarget{custom-gates-in-text}{}
+
+Once registered, a custom gate is also an ordinary protocol instruction. Its
+\code{-I} wires bind the process's \code{PARAMS} in order and its \code{-O}
+wires bind its \code{RETURNVALS}; the counts must match. Add \code{dg} or
+\code{inv} (as in \code{NORdg}) to run a reversible custom gate backwards.
+\begin{lstlisting}
+NOR -I A B -O Out
+\end{lstlisting}
+This means custom gates work anywhere an IF / ELSE chain uses gates:
+\begin{itemize}
+  \item \textbf{In a branch body.} The whole block runs or is skipped as one
+  step:
+\begin{lstlisting}
+MEASURE -I A
+IF A=1
+NOR -I B C -O Out
+ELSE
+X -I Out -O Out
+ENDIF
+\end{lstlisting}
+  Use this instead of \code{RUNCHILD}, which is not allowed inside an IF
+  block because the child's gates would not inherit the condition.
+  \item \textbf{As the test.} A custom gate with exactly one
+  \code{RETURNVALS} can be the gate expression. It runs on a scratch copy of
+  the state and its output wire is compared with 0, 1, or S, as described in
+  \hyperlink{if-gate-expression}{Gate-expression conditions}:
+\begin{lstlisting}
+IF (NOR -I A B -O Out) = 1p
+X -I C -O C
+ENDIF
+\end{lstlisting}
+  Unlike the built-in AND, a custom gate always keeps its own wiring: its
+  output is the \code{-O} wire you name, never a hidden scratch wire.
+\end{itemize}
+Custom gates are stored in the browser session, so a protocol that uses one
+compiles only after that gate is registered. A custom gate whose process uses
+itself is rejected when it runs.
+
 \subsection{Rules to remember}
 \begin{itemize}
   \item The gate id must start with a letter, use only letters, digits, and
   underscores, and cannot match a built-in gate such as \code{AND}.
   \item Custom gates are saved for the current browser session only, not in
   the bundled catalog. Keep the \code{.qpucir} file to recreate one later.
+  A protocol that names a custom gate needs it registered before compiling.
   \item A custom gate can wrap a process that itself uses \code{RUNCHILD};
   the child processes are captured when you register it.
 \end{itemize}

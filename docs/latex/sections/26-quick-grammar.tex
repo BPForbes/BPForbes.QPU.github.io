@@ -51,5 +51,7 @@ names, types, and positional values are otherwise retained.
 \textbf{Block and recursion detail:} \code{-DEPTH} is required when the child
 declares \code{REC} or \code{TREC}. \code{RECUR}, \code{REC}, \code{TREC},
 and \code{EXIT WHEN} are only meaningful inside a child process. An
-\code{if-block} lowers each inner gate to a \code{-IF} condition; see
+\code{if-block} lowers each inner gate to a \code{-IF} condition. A
+registered custom gate is written like \code{gate-row} (its id as the
+opcode) and may appear in an \code{if-block} or an \code{if-expression}; see
 \hyperlink{if-else-blocks}{Structured classical branches}.

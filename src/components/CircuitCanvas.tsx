@@ -101,7 +101,14 @@ export function CircuitCanvas({
   /** Timeline markers (S / L / IC) run across the quantum wires and the c bus, not the label row. */
   const markerEndRow = qubitCount + (showClassical ? 2 : 1);
   // Gate-expression labels (e.g. NAND(A,B)) need wider columns than a single measured bit.
-  const hasPredicateLabels = sorted.some((gate) => Boolean(gate.condition?.predicate));
+  const longestPredicateLabel = sorted.reduce(
+    (longest, gate) => Math.max(longest, ...(gate.condition?.predicate?.text.split('→').map((part) => part.length) ?? [0])),
+    0,
+  );
+  // ~0.31rem per monospace character at the label size, plus a little breathing room.
+  const slotMaxRem = longestPredicateLabel > 0
+    ? Math.max(MAX_SLOT_REM + 0.9, longestPredicateLabel * 0.31 + 0.5)
+    : MAX_SLOT_REM;
   const snapshotByQubit = new Map(particleSnapshots.map((entry) => [entry.qubit, entry]));
   /** Multi-op recursive calls collapse to one REC box spanning every wire the body touches. */
   const isSpanningRec = (column: (typeof visualColumns)[number]) =>
@@ -136,7 +143,7 @@ export function CircuitCanvas({
             ['--qubits' as string]: qubitCount,
             ['--rows' as string]: rowCount,
             ['--slot-min' as string]: `${MIN_SLOT_REM}rem`,
-            ['--slot-max' as string]: `${hasPredicateLabels ? MAX_SLOT_REM + 0.9 : MAX_SLOT_REM}rem`,
+            ['--slot-max' as string]: `${slotMaxRem}rem`,
           }}
         >
           {Array.from({ length: qubitCount }, (_, qubit) =>
@@ -237,7 +244,9 @@ export function CircuitCanvas({
                       <span className="circuit-condition-keyword">{conditionFeedKeyword(gate)}</span>
                       {predicate ? (
                         <>
-                          <span className="circuit-condition-test">{predicate.text}</span>
+                          {predicate.text.split('→').map((part, index) => (
+                            <span className="circuit-condition-test" key={part}>{index > 0 ? `→${part}` : part}</span>
+                          ))}
                           <span className="circuit-condition-test">
                             {predicate.negate ? '≠' : '='} {predicate.expect === 's' ? 'S' : predicate.expect}
                           </span>

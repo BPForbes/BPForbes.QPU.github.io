@@ -5,6 +5,16 @@ import { gateIoArity } from './types';
 import { padStateVector } from './operations';
 import { preconfiguredGateMap } from './preconfigured';
 import { conditionSatisfied, remapConditionWires } from './conditions';
+import {
+  getCustomGateRecord,
+  listCustomGateRecords,
+  readStore,
+  removeCustomGateRecord,
+  writeStore,
+  type CustomGateRecord,
+} from './customGateStore';
+
+export { getCustomGateRecord, listCustomGateRecords, removeCustomGateRecord, type CustomGateRecord };
 import { applyInverseAwareDefinition, invertCircuitGate } from './inverse';
 
 const assertCustomGateIdAvailable = (trimmedId: string) => {
@@ -14,21 +24,6 @@ const assertCustomGateIdAvailable = (trimmedId: string) => {
   }
 };
 
-export type CustomGateRecord = {
-  id: string;
-  label: string;
-  color: string;
-  source: string;
-  processName: string;
-  librarySources: Record<string, string>;
-  inputParamNames: string[];
-  outputParamNames: string[];
-  createdAt: string;
-  /** True when every compiled step is reversible (no MEASURE/RESET/SAVE/LOAD). */
-  reversible: boolean;
-};
-
-const STORAGE_KEY = 'qpu-custom-gates-v1';
 
 const NON_REVERSIBLE_TYPES = new Set([
   'MEASURE',
@@ -54,40 +49,6 @@ const randomCustomColor = (usedColors: Set<string>) => {
   }
   const hue = Math.floor(Math.random() * 360);
   return `linear-gradient(135deg, hsl(${hue} 78% 58%), hsl(${(hue + 36) % 360} 72% 42%))`;
-};
-
-// Custom gates are session-scoped so experiments survive reloads without becoming bundled catalog metadata.
-const readStore = (): CustomGateRecord[] => {
-  if (typeof sessionStorage === 'undefined') return [];
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as CustomGateRecord[];
-    return Array.isArray(parsed)
-      ? parsed.map((record) => ({
-          ...record,
-          reversible: record.reversible ?? false,
-        }))
-      : [];
-  } catch {
-    return [];
-  }
-};
-
-const writeStore = (records: CustomGateRecord[]) => {
-  if (typeof sessionStorage === 'undefined') return;
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-};
-
-export const listCustomGateRecords = () => readStore();
-
-export const getCustomGateRecord = (id: string) =>
-  readStore().find((record) => record.id.toLowerCase() === id.toLowerCase());
-
-export const removeCustomGateRecord = (id: string) => {
-  const next = readStore().filter((record) => record.id.toLowerCase() !== id.toLowerCase());
-  writeStore(next);
-  return next;
 };
 
 export type RegisterCustomGateInput = {
@@ -205,6 +166,9 @@ const remapInnerGate = (gate: CircuitGate, remap: Map<number, number>): CircuitG
 });
 
 // Applying a custom gate expands the saved protocol into ordinary registered gates at runtime.
+/** Custom gates currently expanding, so a gate whose source uses itself fails instead of looping. */
+const expandingCustomGates = new Set<string>();
+
 export const applyCustomGateProcess = (
   state: import('../complex').Complex[],
   qubitCount: number,
@@ -213,9 +177,29 @@ export const applyCustomGateProcess = (
   record: CustomGateRecord,
   librarySources: Record<string, string> = {},
 ): ExecutionResult => {
+  if (expandingCustomGates.has(record.id)) {
+    throw new Error(`Custom gate '${record.id}' uses itself; custom gates cannot recurse.`);
+  }
+  expandingCustomGates.add(record.id);
+  try {
+    return expandCustomGate(state, qubitCount, gate, measurements, record, librarySources);
+  } finally {
+    expandingCustomGates.delete(record.id);
+  }
+};
+
+const expandCustomGate = (
+  state: import('../complex').Complex[],
+  qubitCount: number,
+  gate: CircuitGate,
+  measurements: MeasurementMap,
+  record: CustomGateRecord,
+  librarySources: Record<string, string>,
+): ExecutionResult => {
   const mergedLibrary = { ...record.librarySources, ...librarySources };
   const compiled = compileQpuProtocol(record.source, mergedLibrary);
-  const { remap, expandedQubitCount } = buildQubitRemap(compiled, gate, qubitCount);
+  const { remap, expandedQubitCount: baseQubitCount } = buildQubitRemap(compiled, gate, qubitCount);
+  let expandedQubitCount = baseQubitCount;
 
   let nextState = padStateVector(state, qubitCount, expandedQubitCount);
   let nextMeasurements = { ...measurements };
@@ -232,24 +216,33 @@ export const applyCustomGateProcess = (
       : `Custom gate ${record.label} executing ${steps.length} compiled step(s).`,
   ];
 
+  // Inner gates (and inner IF predicates) may themselves be custom gates.
+  const runInnerGate = (
+    inner: CircuitGate,
+    innerState: import('../complex').Complex[],
+    innerQubitCount: number,
+    innerMeasurements: MeasurementMap,
+  ): ExecutionResult => {
+    const builtIn = preconfiguredGateMap[inner.type];
+    if (builtIn) {
+      return applyInverseAwareDefinition(builtIn, innerState, innerQubitCount, inner, innerMeasurements, mergedLibrary);
+    }
+    const nested = getCustomGateRecord(String(inner.type));
+    if (!nested) throw new Error(`Custom gate '${record.id}' lowered unknown inner gate '${inner.type}'.`);
+    return applyCustomGateProcess(innerState, innerQubitCount, inner, innerMeasurements, nested, mergedLibrary);
+  };
+
   for (const innerGate of steps) {
     const remapped = remapInnerGate(innerGate, remap);
     // Inner -IF / IF-ELSE gates follow the same feed-forward rule as top-level gates.
-    if (!conditionSatisfied(remapped, nextMeasurements, nextState, expandedQubitCount)) {
+    if (!conditionSatisfied(remapped, nextMeasurements, nextState, expandedQubitCount, runInnerGate)) {
       log.push(`${remapped.type} skipped because classical condition was false.`);
       continue;
     }
-    const definition = preconfiguredGateMap[remapped.type];
-    if (!definition) throw new Error(`Custom gate '${record.id}' lowered unknown inner gate '${remapped.type}'.`);
-    const result = applyInverseAwareDefinition(
-      definition,
-      nextState,
-      expandedQubitCount,
-      remapped,
-      nextMeasurements,
-      mergedLibrary,
-    );
+    const result = runInnerGate(remapped, nextState, expandedQubitCount, nextMeasurements);
     nextState = result.state;
+    // A nested custom gate may add its own workspace wires.
+    expandedQubitCount = Math.max(expandedQubitCount, Math.round(Math.log2(nextState.length)));
     nextMeasurements = result.measurements;
     log.push(...result.log);
   }

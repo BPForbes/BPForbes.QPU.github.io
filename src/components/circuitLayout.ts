@@ -91,7 +91,8 @@ export const gateSpanQubits = (gate: CircuitGate) => {
 export type CircuitGlyphKind = 'box' | 'control' | 'plus' | 'swap' | 'measure';
 
 export const glyphKindFor = (gate: CircuitGate, qubit: number): CircuitGlyphKind => {
-  if (gate.controls.includes(qubit)) return 'control';
+  // Custom gates list an in-place wire as both PARAM input and RETURNVAL output; draw it as the target.
+  if (gate.controls.includes(qubit) && !gate.targets.includes(qubit)) return 'control';
   if (gate.type === 'CNOT' || gate.type === 'CCNOT') return 'plus';
   if (gate.type === 'SWAP') return 'swap';
   if (gate.type === 'MEASURE') return 'measure';
@@ -100,7 +101,7 @@ export const glyphKindFor = (gate: CircuitGate, qubit: number): CircuitGlyphKind
 
 /** CZ/CY show a boxed Pauli letter on the target, not the two-letter gate id. CX keeps the plus. */
 export const glyphLabelFor = (gate: CircuitGate, qubit: number, fallback: string): string => {
-  if (gate.controls.includes(qubit)) return fallback;
+  if (gate.controls.includes(qubit) && !gate.targets.includes(qubit)) return fallback;
   if (gate.type === 'CZ') return 'Z';
   if (gate.type === 'CY') return 'Y';
   return fallback;

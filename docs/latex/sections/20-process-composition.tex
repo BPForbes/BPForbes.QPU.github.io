@@ -323,7 +323,8 @@ Rules:
   open \code{IF}; a gate with its own \code{-IF} inside a block; and
   \code{RUNCHILD}, \code{CALL}, or \code{RECUR} inside a block (the child's
   gates would not inherit the condition). Close the block with \code{ENDIF}
-  first, or condition the child's gates inside the child.
+  first, condition the child's gates inside the child, or register the child
+  as a custom gate and use that gate inside the block.
   \item Conditions inside a custom gate's process are evaluated the same way
   when the custom gate runs.
   \item Both branches remain in the compiled forward sequence. At run time the
@@ -365,10 +366,15 @@ How it is evaluated:
   $\ket{+}$.
   \item \code{ELSE} runs its gates when the test is false (for \code{= 1}
   that means 0 or S).
-  \item The expression must be a single gate with one result wire:
-  \code{MEASURE}, \code{RESET}, \code{SWAP}, and child processes are
+  \item The expression must be a single gate with one result wire. Built-in
+  gates and registered custom gates with one \code{RETURNVALS} value both
+  work; a custom gate keeps its own wiring and reads its \code{-O} wire.
+  \code{MEASURE}, \code{RESET}, \code{SWAP}, and \code{RUNCHILD} are
   rejected, as is a \code{-IF} inside the expression. Blocks still cannot be
   nested.
+  \item Custom gates can also sit inside the branch bodies, where the whole
+  gate runs or is skipped as one step. See \emph{Custom gates} for the
+  syntax.
 \end{itemize}
 
 \begin{cautionbox}[Simulator-only test]

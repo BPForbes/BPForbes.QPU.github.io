@@ -2,6 +2,7 @@
 import { assertGateArity } from '../gates/arity';
 import { astDerivedGateIds, astPrimitiveGateIds } from '../gates/metadata';
 import { remapConditionWires } from '../gates/conditions';
+import { getCustomGateRecord } from '../gates/customGateStore';
 import {
   CircuitGate,
   ClassicalBranchMeta,
@@ -35,6 +36,8 @@ export type ParsedCommand = {
   condition?: { token: string; equals: 0 | 1 };
   /** Compile-time recursion budget from RUNCHILD -DEPTH N. */
   depth?: number;
+  /** Set when the opcode is a registered custom gate (its exact id). */
+  customGateId?: string;
 };
 
 export type ProtocolProcess = {
@@ -354,9 +357,29 @@ export const parseCommand = (line: string): ParsedCommand => {
   const outputs = splitFlagArgs(tokens, '-O');
   const condition = parseConditionFlag(tokens);
   const depth = parseDepthFlag(tokens);
-  const op = normalized as QpuOperation;
+  let op = normalized as QpuOperation;
+  let customGateId: string | undefined;
+  let customReverse = false;
 
-  if (!supportedQpuOperations.includes(op)) throw new Error(`Unknown command: ${normalized}`);
+  // A registered custom gate is written like any gate line: NAME -I params… -O returns…
+  if (!supportedQpuOperations.includes(op)) {
+    const bare = rawOp.split('=', 1)[0];
+    const unmarked = bare.replace(/^(dg|inv)(?=[A-Za-z])/i, '').replace(/(dg|inv)$/i, '');
+    const record = getCustomGateRecord(bare) ?? (unmarked !== bare ? getCustomGateRecord(unmarked) : undefined);
+    if (!record) throw new Error(`Unknown command: ${normalized}`);
+    customGateId = record.id;
+    customReverse = record.id.toLowerCase() !== bare.toLowerCase();
+    if (customReverse && !record.reversible) {
+      throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted in '${line}'`);
+    }
+    if (inputs.length !== record.inputParamNames.length) {
+      throw new Error(`${record.id} takes ${record.inputParamNames.length} -I input(s) (${record.inputParamNames.join(' ')}), got ${inputs.length}`);
+    }
+    if (outputs.length !== record.outputParamNames.length) {
+      throw new Error(`${record.id} returns ${record.outputParamNames.length} -O output(s) (${record.outputParamNames.join(' ')}), got ${outputs.length}`);
+    }
+    op = record.id as QpuOperation;
+  }
   if ((primitiveGates.has(op) || derivedGates.has(op)) && !inputs.length && op !== 'MEASURE') {
     throw new Error(`${op} requires -I inputs`);
   }
@@ -395,6 +418,7 @@ export const parseCommand = (line: string): ParsedCommand => {
     noParameterSubstitution,
     condition,
     depth,
+    ...(customGateId ? { customGateId, reverse: customReverse } : {}),
   };
 };
 
@@ -791,7 +815,10 @@ const executeProcess = (
   ): ConditionPredicate => {
     const inner = parseCommand(header.expression);
     const op = inner.op;
-    if (!(primitiveGates.has(op) || derivedGates.has(op)) || PREDICATE_EXCLUDED.has(op)) {
+    if (inner.customGateId && inner.outputs.length !== 1) {
+      throw new Error(`IF expression custom gate ${op} must return exactly one value to compare in '${line}'`);
+    }
+    if (!inner.customGateId && (!(primitiveGates.has(op) || derivedGates.has(op)) || PREDICATE_EXCLUDED.has(op))) {
       throw new Error(`IF expression must be a single-result gate (not '${op}') in '${line}'`);
     }
     if (inner.condition) throw new Error(`IF expression cannot carry its own -IF in '${line}'`);
@@ -1056,7 +1083,10 @@ const executeProcess = (
     if (command.op === 'RUNCHILD' || command.op === 'CALL' || command.op === 'RECUR') {
       // Child gates compile in their own frame and would not inherit this block's condition.
       if (branchStack.length > 0) {
-        throw new Error(`${command.op} inside an IF block is not supported; its gates would run unconditionally ('${line}')`);
+        throw new Error(
+          `${command.op} inside an IF block is not supported; its gates would run unconditionally. `
+          + `Register the child as a custom gate and use that gate inside the block instead ('${line}')`,
+        );
       }
       const isRecur = command.op === 'RECUR';
       const childName = isRecur ? process.name : command.args[0];
@@ -1304,6 +1334,17 @@ const executeProcess = (
       } else {
         state.tokenToQubit.forEach((qubit) => emitGate(state, 'MEASURE', [qubit], [], line));
       }
+      continue;
+    }
+
+    // Custom gates keep their own wiring: -I wires bind the process PARAMS in order, -O wires its RETURNVALS.
+    if (command.customGateId) {
+      flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      const { condition, branch } = resolveClassicalControl(command.condition, line, skipParams);
+      const controls = command.inputs.map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams));
+      const targets = command.outputs.map((output) => resolveInputQubit(state, frame, output, line, parentFrame, skipParams));
+      emitGate(state, command.customGateId, targets, controls, line, undefined, undefined, command.reverse, condition, branch);
+      state.gates[state.gates.length - 1].customGateId = command.customGateId;
       continue;
     }
 

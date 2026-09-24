@@ -1,5 +1,5 @@
 import { magnitudeSquared, type Complex } from '../complex';
-import type { CircuitGate, ConditionPredicate, ConditionValue, MeasurementMap } from '../types';
+import type { CircuitGate, ConditionPredicate, ConditionValue, ExecutionResult, MeasurementMap } from '../types';
 import { applyInverseAwareDefinition } from './inverse';
 import { hasBit, padStateVector } from './operations';
 import { preconfiguredGateMap } from './preconfigured';
@@ -18,6 +18,24 @@ export const classifyWire = (state: Complex[], qubitCount: number, qubit: number
 };
 
 /**
+ * Applies one gate for predicate evaluation. The engine supplies a runner that
+ * also knows custom gates; this module only knows the built-in ones, which
+ * keeps it free of the custom-gate engine (and its compiler import).
+ */
+export type PredicateGateRunner = (
+  gate: CircuitGate,
+  state: Complex[],
+  qubitCount: number,
+  measurements: MeasurementMap,
+) => ExecutionResult;
+
+const runBuiltInGate: PredicateGateRunner = (gate, state, qubitCount, measurements) => {
+  const definition = preconfiguredGateMap[String(gate.type)];
+  if (!definition) throw new Error(`IF predicate uses unknown gate '${gate.type}'.`);
+  return applyInverseAwareDefinition(definition, state, qubitCount, gate, measurements, {});
+};
+
+/**
  * Run a predicate gate on a scratch copy of the state and classify its result
  * wire. The live state is never modified. This reads amplitudes directly, which
  * a simulator can do but real hardware cannot (see the Language Reference).
@@ -27,13 +45,14 @@ export const evaluatePredicate = (
   state: Complex[],
   qubitCount: number,
   measurements: MeasurementMap,
+  runGate: PredicateGateRunner = runBuiltInGate,
 ): ConditionValue => {
-  const definition = preconfiguredGateMap[predicate.type];
-  if (!definition) throw new Error(`IF predicate uses unknown gate '${predicate.type}'.`);
+  // Custom gates bind every -I wire to a PARAM in order, so none are dropped as the target.
+  const isCustom = !preconfiguredGateMap[String(predicate.type)];
   let scratchState = state;
   let scratchCount = qubitCount;
   let target = predicate.output;
-  let controls = predicate.inputs.filter((qubit) => qubit !== predicate.output);
+  let controls = isCustom ? predicate.inputs : predicate.inputs.filter((qubit) => qubit !== predicate.output);
   if (predicate.scratch) {
     scratchState = padStateVector(state, qubitCount, qubitCount + 1);
     scratchCount = qubitCount + 1;
@@ -49,8 +68,10 @@ export const evaluatePredicate = (
     phase: predicate.phase,
     inverse: predicate.inverse,
   };
-  const result = applyInverseAwareDefinition(definition, scratchState, scratchCount, probe, measurements, {});
-  return classifyWire(result.state, scratchCount, target);
+  const result = runGate(probe, scratchState, scratchCount, measurements);
+  // Custom gates may add workspace wires, so read the width from the result.
+  const resultCount = Math.max(scratchCount, Math.round(Math.log2(result.state.length)));
+  return classifyWire(result.state, resultCount, target);
 };
 
 /**
@@ -64,6 +85,7 @@ export const conditionSatisfied = (
   measurements: MeasurementMap,
   state?: Complex[],
   qubitCount?: number,
+  runGate?: PredicateGateRunner,
 ): boolean => {
   if (!gate.condition) return true;
   const { predicate } = gate.condition;
@@ -71,7 +93,7 @@ export const conditionSatisfied = (
     if (!state || qubitCount === undefined) {
       throw new Error('A gate-expression IF needs the current state to evaluate.');
     }
-    const matches = evaluatePredicate(predicate, state, qubitCount, measurements) === predicate.expect;
+    const matches = evaluatePredicate(predicate, state, qubitCount, measurements, runGate) === predicate.expect;
     return predicate.negate ? !matches : matches;
   }
   const value = measurements[gate.condition.qubit];
