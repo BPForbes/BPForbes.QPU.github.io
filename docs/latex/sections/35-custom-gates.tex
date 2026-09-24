@@ -99,7 +99,7 @@ Written as a rule, the block performs
 the same ``target XOR function'' shape as AND. That shape is always
 reversible, because applying it again XORs the same value back out.
 
-\begin{cautionbox}[Three things that make a custom gate irreversible]
+\begin{cautionbox}[Four things that make a custom gate irreversible]
 \begin{description}
   \item[MEASURE inside the process] The block collapses its wires every time
   it runs.
@@ -111,14 +111,23 @@ reversible, because applying it again XORs the same value back out.
   \item[Temporary wires left dirty] Helper tokens become hidden workspace
   wires. If a helper is not returned to 0 (uncomputed), it stays entangled
   with the inputs, and the visible wires alone no longer behave reversibly.
+  This includes helpers that are clean only when an output wire starts at 0.
+  \item[IF / ELSE inside the process] A condition picks which gates run from
+  the current state, so the block is not one fixed matrix.
 \end{description}
+Registration checks this for you. The builder simulates every basis input on
+the block's PARAMS and RETURNVALS wires and allows \code{dg} / \code{inv}
+only when the resulting matrix $U$ is unitary ($U^\dagger U = UU^\dagger = I$),
+running the dagger returns every input, distinct inputs give distinct outputs,
+and every output has norm 1. A block may use another custom gate only if that
+gate passed the same check. If the block fails, the error names the reason.
 \end{cautionbox}
 
 \begin{beginnerbox}[A quick test you can run in the builder]
 Place your block twice on the same wires and choose \textbf{Run all}. For a
 reversible out-of-place gate, every wire ends exactly as it started. Try it
 with the target's \emph{name} start set to \code{0p} and then \code{1p}. If
-the target does not return, look for one of the three problems above.
+the target does not return, look for one of the four problems above.
 \end{beginnerbox}
 
 \subsection{Using a custom gate in protocol text and IF / ELSE}

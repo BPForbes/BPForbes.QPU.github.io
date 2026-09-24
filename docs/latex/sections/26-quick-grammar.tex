@@ -12,9 +12,10 @@ opcode       := supported-command
              | primitive-gate
              | primitive-gate ("dg" | "inv")
              | ("dg" | "inv") primitive-gate
-             | "PHASE=" angle
-             | "PHASE" ("dg" | "inv") "=" angle
-             | ("dg" | "inv") "PHASE=" angle
+             | angle-gate "=" angle
+             | angle-gate ("dg" | "inv") "=" angle
+             | ("dg" | "inv") angle-gate "=" angle
+angle-gate   := "PHASE" | "RX" | "RY" | "RZ" | "CPHASE"
 
 gate-row     := opcode "-I" input+ "-O" output+ ["-$R"]
                 ["-IF" name "=" ("0" | "1")]

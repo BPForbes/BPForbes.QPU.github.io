@@ -3,6 +3,7 @@ import type { CircuitGate, ExecutionResult, MeasurementMap } from '../types';
 import type { GateDefinition } from './types';
 import { gateIoArity } from './types';
 import { padStateVector } from './operations';
+import { checkCustomGateReversibility, REVERSIBILITY_CHECK_VERSION, type NestedCustomGateRunner } from './customGateReversibility';
 import { preconfiguredGateMap } from './preconfigured';
 import { conditionSatisfied, remapConditionWires } from './conditions';
 import {
@@ -25,20 +26,6 @@ const assertCustomGateIdAvailable = (trimmedId: string) => {
 };
 
 
-const NON_REVERSIBLE_TYPES = new Set([
-  'MEASURE',
-  'RESET',
-  'SAVE_STATE',
-  'LOAD_STATE',
-]);
-
-const analyzeReversibility = (gates: CircuitGate[]): boolean =>
-  gates.every((gate) => {
-    if (gate.type === 'CYCLE') return true;
-    if (NON_REVERSIBLE_TYPES.has(String(gate.type))) return false;
-    return preconfiguredGateMap[String(gate.type)]?.supportsReverse ?? false;
-  });
-
 const PRECONFIGURED_HUES = [0, 25, 195, 260, 290, 120, 84, 205, 270, 142, 158, 228, 45, 315];
 
 const randomCustomColor = (usedColors: Set<string>) => {
@@ -57,6 +44,21 @@ export type RegisterCustomGateInput = {
   librarySources?: Record<string, string>;
   color?: string;
   label?: string;
+};
+
+const runNestedCustomGate: NestedCustomGateRunner = (state, qubitCount, gate, measurements) => {
+  const nested = getCustomGateRecord(String(gate.type));
+  if (!nested) throw new Error(`Unknown custom gate '${gate.type}'.`);
+  return applyCustomGateProcess(state, qubitCount, gate, measurements, nested, {});
+};
+
+const reversibilityFields = (compiled: ReturnType<typeof compileQpuProtocol>) => {
+  const result = checkCustomGateReversibility(compiled, runNestedCustomGate);
+  return {
+    reversible: result.reversible,
+    reversibilityIssue: result.reversible ? undefined : result.reason,
+    reversibilityCheckVersion: REVERSIBILITY_CHECK_VERSION,
+  };
 };
 
 // Registration compiles once up front to validate arity and capture any library sources needed by child processes.
@@ -89,7 +91,7 @@ export const registerCustomGate = ({
     inputParamNames: compiled.processParams.map((param) => param.name),
     outputParamNames: compiled.returnValues.map((value) => value.name),
     createdAt: new Date().toISOString(),
-    reversible: analyzeReversibility(compiled.gates),
+    ...reversibilityFields(compiled),
   };
 
   const next = readStore().filter((existing) => existing.id.toLowerCase() !== trimmedId.toLowerCase());
@@ -205,7 +207,7 @@ const expandCustomGate = (
   let nextMeasurements = { ...measurements };
   const forwardSteps = compiled.gates;
   if (gate.inverse && !record.reversible) {
-    throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted.`);
+    throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted.${record.reversibilityIssue ? ` ${record.reversibilityIssue}` : ''}`);
   }
   const steps = gate.inverse && record.reversible
     ? forwardSteps.slice().reverse().map(invertCircuitGate)
@@ -273,5 +275,33 @@ export const customGateToDefinition = (record: CustomGateRecord): GateDefinition
     applyCustomGateProcess(state, qubitCount, gate, measurements, record, librarySources),
 });
 
+/** Re-check records saved under older reversibility rules so a stale flag cannot allow a wrong dagger. */
+const isStale = (record: CustomGateRecord) => record.reversibilityCheckVersion !== REVERSIBILITY_CHECK_VERSION;
+
+const recheckRecord = (record: CustomGateRecord): CustomGateRecord => {
+  try {
+    return { ...record, ...reversibilityFields(compileQpuProtocol(record.source, record.librarySources)) };
+  } catch (error) {
+    return {
+      ...record,
+      reversible: false,
+      reversibilityIssue: `Could not re-check reversibility: ${(error as Error).message}`,
+      reversibilityCheckVersion: REVERSIBILITY_CHECK_VERSION,
+    };
+  }
+};
+
+const refreshStaleReversibility = (records: CustomGateRecord[]): CustomGateRecord[] => {
+  if (!records.some(isStale)) return records;
+  // Records are stored in registration order; saving after each one lets inner gates be re-checked before the gates that use them.
+  const next = [...records];
+  next.forEach((record, index) => {
+    if (!isStale(record)) return;
+    next[index] = recheckRecord(record);
+    writeStore(next);
+  });
+  return next;
+};
+
 export const buildCustomGateDefinitions = () =>
-  readStore().map((record) => customGateToDefinition(record));
+  refreshStaleReversibility(readStore()).map((record) => customGateToDefinition(record));

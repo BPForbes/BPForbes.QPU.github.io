@@ -10,6 +10,7 @@ import {
   gateDocs,
   protocolBranchInfo,
   protocolDocEntry,
+  protocolRecursionInfo,
   resolveDocEntry,
 } from '../docEntries';
 
@@ -147,5 +148,11 @@ describe('workbench documentation entries', () => {
     expect(protocolDocEntry(source)?.table?.rows).toEqual(first);
     expect(protocolDocEntry(measured)?.table?.rows).toEqual(rows);
     expect(protocolDocEntry(measured)?.table?.note).toContain('not a definite');
+  });
+
+  it('does not treat RECUR or other REC-prefixed words as a REC declaration', () => {
+    const info = protocolRecursionInfo('TREC MAXDEPTH 8\nRECUR -I A');
+    expect(info.declared).toBe('TREC');
+    expect(info.maxDepth).toBe(8);
   });
 });

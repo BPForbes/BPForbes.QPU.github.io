@@ -176,10 +176,12 @@ export const draftFromGate = (
       depth: gate.recursion?.rootDepth ?? gate.recursion?.depth ?? 4,
       branchEnabled: Boolean(gate.condition || gate.branch),
       branchKind: gate.branch?.kind ?? 'if',
-      joined: false,
+      joined: Boolean(gate.condition?.predicate),
       conditionQubit,
       conditionEquals: gate.condition?.equals ?? gate.branch?.equals ?? 1,
-      predicateDraft: defaultPredicateDraft(outputQubit),
+      predicateDraft: gate.condition?.predicate
+        ? predicateDraftFromPredicate(gate.condition.predicate)
+        : defaultPredicateDraft(outputQubit),
     };
   }
 
@@ -192,7 +194,8 @@ export const draftFromGate = (
       joined: false,
       conditionQubit,
       conditionEquals: tool === 'else' ? 0 : 1,
-      predicateDraft: defaultPredicateDraft(outputQubit),
+      // ELSE runs on the complement of the IF test, as structured ELSE blocks do in the compiler.
+      predicateDraft: { ...defaultPredicateDraft(outputQubit), negate: tool === 'else' },
     };
   }
 

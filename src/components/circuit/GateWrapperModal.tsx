@@ -99,6 +99,10 @@ export function GateWrapperModal({
                       ...draft,
                       branchKind: kind,
                       conditionEquals: kind === 'else' ? 0 : 1,
+                      // Switching IF↔ELSE flips a Joined test to its complement.
+                      predicateDraft: predicateDraft && kind !== draft.branchKind
+                        ? { ...predicateDraft, negate: !predicateDraft.negate }
+                        : predicateDraft,
                     });
                   }}
                   value={draft.branchKind}
@@ -214,7 +218,7 @@ export function GateWrapperModal({
                   <select
                     onChange={(event) => onChange({
                       ...draft,
-                      predicateDraft: { ...predicateDraft, expect: event.target.value as ConditionValue },
+                      predicateDraft: { ...predicateDraft, expect: (event.target.value === 's' ? 's' : Number(event.target.value)) as ConditionValue },
                     })}
                     value={predicateDraft.expect}
                   >

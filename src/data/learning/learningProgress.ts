@@ -13,8 +13,8 @@ const STORAGE_KEY = 'qpu-learning-progress-v1';
 const emptyProgress = (): LearningProgress => ({ completedSteps: [] });
 
 export const readLearningProgress = (): LearningProgress => {
-  if (typeof localStorage === 'undefined') return emptyProgress();
   try {
+    if (typeof localStorage === 'undefined') return emptyProgress();
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return emptyProgress();
     const parsed = JSON.parse(raw) as LearningProgress;
@@ -30,10 +30,14 @@ export const readLearningProgress = (): LearningProgress => {
 };
 
 export const writeLearningProgress = (progress: LearningProgress) => {
-  if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    completedSteps: [...new Set(progress.completedSteps)].sort((a, b) => a - b),
-  }));
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      completedSteps: [...new Set(progress.completedSteps)].sort((a, b) => a - b),
+    }));
+  } catch {
+    // Progress is optional; skip persistence when storage is blocked or full.
+  }
 };
 
 export const toggleLearningStep = (step: number, completed: boolean): LearningProgress => {

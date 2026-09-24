@@ -371,7 +371,7 @@ export const parseCommand = (line: string): ParsedCommand => {
     customGateId = record.id;
     customReverse = record.id.toLowerCase() !== bare.toLowerCase();
     if (customReverse && !record.reversible) {
-      throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted in '${line}'`);
+      throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted in '${line}'.${record.reversibilityIssue ? ` ${record.reversibilityIssue}` : ''}`);
     }
     if (inputs.length !== record.inputParamNames.length) {
       throw new Error(`${record.id} takes ${record.inputParamNames.length} -I input(s) (${record.inputParamNames.join(' ')}), got ${inputs.length}`);
@@ -1138,6 +1138,13 @@ const executeProcess = (
         recursionState.level = plan.level;
         recursionState.mode = 'tco';
         syncActiveRecursion();
+        // Each rewound iteration gets fresh locals, as a stacked call would: a new scope and only the call's output bindings.
+        frame.scope = `${process.name}#${state.processRuns}`;
+        state.processRuns += 1;
+        frame.aliases = new Map(outputBindings);
+        frame.released.clear();
+        frame.returnBases = [];
+        frame.masterTokens = [];
         state.frameCycle = 0;
         lineIndex = 0;
         state.log.push(
@@ -1445,6 +1452,9 @@ const compactQubitLayout = (
     // A wire read only by an IF predicate must survive compaction.
     gate.condition?.predicate?.inputs.forEach((qubit) => used.add(qubit));
     if (gate.condition?.predicate) used.add(gate.condition.predicate.output);
+    // Measured-bit conditions and branches keep their wire so the "measured first" check sees the right index.
+    if (gate.condition) used.add(gate.condition.qubit);
+    if (gate.branch) used.add(gate.branch.sourceQubit);
   });
   processParams.forEach((param) => used.add(param.qubitIndex));
 
