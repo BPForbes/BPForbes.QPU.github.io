@@ -1116,6 +1116,7 @@ function App() {
 
           <CircuitCanvas
             activeStep={cursor - 1}
+            circuitComplete={orderedGates.length > 0 && cursor >= orderedGates.length}
             gates={renderedGates}
             measurements={measurements}
             onDropGate={addGate}

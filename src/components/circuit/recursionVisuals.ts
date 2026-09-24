@@ -108,13 +108,16 @@ export const buildVisualCircuitColumns = (gates: readonly CircuitGate[]): Visual
 
 /**
  * Depth badge for a collapsed recursive column.
- * Shows D{root} before/during the call; counts down while traversing; hides after.
+ * Shows D{root} before the call; counts down while traversing; hides when past
+ * the expansion or when the circuit run has finished.
  */
 export const recursionDepthForColumn = (
   visual: VisualCircuitColumn,
   activeStep: number,
+  options?: { circuitComplete?: boolean },
 ): number | undefined => {
   if (!visual.recursion) return undefined;
+  if (options?.circuitComplete) return undefined;
   const maxStep = Math.max(...visual.coveredSteps);
   const minStep = Math.min(...visual.coveredSteps);
   if (activeStep > maxStep) return undefined;

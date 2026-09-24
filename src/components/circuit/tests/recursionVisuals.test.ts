@@ -92,6 +92,7 @@ describe('recursion canvas visuals', () => {
     expect(recursionDepthForColumn(column, 6)).toBe(1);
     expect(recursionDepthForColumn(column, 7)).toBe(1);
     expect(recursionDepthForColumn(column, 8)).toBeUndefined();
+    expect(recursionDepthForColumn(column, 7, { circuitComplete: true })).toBeUndefined();
   });
 
   it('keeps ordinary INCREASECYCLE slices and non-recursive gates as separate columns', () => {

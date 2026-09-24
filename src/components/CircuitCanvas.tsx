@@ -26,6 +26,8 @@ type CircuitCanvasProps = {
   /** Full simulator sequence, including hidden RESET gates used only for wire style. */
   wireGates?: CircuitGate[];
   activeStep: number;
+  /** True when every gate has been stepped/run — hides recursive D{n} badges. */
+  circuitComplete?: boolean;
   selectedGate: GateType | null;
   measurements?: MeasurementMap;
   startStates?: ParticleStartState[];
@@ -40,6 +42,7 @@ export function CircuitCanvas({
   gates,
   wireGates,
   activeStep,
+  circuitComplete = false,
   selectedGate,
   measurements = {},
   startStates = [],
@@ -224,7 +227,7 @@ export function CircuitCanvas({
           </div>
 
           {visualColumns.flatMap((column) => {
-            const depth = recursionDepthForColumn(column, activeStep);
+            const depth = recursionDepthForColumn(column, activeStep, { circuitComplete });
             const active = columnIsActive(column, activeStep);
             const done = columnIsDone(column, activeStep);
             return column.displayGates.flatMap((gate) =>
