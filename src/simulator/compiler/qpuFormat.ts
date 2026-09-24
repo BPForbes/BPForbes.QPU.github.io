@@ -301,13 +301,27 @@ export const serializeCircuitToQpuProtocol = (
         lines.push(`MEASURE -I ${canvasParamRef(gate.targets[0])}`);
         return;
       }
-      const conditionSuffix = gate.condition
+      // A gate-expression condition has no inline -IF form, so it round-trips as its own IF … ENDIF block.
+      const predicate = gate.condition?.predicate;
+      if (predicate) {
+        const predicateOp = serializeGateOpcode({ ...gate, type: predicate.type, phase: predicate.phase, inverse: predicate.inverse });
+        const value = predicate.expect === 's' ? 'sp' : `${predicate.expect}p`;
+        lines.push(
+          `IF (${predicateOp} -I ${predicate.inputs.map(canvasParamRef).join(' ')} -O ${canvasParamRef(predicate.output)})`
+          + ` ${predicate.negate ? '!=' : '='} ${value}`,
+        );
+      }
+      const pushGateLine = (text: string) => {
+        lines.push(text);
+        if (predicate) lines.push('ENDIF');
+      };
+      const conditionSuffix = gate.condition && !predicate
         ? ` -IF ${canvasParamRef(gate.condition.qubit).replace(/^\$/, '')}=${gate.condition.equals}`
         : '';
       if (gate.type === 'SWAP') {
         if (gate.targets.length < 2) return;
         const [first, second] = gate.targets;
-        lines.push(`${op} -I ${canvasParamRef(first)}:${cycle} ${canvasParamRef(second)}:${cycle} -O ${canvasParamRef(first)}:${cycle} ${canvasParamRef(second)}:${cycle}${conditionSuffix}`);
+        pushGateLine(`${op} -I ${canvasParamRef(first)}:${cycle} ${canvasParamRef(second)}:${cycle} -O ${canvasParamRef(first)}:${cycle} ${canvasParamRef(second)}:${cycle}${conditionSuffix}`);
         return;
       }
       if (
@@ -323,10 +337,10 @@ export const serializeCircuitToQpuProtocol = (
         || gate.type === 'RY'
         || gate.type === 'RZ'
       ) {
-        lines.push(`${op} -I ${target} -O ${target}${conditionSuffix}`);
+        pushGateLine(`${op} -I ${target} -O ${target}${conditionSuffix}`);
         return;
       }
-      lines.push(`${op} -I ${controls.join(' ')} -O ${target}${conditionSuffix}`);
+      pushGateLine(`${op} -I ${controls.join(' ')} -O ${target}${conditionSuffix}`);
     });
 
   lines.push(`RETURNVALS ${Array.from({ length: qubitCount }, (_, qubit) => canvasParamRef(qubit)).join(' ')}`);

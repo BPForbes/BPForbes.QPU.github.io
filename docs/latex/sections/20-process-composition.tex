@@ -331,6 +331,55 @@ Rules:
   classical condition was false''); nothing is removed and nothing forks.
 \end{itemize}
 
+\subsubsection{Gate-expression conditions: \texttt{IF (GATE \ldots) = V}}
+\hypertarget{if-gate-expression}{}
+
+Instead of one measured bit, the header can test the result of any gate. This
+is how conditions are joined: where another language writes \texttt{A \&\& B},
+QPU writes the AND gate.
+\begin{lstlisting}
+IF (AND -I A B -O B) = 1p      # A AND B
+IF (OR -I A B -O B) = 1        # A OR B
+IF (CNOT -I A -O B) = 1        # A XOR B (B is the CNOT target)
+IF (NAND -I A B -O B) != 0p    # != also accepted
+IF (H -I A -O A) = S           # would H leave A in superposition?
+\end{lstlisting}
+The value after \code{=} or \code{!=} is \code{0}/\code{0p},
+\code{1}/\code{1p}, or \code{S}/\code{sp} (any case).
+
+How it is evaluated:
+\begin{itemize}
+  \item Just before each conditioned gate runs, the simulator applies the
+  expression gate to a \emph{scratch copy} of the current state. The circuit's
+  own wires are not changed by the test.
+  \item The gate is read exactly like a circuit line: \code{-O} names the
+  result wire, and \code{-I} wires are its inputs. So \code{X -I A -O C} flips
+  C and tests C; it does not copy A.
+  \item One exception makes Boolean joins read naturally: when AND, NAND, OR,
+  or XOR names one of its own inputs as \code{-O} (as in
+  \code{AND -I A B -O B}), all inputs stay operands and the result is written
+  to a fresh wire that starts at $\ket0$. The test is therefore $A \wedge B$.
+  \item The result wire is classified by its probability of reading 1: 0
+  (definitely $\ket0$), 1 (definitely $\ket1$), or S (anything in between,
+  including entangled wires). \code{sp} means ``superposed'', not only
+  $\ket{+}$.
+  \item \code{ELSE} runs its gates when the test is false (for \code{= 1}
+  that means 0 or S).
+  \item The expression must be a single gate with one result wire:
+  \code{MEASURE}, \code{RESET}, \code{SWAP}, and child processes are
+  rejected, as is a \code{-IF} inside the expression. Blocks still cannot be
+  nested.
+\end{itemize}
+
+\begin{cautionbox}[Simulator-only test]
+A measured-bit \code{IF A=1} is ordinary feed-forward and can run on
+hardware. A gate-expression test reads amplitudes without measuring, which a
+simulator can do but a real quantum processor cannot. Nothing collapses, and
+the S result in particular has no physical equivalent. Use it to explore and
+teach logic, and use \code{MEASURE} plus \code{IF Token=0|1} when a protocol
+must be physically realistic.
+\end{cautionbox}
+
 \subsubsection{IF / ELSE on the circuit canvas}
 
 The quantum wire stays a single straight line. The branch gates are drawn one
@@ -346,6 +395,11 @@ after another on that wire, never as a fork:
   measurement the branch that runs shows \texttt{$\checkmark$ taken}; the other shows
   \texttt{$\oslash$ skipped}, and its gate, feed line, and label fade and turn dashed.
   If the measured value changes, the two swap.
+  \item A gate-expression test has no bit on \textbf{c}. Its yellow double
+  line instead spans the wires the expression reads, with a small yellow tap on
+  each, and the label shows the expression, for example \textbf{IF}
+  \texttt{AND(A,B) = 1}. Taken/skipped appears once the simulator has
+  evaluated it.
 \end{itemize}
 
 \subsection{Worked example: recursion, measurement, and IF / ELSE together}

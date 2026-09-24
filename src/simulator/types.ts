@@ -125,10 +125,44 @@ export type PrimitiveGateType =
 
 export type DerivedGateType = 'NOT' | 'AND' | 'NAND' | 'OR' | 'XOR';
 
-/** Classical feed-forward condition checked against a prior measurement. */
+/** Value a gate predicate is compared with: definite 0, definite 1, or superposed (S). */
+export type ConditionValue = 0 | 1 | 's';
+
+/**
+ * Gate-expression test from `IF (GATE -I … -O …) = 0|1|S`.
+ * The gate runs on a scratch copy of the state (the circuit is not changed)
+ * and the result wire is classified as 0, 1, or S.
+ */
+export type ConditionPredicate = {
+  type: GateType;
+  /** Every -I wire, in source order. */
+  inputs: number[];
+  /** The -O wire. */
+  output: number;
+  /**
+   * True when a multi-input Boolean gate names one of its inputs as -O
+   * (e.g. AND -I A B -O B): the result goes to a fresh |0⟩ wire so all
+   * inputs stay as operands.
+   */
+  scratch: boolean;
+  phase?: number;
+  inverse?: boolean;
+  expect: ConditionValue;
+  /** `!=` in source, or the ELSE half of the block. */
+  negate: boolean;
+  /** Compact label for the canvas, e.g. AND(A,B). */
+  text: string;
+};
+
+/**
+ * Classical feed-forward condition. Without `predicate` it checks a prior
+ * measurement (`qubit` = `equals`). With `predicate` it evaluates a gate
+ * expression; `qubit` is then the wire the result is read from.
+ */
 export type GateCondition = {
   qubit: number;
   equals: 0 | 1;
+  predicate?: ConditionPredicate;
 };
 
 /**
@@ -207,4 +241,6 @@ export type ExecutionResult = {
   particles?: import('./physics/particleTracking').ParticleSnapshot[];
   transitions?: import('./physics/particleTracking').OperationTransition[];
   checkpoints?: Record<string, StateCheckpoint>;
+  /** Result of each evaluated condition, by gate id (true = ran, false = skipped). */
+  conditionOutcomes?: Record<string, boolean>;
 };

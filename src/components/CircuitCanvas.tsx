@@ -45,6 +45,8 @@ type CircuitCanvasProps = {
   startStates?: ParticleStartState[];
   /** Protocol parameter name per wire (e.g. A, B, C); shown beside q{n} and in IF/ELSE labels. */
   qubitNames?: (string | undefined)[];
+  /** Engine results for evaluated conditions, by gate id (needed for gate-expression IF). */
+  conditionOutcomes?: Record<string, boolean>;
   /** Live per-qubit particle snapshots; wire kets update from these as the run progresses. */
   particleSnapshots?: ParticleSnapshot[];
   onDropGate: (gate: GateType, qubit: number) => void;
@@ -66,6 +68,7 @@ export function CircuitCanvas({
   startStates = [],
   particleSnapshots = [],
   qubitNames = [],
+  conditionOutcomes = {},
   onDropGate,
   onActivateGate,
 }: CircuitCanvasProps) {
@@ -77,15 +80,16 @@ export function CircuitCanvas({
   const activeGate = activeStep >= 0 ? sorted.find((gate) => gate.step === activeStep) : undefined;
   const measureGates = sorted.filter((gate) => gate.type === 'MEASURE');
   const classicalQubits = classicalWireQubits(qubitCount, trackingGates, measurements);
+  // Only measured-bit conditions read the c lane; gate-expression tests read quantum wires.
   const conditionedSourceQubits = sorted
-    .map((gate) => gate.condition?.qubit)
+    .map((gate) => (gate.condition?.predicate ? undefined : gate.condition?.qubit))
     .filter((qubit): qubit is number => qubit !== undefined && qubit >= 0 && qubit < qubitCount);
   const classicalLaneQubits = [...new Set([...classicalQubits, ...conditionedSourceQubits])].sort((a, b) => a - b);
   const showClassical = classicalLaneQubits.length > 0;
   const classicalRow = qubitCount + 1;
   const hasBranches = sorted.some((gate) => Boolean(gate.condition));
-  /** Extra row under c so IF/ELSE pills sit below the classical time wire. */
-  const pillRow = showClassical && hasBranches ? classicalRow + 1 : undefined;
+  /** Extra row under c (or under the last wire) so IF/ELSE labels sit below the circuit. */
+  const pillRow = hasBranches ? (showClassical ? classicalRow + 1 : qubitCount + 1) : undefined;
   const rowCount = qubitCount + (showClassical ? 1 : 0) + (pillRow ? 1 : 0);
   const measuredWithoutGate = classicalLaneQubits.filter(
     (qubit) => !measureGates.some((gate) => gate.targets.includes(qubit)),
@@ -96,6 +100,8 @@ export function CircuitCanvas({
   );
   /** Timeline markers (S / L / IC) run across the quantum wires and the c bus, not the label row. */
   const markerEndRow = qubitCount + (showClassical ? 2 : 1);
+  // Gate-expression labels (e.g. NAND(A,B)) need wider columns than a single measured bit.
+  const hasPredicateLabels = sorted.some((gate) => Boolean(gate.condition?.predicate));
   const snapshotByQubit = new Map(particleSnapshots.map((entry) => [entry.qubit, entry]));
   /** Multi-op recursive calls collapse to one REC box spanning every wire the body touches. */
   const isSpanningRec = (column: (typeof visualColumns)[number]) =>
@@ -130,7 +136,7 @@ export function CircuitCanvas({
             ['--qubits' as string]: qubitCount,
             ['--rows' as string]: rowCount,
             ['--slot-min' as string]: `${MIN_SLOT_REM}rem`,
-            ['--slot-max' as string]: `${MAX_SLOT_REM}rem`,
+            ['--slot-max' as string]: `${hasPredicateLabels ? MAX_SLOT_REM + 0.9 : MAX_SLOT_REM}rem`,
           }}
         >
           {Array.from({ length: qubitCount }, (_, qubit) =>
@@ -186,24 +192,42 @@ export function CircuitCanvas({
               </span>
             ))}
 
-          {showClassical &&
-            conditionedDisplayGates.map((gate) => {
+          {conditionedDisplayGates.map((gate) => {
               const column = visualColumnIndexForStep(visualColumns, gate.step);
               if (column === undefined) return null;
               const target = gate.targets[0];
-              const outcome = branchOutcomeFor(gate, measurements);
-              const sourceName = gate.condition ? qubitNames[gate.condition.qubit] : undefined;
+              const predicate = gate.condition?.predicate;
+              if (!predicate && !showClassical) return null;
+              const outcome = branchOutcomeFor(gate, measurements, conditionOutcomes);
+              const sourceName = gate.condition && !predicate ? qubitNames[gate.condition.qubit] : undefined;
               const label = conditionFeedLabel(gate, sourceName);
               const note = branchOutcomeNote(outcome);
+              // A gate-expression test reads quantum wires, so its feed spans those wires instead of dropping to c.
+              const readWires = predicate
+                ? [...new Set([...predicate.inputs, ...(predicate.scratch ? [] : [predicate.output])])]
+                  .filter((qubit) => qubit >= 0 && qubit < qubitCount)
+                : [];
+              const feedRows = predicate
+                ? `${Math.min(target, ...readWires) + 1} / ${Math.max(target, ...readWires) + 2}`
+                : `${target + 1} / ${classicalRow + 1}`;
               return (
                 <Fragment key={`cond-feed-${gate.id}`}>
-                  {/* Classical control rises from the c bus to the gate on its own straight rail. */}
+                  {/* Classical control reaches the gate on its own straight rail; the quantum wire never forks. */}
                   <span
                     aria-hidden="true"
-                    className={`circuit-condition-feed ${outcome}`}
-                    style={{ gridColumn: column + 2, gridRow: `${target + 1} / ${classicalRow + 1}` }}
+                    className={`circuit-condition-feed ${outcome}${predicate ? ' predicate' : ''}`}
+                    style={{ gridColumn: column + 2, gridRow: feedRows }}
                     title={label}
                   />
+                  {readWires.filter((qubit) => qubit !== target).map((qubit) => (
+                    <span
+                      aria-hidden="true"
+                      className={`circuit-condition-tap ${outcome}`}
+                      key={`tap-${gate.id}-${qubit}`}
+                      style={{ gridColumn: column + 2, gridRow: qubit + 1 }}
+                      title={`${label} reads q${qubit}`}
+                    />
+                  ))}
                   {pillRow !== undefined ? (
                     <span
                       className={`circuit-condition-pill ${outcome}`}
@@ -211,7 +235,16 @@ export function CircuitCanvas({
                       title={note ? `${label} · ${note}` : label}
                     >
                       <span className="circuit-condition-keyword">{conditionFeedKeyword(gate)}</span>
-                      <span className="circuit-condition-test">{conditionFeedTest(gate, sourceName)}</span>
+                      {predicate ? (
+                        <>
+                          <span className="circuit-condition-test">{predicate.text}</span>
+                          <span className="circuit-condition-test">
+                            {predicate.negate ? '≠' : '='} {predicate.expect === 's' ? 'S' : predicate.expect}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="circuit-condition-test">{conditionFeedTest(gate, sourceName)}</span>
+                      )}
                       {note ? <span className="circuit-condition-note">{note}</span> : null}
                     </span>
                   ) : null}
@@ -360,7 +393,7 @@ export function CircuitCanvas({
               Array.from({ length: qubitCount }, (_, qubit) => {
                 if (!gateTouchesQubit(gate, qubit)) return null;
                 const isTarget = gate.targets.includes(qubit);
-                const outcome = branchOutcomeFor(gate, measurements);
+                const outcome = branchOutcomeFor(gate, measurements, conditionOutcomes);
                 return (
                   <span
                     className={`circuit-slot ${active ? 'active' : ''} ${done ? 'done' : ''} ${gate.condition ? `branch-${outcome}` : ''}`}
@@ -407,7 +440,7 @@ export function CircuitCanvas({
           : hasRecursion
             ? 'A recursive call draws as one gate with a teal D{n} above it. Click a wrapped gate to edit DEPTH or IF/ELSE. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
             : hasBranches
-              ? 'IF/ELSE gates stay on their wire; a yellow double line drops from each to the c bus, labelled underneath. Once the bit is measured the branch shows ✓ taken or ⊘ skipped (faded, dashed). Click a wrapped gate to edit.'
+              ? 'IF/ELSE gates stay on their wire. A yellow double line joins each to its measured bit on c, or to the wires a gate-expression IF (GATE …) = 0|1|S reads (yellow taps). Once known, the branch shows ✓ taken or ⊘ skipped (faded, dashed). Click a wrapped gate to edit.'
               : 'Pick REC / IF / ELSE in the palette to tag gates. Wire kets update live (|0⟩, |1⟩, |+⟩, |−⟩). Inverse gates wear a dagger: blue in general, purple on the active step.'}
       </p>
     </section>

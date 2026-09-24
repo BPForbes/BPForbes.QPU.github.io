@@ -26,9 +26,11 @@ Tail-position REC auto-converts to TCO (iterative one-frame expansion, F\#-style
 TREC requires that form. No runtime loop or recursive QPU execution is created.\\
 IF / ELSE / ENDIF & Structured classical feed-forward sugar. Compiles to flat
 gates carrying $-$IF conditions (ELSE gates get the opposite value) and branch
-metadata for the canvas labels. Both branches stay in the circuit; the one
-whose bit does not match is skipped and drawn faded as ``skipped''. Never
-forks the quantum wire.\\
+metadata for the canvas labels. The header is either a measured bit
+(IF A=1) or a gate expression evaluated on a scratch copy, such as
+IF (AND -I A B -O B) = 1p. Both branches stay in the circuit; the one whose
+test fails is skipped and drawn faded as ``skipped''. Never forks the quantum
+wire.\\
 Control & A wire whose basis condition decides whether a controlled operation
 acts on its target. The control itself is preserved by the standard controlled
 gates.\\

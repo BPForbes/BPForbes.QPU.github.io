@@ -7,6 +7,7 @@
 import type {
   CircuitGate,
   ClassicalBranchMeta,
+  ConditionPredicate,
   GateCondition,
   RecursionFrameMeta,
 } from '../../simulator/types';
@@ -31,6 +32,8 @@ export type WrapperDraft = {
   branchKind: 'if' | 'else';
   conditionQubit: number;
   conditionEquals: 0 | 1;
+  /** Gate-expression IF from protocol text; kept as-is (edited in the protocol, not the dialog). */
+  predicate?: ConditionPredicate;
 };
 
 export const gateHasWrappers = (gate: CircuitGate): boolean =>
@@ -100,6 +103,7 @@ export const draftFromGate = (
     branchKind: gate.branch?.kind ?? (gate.condition?.equals === 0 ? 'else' : 'if'),
     conditionQubit,
     conditionEquals: gate.condition?.equals ?? gate.branch?.equals ?? 1,
+    ...(gate.condition?.predicate ? { predicate: gate.condition.predicate } : {}),
   };
 };
 
@@ -121,7 +125,10 @@ const applyDraftToGate = (gate: CircuitGate, draft: WrapperDraft): CircuitGate =
       : createRecursionMeta(depth);
   }
 
-  if (draft.branchEnabled) {
+  if (draft.branchEnabled && draft.predicate && gate.condition?.predicate) {
+    next.condition = gate.condition;
+    if (gate.branch) next.branch = gate.branch;
+  } else if (draft.branchEnabled) {
     const qubit = Math.max(0, Math.floor(draft.conditionQubit));
     const equals = draft.conditionEquals === 0 ? 0 : 1;
     const condition: GateCondition = { qubit, equals };

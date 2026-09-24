@@ -68,7 +68,14 @@ export function GateWrapperModal({
           />
           <span>IF / ELSE wrapper</span>
         </label>
-        {draft.branchEnabled ? (
+        {draft.branchEnabled && draft.predicate ? (
+          <p className="wrapper-modal-note">
+            {gate.branch?.kind === 'else' ? 'ELSE' : 'IF'} {draft.predicate.text}
+            {draft.predicate.negate ? ' ≠ ' : ' = '}
+            {draft.predicate.expect === 's' ? 'S' : draft.predicate.expect}. This gate-expression test comes from the
+            protocol text; edit it there. Untick to remove it.
+          </p>
+        ) : draft.branchEnabled ? (
           <div className="wrapper-branch-grid">
             <label className="wrapper-field">
               Kind

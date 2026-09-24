@@ -4,7 +4,7 @@ import type { GateDefinition } from './types';
 import { gateIoArity } from './types';
 import { padStateVector } from './operations';
 import { preconfiguredGateMap } from './preconfigured';
-import { conditionSatisfied } from './conditions';
+import { conditionSatisfied, remapConditionWires } from './conditions';
 import { applyInverseAwareDefinition, invertCircuitGate } from './inverse';
 
 const assertCustomGateIdAvailable = (trimmedId: string) => {
@@ -197,7 +197,7 @@ const remapInnerGate = (gate: CircuitGate, remap: Map<number, number>): CircuitG
   targets: gate.targets.map((qubit) => remap.get(qubit) ?? qubit),
   controls: gate.controls.map((qubit) => remap.get(qubit) ?? qubit),
   ...(gate.condition
-    ? { condition: { ...gate.condition, qubit: remap.get(gate.condition.qubit) ?? gate.condition.qubit } }
+    ? { condition: remapConditionWires(gate.condition, (qubit) => remap.get(qubit) ?? qubit) }
     : {}),
   ...(gate.branch
     ? { branch: { ...gate.branch, sourceQubit: remap.get(gate.branch.sourceQubit) ?? gate.branch.sourceQubit } }
@@ -235,7 +235,7 @@ export const applyCustomGateProcess = (
   for (const innerGate of steps) {
     const remapped = remapInnerGate(innerGate, remap);
     // Inner -IF / IF-ELSE gates follow the same feed-forward rule as top-level gates.
-    if (!conditionSatisfied(remapped, nextMeasurements)) {
+    if (!conditionSatisfied(remapped, nextMeasurements, nextState, expandedQubitCount)) {
       log.push(`${remapped.type} skipped because classical condition was false.`);
       continue;
     }

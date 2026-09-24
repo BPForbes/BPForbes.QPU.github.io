@@ -200,6 +200,8 @@ function App() {
   const [startStates, setStartStates] = useState<ParticleStartState[]>(() => Array.from({ length: QUBIT_COUNT }, () => '0p'));
   const [state, setState] = useState<Complex[]>(() => createInitialState(QUBIT_COUNT));
   const [measurements, setMeasurements] = useState<MeasurementMap>({});
+  // Gate-expression IF results by gate id; measured-bit IFs are read from `measurements` instead.
+  const [conditionOutcomes, setConditionOutcomes] = useState<Record<string, boolean>>({});
   const [log, setLog] = useState<string[]>(['Initialized |000⟩.']);
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -410,6 +412,7 @@ function App() {
     setState(initialState);
     setRuntimeQubitCount(nextSimulationQubitCount);
     setMeasurements({});
+    setConditionOutcomes({});
     const initDesc = activeControllable.length
       ? activeControllable.map((param) => `${param.name}=${nextStartStates[param.qubitIndex] ?? '0p'}`).join(' ')
       : nextStartStates.slice(0, nextSimulationQubitCount).map((value) => value ?? '0p').join(' ');
@@ -517,6 +520,7 @@ function App() {
     setState(result.state);
     setRuntimeQubitCount(resolveStateQubitCount(result.state, simulationQubitCount));
     setMeasurements(result.measurements);
+    setConditionOutcomes(result.conditionOutcomes ?? {});
     setParticleSnapshots(result.particles ?? []);
     setParticleTransitions(result.transitions ?? []);
     setLog(result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared')));
@@ -538,6 +542,7 @@ function App() {
     setRuntimeQubitCount(nextQubitCount);
     setState(result.state);
     setMeasurements(result.measurements);
+    if (result.conditionOutcomes) setConditionOutcomes((current) => ({ ...current, ...result.conditionOutcomes }));
     setParticleSnapshots(result.particles ?? []);
     setParticleTransitions((current) => [...current, ...(result.transitions ?? [])]);
     setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'))]);
@@ -1071,8 +1076,9 @@ function App() {
   // Conditioned step: name the branch and, once the bit is known, whether it ran.
   const activeBranchNote = (() => {
     if (!activeCanvasGate?.condition) return '';
-    const label = conditionFeedLabel(activeCanvasGate, wireParamNames[activeCanvasGate.condition.qubit]);
-    const outcome = branchOutcomeNote(branchOutcomeFor(activeCanvasGate, measurements));
+    const sourceName = activeCanvasGate.condition.predicate ? undefined : wireParamNames[activeCanvasGate.condition.qubit];
+    const label = conditionFeedLabel(activeCanvasGate, sourceName);
+    const outcome = branchOutcomeNote(branchOutcomeFor(activeCanvasGate, measurements, conditionOutcomes));
     return ` · ${label}${outcome ? ` · ${outcome}` : ''}`;
   })();
 
@@ -1242,6 +1248,7 @@ function App() {
             particleSnapshots={particleSnapshots}
             qubitCount={simulationQubitCount}
             qubitNames={wireParamNames}
+            conditionOutcomes={conditionOutcomes}
             selectedGate={selectedGate}
             selectedWrapper={selectedWrapper}
             startStates={startStates}
@@ -1618,17 +1625,31 @@ function App() {
                 A single gate can also take <code>-IF Token=0|1</code> directly. Nothing loops or forks: both gates stay in the circuit
                 and the one whose condition fails is skipped.
               </p>
+              <p>
+                To join conditions, test a gate instead of one bit. Where another language writes <code>A &amp;&amp; B</code>, write
+                the AND gate, and compare its result with <code>0</code>, <code>1</code>, or <code>S</code> (or <code>0p</code>/<code>1p</code>/<code>sp</code>):
+              </p>
+              <pre><code>{'IF (AND -I A B -O B) = 1p     # A AND B\nIF (OR -I A B -O B) = 1       # A OR B\nIF (CNOT -I A -O B) = 1       # A XOR B\nIF (H -I A -O A) != S         # != also works'}</code></pre>
+              <p>
+                The gate runs on a scratch copy just before the conditioned gate, so the circuit itself is not changed. AND, NAND,
+                OR, and XOR that name an input as <code>-O</code> write to a fresh |0⟩ wire, so <code>AND -I A B -O B</code> means A AND B.
+                Other gates act on their <code>-O</code> wire as in a normal line. <strong>S</strong> means the result is not a
+                definite 0 or 1. This test reads amplitudes without measuring, which only a simulator can do; use
+                <code> MEASURE</code> + <code>IF A=1</code> for physically realistic protocols.
+              </p>
               <ul>
-                <li><code>ELSE</code> is optional; <code>ENDIF</code> is required. The measured bit must be read before the first conditioned gate.</li>
+                <li><code>ELSE</code> is optional; <code>ENDIF</code> is required. A plain <code>IF A=1</code> needs A measured first.</li>
                 <li>On the canvas both gates sit on their own wire, each joined to the <strong>c</strong> lane by a yellow double line and
                   labelled <strong>IF</strong> <code>A=1</code> / <strong>ELSE</strong> <code>A=0</code> underneath.</li>
                 <li>Once the bit is measured the running branch shows <strong>✓ taken</strong>; the other shows <strong>⊘ skipped</strong>
                   and fades with dashed lines.</li>
+                <li>A gate-expression test has no bit on <strong>c</strong>: its yellow line spans the wires it reads (yellow taps), and the
+                  label shows the expression, such as <code>AND(A,B) = 1</code>.</li>
                 <li>Without writing text: pick the <strong>IF</strong> or <strong>ELSE</strong> wrapper in the palette, click a gate, choose the
                   classical bit and value, and Save. Click the gate again to edit or delete the wrapper.</li>
               </ul>
               <p>Try the <strong>Quantum teleportation</strong> starter circuit, which uses <code>-IF</code>.</p>
-              <p className="help-links"><DocLink target={docTargets.ifElse} /> <DocLink target={docTargets.wrappers} /></p>
+              <p className="help-links"><DocLink target={docTargets.ifElse} /> <DocLink target={docTargets.ifExpression} /> <DocLink target={docTargets.wrappers} /></p>
             </article>
             <article>
               <h3>How circuits are built</h3>
@@ -1648,7 +1669,7 @@ function App() {
                 <li>Derived Boolean gates include NOT, AND, NAND, OR, and XOR.</li>
                 <li>Child protocols can be declared, run, and accepted through DECLARECHILD, RUNCHILD, and ACCEPTVALS.</li>
                 <li>Bounded child recursion uses REC or TREC with RECUR / EXIT WHEN; parents pass -DEPTH (auto-TCO when tail).</li>
-                <li>Classical feed-forward uses <code>-IF Token=0|1</code> on one gate, or an <code>IF Token=v</code> … <code>ELSE</code> … <code>ENDIF</code> block, after a MEASURE.</li>
+                <li>Classical feed-forward uses <code>-IF Token=0|1</code> on one gate, or an <code>IF Token=v</code> … <code>ELSE</code> … <code>ENDIF</code> block, after a MEASURE. <code>IF (GATE -I … -O …) = 0|1|S</code> joins conditions through a gate.</li>
                 <li>Constants <code>0p</code>, <code>1p</code>, and <code>sp</code> initialize zero, one, and superposition registers.</li>
               </ul>
             </article>

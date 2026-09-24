@@ -267,7 +267,7 @@ export type ProtocolBranchInfo = {
 export const protocolBranchInfo = (source: string): ProtocolBranchInfo => {
   const lines = source.split(/\r?\n/).map((line) => line.replace(/#.*/, '').trim());
   return {
-    blocks: lines.filter((line) => /^IF\s+\S+=[01]$/i.test(line)).length,
+    blocks: lines.filter((line) => /^IF\s+\S+=[01]$/i.test(line) || /^IF\s*\(/i.test(line)).length,
     elses: lines.filter((line) => /^ELSE$/i.test(line)).length,
     inlineConditions: lines.filter((line) => /\s-IF\s+\S+=[01]\b/i.test(line)).length,
   };
@@ -456,7 +456,8 @@ const processDocEntry = ({ key, kind, name, source, library, canonical, customGa
     ].filter(Boolean).join(' and ');
     sections.splice(1, 0, {
       heading: 'Classical IF / ELSE',
-      body: `${name} has ${parts}. Each conditioned gate runs only if an earlier MEASURE read the named bit as the given value; `
+      body: `${name} has ${parts}. A plain IF Token=0|1 runs its gates only if an earlier MEASURE read that bit; `
+        + 'IF (GATE -I … -O …) = 0|1|S runs the gate on a scratch copy and compares its result wire. '
         + 'ELSE gates use the opposite value. Both branches stay in the circuit and the other one is skipped, so nothing loops or forks. '
         + 'On the canvas each conditioned gate has a yellow double line to the c lane, labelled IF or ELSE underneath, '
         + 'and shows ✓ taken or ⊘ skipped once the bit is measured.',

@@ -31,6 +31,7 @@ export const docTargets = {
   processes: { file: 'QPU_Language_Reference.pdf', anchor: 'process-composition', label: 'Main and child processes (Language Reference)' },
   recursion: { file: 'QPU_Language_Reference.pdf', anchor: 'bounded-child-recursion', label: 'Bounded recursion and TCO (Language Reference)' },
   ifElse: { file: 'QPU_Language_Reference.pdf', anchor: 'if-else-blocks', label: 'IF / ELSE / ENDIF (Language Reference)' },
+  ifExpression: { file: 'QPU_Language_Reference.pdf', anchor: 'if-gate-expression', label: 'Joined IF with gates (Language Reference)' },
   wrappers: { file: 'QPU_Getting_Started.pdf', anchor: 'ui-wrapper-dialog', label: 'REC / IF / ELSE wrapper tools (Getting Started)' },
   advancedCircuits: { file: 'QPU_Examples_and_Troubleshooting.pdf', anchor: 'advanced-circuits', label: 'Advanced worked circuits (Examples)' },
 } as const satisfies Record<string, DocTarget>;

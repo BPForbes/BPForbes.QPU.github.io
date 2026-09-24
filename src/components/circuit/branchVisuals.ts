@@ -10,8 +10,15 @@ export type BranchOutcome = 'taken' | 'skipped' | 'pending';
 export const branchOutcomeFor = (
   gate: CircuitGate,
   measurements: MeasurementMap = {},
+  conditionOutcomes: Record<string, boolean> = {},
 ): BranchOutcome => {
   if (!gate.condition) return 'pending';
+  // Gate-expression tests are only known once the engine has evaluated them.
+  if (gate.condition.predicate) {
+    const ran = conditionOutcomes[gate.id];
+    if (ran === undefined) return 'pending';
+    return ran ? 'taken' : 'skipped';
+  }
   const measured = measurements[gate.condition.qubit];
   if (measured === undefined) return 'pending';
   return measured === gate.condition.equals ? 'taken' : 'skipped';
@@ -26,6 +33,11 @@ export const conditionFeedKeyword = (gate: CircuitGate): string => {
 
 /** Condition text for the c-row label, e.g. `A=1` (falls back to `q0=1`). */
 export const conditionFeedTest = (gate: CircuitGate, sourceName?: string): string => {
+  const predicate = gate.condition?.predicate;
+  if (predicate) {
+    const value = predicate.expect === 's' ? 'S' : String(predicate.expect);
+    return `${predicate.text}${predicate.negate ? '≠' : '='}${value}`;
+  }
   const qubit = gate.condition?.qubit;
   const name = sourceName ?? (qubit !== undefined ? `q${qubit}` : 'c');
   return `${name}=${gate.condition?.equals ?? ''}`;

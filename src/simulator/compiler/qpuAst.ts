@@ -1,7 +1,16 @@
 // QPU protocol compiler: child processes and cycles expand into flat gates so the simulator and UI share one execution model.
 import { assertGateArity } from '../gates/arity';
 import { astDerivedGateIds, astPrimitiveGateIds } from '../gates/metadata';
-import { CircuitGate, ClassicalBranchMeta, GateType, QpuOperation, RecursionFrameMeta } from '../types';
+import { remapConditionWires } from '../gates/conditions';
+import {
+  CircuitGate,
+  ClassicalBranchMeta,
+  ConditionPredicate,
+  ConditionValue,
+  GateType,
+  QpuOperation,
+  RecursionFrameMeta,
+} from '../types';
 import {
   analyzeRecursionForm,
   evaluateWhenClause,
@@ -278,13 +287,40 @@ const parseConditionFlag = (tokens: string[]): ParsedCommand['condition'] => {
 };
 
 /** Parse `IF Token=0|1` structured classical branch header. */
-const parseIfHeader = (tokens: string[]): { token: string; equals: 0 | 1 } => {
-  const raw = tokens[1];
-  if (!raw) throw new Error('IF requires Token=0 or Token=1');
-  const match = raw.match(/^([A-Za-z_][\w]*)=(0|1)$/);
-  if (!match) throw new Error(`Invalid IF condition '${raw}' (expected Token=0 or Token=1)`);
-  return { token: match[1], equals: Number(match[2]) as 0 | 1 };
+type IfHeader =
+  | { kind: 'bit'; token: string; equals: 0 | 1 }
+  | { kind: 'predicate'; expression: string; negate: boolean; expect: ConditionValue };
+
+const parseConditionValue = (raw: string): ConditionValue | undefined => {
+  const value = raw.toLowerCase();
+  if (value === '0' || value === '0p') return 0;
+  if (value === '1' || value === '1p') return 1;
+  if (value === 's' || value === 'sp') return 's';
+  return undefined;
 };
+
+/**
+ * `IF Token=0|1` tests a measured bit. `IF (GATE -I … -O …) = V` (or `!=`)
+ * tests a gate expression, where V is 0/1/S or 0p/1p/sp.
+ */
+const parseIfHeader = (line: string): IfHeader => {
+  const body = line.trim().replace(/^IF\b/i, '').trim();
+  if (!body) throw new Error('IF requires Token=0|1 or (GATE -I … -O …) = 0|1|S');
+  if (body.startsWith('(')) {
+    const match = body.match(/^\((.+)\)\s*(!=|=)\s*(\S+)$/);
+    const expect = match ? parseConditionValue(match[3]) : undefined;
+    if (!match || expect === undefined) {
+      throw new Error(`Invalid IF expression '${body}' (expected (GATE -I … -O …) = 0|1|S, or != )`);
+    }
+    return { kind: 'predicate', expression: match[1].trim(), negate: match[2] === '!=', expect };
+  }
+  const match = body.match(/^([A-Za-z_][\w]*)=(0|1)$/);
+  if (!match) throw new Error(`Invalid IF condition '${body}' (expected Token=0 or Token=1)`);
+  return { kind: 'bit', token: match[1], equals: Number(match[2]) as 0 | 1 };
+};
+
+/** Gates that make sense as IF predicates: one result wire, no measurement or reset. */
+const PREDICATE_EXCLUDED = new Set(['MEASURE', 'RESET', 'SWAP']);
 
 export const parseCommand = (line: string): ParsedCommand => {
   let tokens = line.trim().split(/\s+/);
@@ -340,7 +376,7 @@ export const parseCommand = (line: string): ParsedCommand => {
     parseRecDeclaration(tokens);
   }
   if (op === 'IF') {
-    parseIfHeader(tokens);
+    parseIfHeader(line);
   }
   if (op === 'ELSE' || op === 'ENDIF') {
     if (tokens.length > 1) {
@@ -495,7 +531,7 @@ const emitGate = (
   phase?: number,
   checkpoint?: string,
   inverse?: boolean,
-  condition?: { qubit: number; equals: 0 | 1 },
+  condition?: CircuitGate['condition'],
   branch?: ClassicalBranchMeta,
 ) => {
   state.gates.push({
@@ -744,6 +780,42 @@ const executeProcess = (
     kind: 'if' | 'else';
     token: string;
     equals: 0 | 1;
+    /** Present for `IF (GATE …) = V`; ELSE flips `negate`. */
+    predicate?: ConditionPredicate;
+  };
+
+  // Resolve `GATE -I … -O …` inside an IF header against this frame without emitting a gate.
+  const compilePredicate = (
+    header: Extract<IfHeader, { kind: 'predicate' }>,
+    line: string,
+  ): ConditionPredicate => {
+    const inner = parseCommand(header.expression);
+    const op = inner.op;
+    if (!(primitiveGates.has(op) || derivedGates.has(op)) || PREDICATE_EXCLUDED.has(op)) {
+      throw new Error(`IF expression must be a single-result gate (not '${op}') in '${line}'`);
+    }
+    if (inner.condition) throw new Error(`IF expression cannot carry its own -IF in '${line}'`);
+    const inputs = inner.inputs.map((input) => resolveInputQubit(state, frame, input, line, parentFrame));
+    const outputToken = inner.outputs[0] ?? inner.inputs[0];
+    const output = resolveInputQubit(state, frame, outputToken, line, parentFrame);
+    const loweredPhase = inner.op === 'PHASE' || inner.op === 'RX' || inner.op === 'RY'
+      || inner.op === 'RZ' || inner.op === 'CPHASE'
+      ? inner.phase ?? 0
+      : undefined;
+    const names = inner.inputs.map(stripCycle);
+    const outputName = stripCycle(outputToken);
+    return {
+      type: op as GateType,
+      inputs,
+      output,
+      // AND -I A B -O B means "A AND B": keep both operands and write to a fresh |0⟩ wire.
+      scratch: derivedGates.has(op) && inputs.length >= 2 && inputs.includes(output),
+      ...(loweredPhase !== undefined ? { phase: loweredPhase } : {}),
+      ...(inner.reverse ? { inverse: true } : {}),
+      expect: header.expect,
+      negate: header.negate,
+      text: `${op}${inner.reverse ? '†' : ''}(${names.join(',')})${names.includes(outputName) ? '' : `→${outputName}`}`,
+    };
   };
   const branchStack: ActiveBranch[] = [];
   let nextBranchGroup = 0;
@@ -752,12 +824,24 @@ const executeProcess = (
     commandCondition: ParsedCommand['condition'] | undefined,
     line: string,
     skipParams: boolean,
-  ): { condition?: { qubit: number; equals: 0 | 1 }; branch?: ClassicalBranchMeta } => {
+  ): { condition?: CircuitGate['condition']; branch?: ClassicalBranchMeta } => {
     const active = branchStack[branchStack.length - 1];
     if (active) {
       // A gate holds one condition, so an inline -IF here would silently replace the block's test.
       if (commandCondition) {
         throw new Error(`-IF inside an IF block is not supported (a gate carries one condition) in '${line}'`);
+      }
+      if (active.predicate) {
+        const { predicate } = active;
+        return {
+          condition: { qubit: predicate.output, equals: active.kind === 'else' ? 0 : 1, predicate: { ...predicate } },
+          branch: {
+            groupId: active.groupId,
+            kind: active.kind,
+            sourceQubit: predicate.output,
+            equals: active.kind === 'else' ? 0 : 1,
+          },
+        };
       }
       const qubit = resolveInputQubit(state, frame, active.token, line, parentFrame, skipParams);
       return {
@@ -832,15 +916,27 @@ const executeProcess = (
       if (branchStack.length > 0) {
         throw new Error(`Nested IF blocks are not supported; close the outer IF with ENDIF first ('${line}')`);
       }
-      const header = parseIfHeader([command.op, ...command.args]);
-      branchStack.push({
-        groupId: `branch-${nextBranchGroup}`,
-        kind: 'if',
-        token: header.token,
-        equals: header.equals,
-      });
+      const header = parseIfHeader(line);
+      if (header.kind === 'predicate') {
+        const predicate = compilePredicate(header, line);
+        branchStack.push({
+          groupId: `branch-${nextBranchGroup}`,
+          kind: 'if',
+          token: predicate.text,
+          equals: 1,
+          predicate,
+        });
+        state.log.push(`IF (${header.expression}) ${header.negate ? '!=' : '='} ${String(header.expect).toUpperCase()} opened gate-expression branch.`);
+      } else {
+        branchStack.push({
+          groupId: `branch-${nextBranchGroup}`,
+          kind: 'if',
+          token: header.token,
+          equals: header.equals,
+        });
+        state.log.push(`IF ${header.token}=${header.equals} opened classical branch.`);
+      }
       nextBranchGroup += 1;
-      state.log.push(`IF ${header.token}=${header.equals} opened classical branch.`);
       continue;
     }
 
@@ -850,8 +946,13 @@ const executeProcess = (
         throw new Error(`ELSE without matching IF in '${line}'`);
       }
       active.kind = 'else';
-      active.equals = active.equals === 1 ? 0 : 1;
-      state.log.push(`ELSE ${active.token}=${active.equals} classical branch.`);
+      if (active.predicate) {
+        active.predicate = { ...active.predicate, negate: !active.predicate.negate };
+        state.log.push(`ELSE ${active.token} ${active.predicate.negate ? '!=' : '='} ${String(active.predicate.expect).toUpperCase()} branch.`);
+      } else {
+        active.equals = active.equals === 1 ? 0 : 1;
+        state.log.push(`ELSE ${active.token}=${active.equals} classical branch.`);
+      }
       continue;
     }
 
@@ -1300,6 +1401,9 @@ const compactQubitLayout = (
   gates.forEach((gate) => {
     gate.targets.forEach((qubit) => used.add(qubit));
     gate.controls.forEach((qubit) => used.add(qubit));
+    // A wire read only by an IF predicate must survive compaction.
+    gate.condition?.predicate?.inputs.forEach((qubit) => used.add(qubit));
+    if (gate.condition?.predicate) used.add(gate.condition.predicate.output);
   });
   processParams.forEach((param) => used.add(param.qubitIndex));
 
@@ -1317,7 +1421,7 @@ const compactQubitLayout = (
       controls: gate.controls.map((qubit) => remap.get(qubit)!),
       // Feed-forward reads a measured wire, so it must follow the same compaction.
       ...(gate.condition
-        ? { condition: { ...gate.condition, qubit: remap.get(gate.condition.qubit) ?? gate.condition.qubit } }
+        ? { condition: remapConditionWires(gate.condition, (qubit) => remap.get(qubit) ?? qubit) }
         : {}),
       ...(gate.branch
         ? { branch: { ...gate.branch, sourceQubit: remap.get(gate.branch.sourceQubit) ?? gate.branch.sourceQubit } }

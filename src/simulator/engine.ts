@@ -179,18 +179,22 @@ const applyInverseOrRegistered = (
   measurements: MeasurementMap,
   librarySources: Record<string, string>,
 ): ExecutionResult => {
-  if (!conditionSatisfied(gate, measurements)) {
+  const satisfied = conditionSatisfied(gate, measurements, state, qubitCount);
+  // Recorded per gate so the canvas can mark gate-expression branches taken/skipped.
+  const conditionOutcomes = gate.condition ? { [gate.id]: satisfied } : undefined;
+  if (!satisfied) {
     return {
       state,
       measurements,
       log: [`${gate.type} skipped because classical condition was false.`],
+      conditionOutcomes,
     };
   }
   const definition = getGateDefinition(String(gate.type));
-  if (!definition) {
-    return applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
-  }
-  return applyInverseAwareDefinition(definition, state, qubitCount, gate, measurements, librarySources);
+  const result = definition
+    ? applyInverseAwareDefinition(definition, state, qubitCount, gate, measurements, librarySources)
+    : applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
+  return conditionOutcomes ? { ...result, conditionOutcomes } : result;
 };
 
 // Gate application pads the state vector on demand because compiled child processes may introduce workspace qubits.
@@ -299,6 +303,9 @@ export const runCircuit = (
           particles: next.particles ?? result.particles,
           transitions: [...(result.transitions ?? []), ...(next.transitions ?? [])],
           checkpoints,
+          conditionOutcomes: next.conditionOutcomes
+            ? { ...result.conditionOutcomes, ...next.conditionOutcomes }
+            : result.conditionOutcomes,
         };
       },
       {

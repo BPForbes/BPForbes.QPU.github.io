@@ -207,7 +207,12 @@ with no measurement has no \textbf{c} lane.
   branch and its test (\textbf{IF} \texttt{A=1}, \textbf{ELSE}
   \texttt{A=0}). After the bit is measured the branch that runs shows
   \texttt{$\checkmark$ taken}; the other shows \texttt{$\oslash$ skipped}
-  and fades with dashed lines. Skipped gates are never removed.
+  and fades with dashed lines. Skipped gates are never removed. A
+  gate-expression IF, such as \code{IF (AND -I A B -O B) = 1}, has no bit on
+  \textbf{c}: its yellow line spans the wires it reads, with a yellow tap on
+  each, and its label shows the expression (\texttt{AND(A,B)} above
+  \texttt{= 1}). The wrapper dialog shows such a test read-only; edit it in
+  the protocol text.
   \item \textbf{Recursive call:} drawn once, not once per frame. A teal
   \textbf{D$n$} badge above it shows the current DEPTH and counts down as you
   step, then hides when the call is finished. A multi-gate recursive child is
