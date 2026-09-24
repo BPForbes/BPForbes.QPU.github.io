@@ -1,3 +1,4 @@
+import { uiTips } from '../../data/learning/learningHelp';
 import { customPaletteGates, preconfiguredPaletteGates } from '../../simulator/gates/registry';
 import { GateType } from '../../simulator/types';
 import { GateBlock } from './GateBlock';
@@ -15,7 +16,7 @@ export function GatePalette({ selectedGate, inverse, onToggleInverse, onSelectGa
   return (
     <div className="palette-sections">
       <div className="palette-section">
-        <button className={`inverse-toggle${inverse ? ' on' : ''}`} onClick={onToggleInverse} type="button">
+        <button className={`inverse-toggle${inverse ? ' on' : ''}`} onClick={onToggleInverse} title={uiTips.inverseToggle} type="button">
           {inverse ? 'Inverse on · drop dagger' : 'Inverse off · drop forward gate'}
         </button>
         <h3 className="palette-section-title">Preconfigured</h3>
