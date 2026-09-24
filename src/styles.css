@@ -175,7 +175,7 @@ button { font: inherit; }
   position: relative;
   justify-self: center;
   width: 0;
-  margin-block: 1rem calc(var(--row-h) / 2 - .5rem);
+  margin-block: 1.15rem calc(var(--row-h) / 2 - .5rem);
   border-left: 2px dashed #64748b;
   pointer-events: none;
   z-index: 1;
@@ -190,8 +190,11 @@ button { font: inherit; }
   font-weight: 800;
   letter-spacing: .03em;
   line-height: 1;
+  text-align: center;
   white-space: nowrap;
 }
+.circuit-marker-detail { font-size: .56rem; font-weight: 700; letter-spacing: 0; }
+.circuit-marker-caption { display: block; margin-bottom: .1rem; font-size: .5rem; font-weight: 700; letter-spacing: 0; text-align: center; }
 .circuit-marker.active { border-left-color: #dc2626; }
 .circuit-marker.active .circuit-marker-label { color: #dc2626; }
 .circuit-label-cell {

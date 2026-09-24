@@ -103,6 +103,7 @@ export function RecursionFrameView({ frame, activeStep, qubitNames = [] }: Recur
             <CircuitMarker
               active={frame.cycleGate.step === activeStep}
               description={`INCREASECYCLE → logical cycle ${frame.cycleGate.cycle ?? ''} (advances the stage; it does not loop)`}
+              detail={frame.cycleGate.cycle !== undefined ? String(frame.cycleGate.cycle) : undefined}
               label="IC"
               style={{ gridColumn: cycleColumn + 2, gridRow: `1 / ${annotationRow}` }}
             />

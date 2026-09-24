@@ -224,6 +224,7 @@ export function CircuitCanvas({
               active={columnIsActive(column, activeStep)}
               description={`INCREASECYCLE → logical cycle ${column.cycleGate!.cycle ?? ''} (advances the stage; it does not loop)`}
               key={column.cycleGate!.id}
+              detail={column.cycleGate!.cycle !== undefined ? String(column.cycleGate!.cycle) : undefined}
               label="IC"
               style={{ gridColumn: column.column + 2, gridRow: `1 / ${markerEndRow}` }}
             />
@@ -240,6 +241,7 @@ export function CircuitCanvas({
                     description={`${gate.type} ${gate.checkpoint ?? ''} — ${save ? 'snapshots' : 'restores'} the whole state here`}
                     key={gate.id}
                     label={save ? 'S' : 'L'}
+                    caption={gate.checkpoint}
                     style={{ gridColumn: column.column + 2, gridRow: `1 / ${markerEndRow}` }}
                   />
                 );
