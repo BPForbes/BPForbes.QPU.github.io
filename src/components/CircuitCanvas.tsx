@@ -398,9 +398,9 @@ export function CircuitCanvas({
         {selectedWrapper
           ? `Wrapper tool ${selectedWrapper.toUpperCase()} is selected — click a gate to set DEPTH or IF/ELSE. Click the same wrapper again to cancel.`
           : hasRecursion
-            ? 'A recursive call draws as one gate with a light-green D{n} above it. Click a wrapped gate to edit DEPTH or IF/ELSE. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
+            ? 'A recursive call draws as one gate with a teal D{n} above it. Click a wrapped gate to edit DEPTH or IF/ELSE. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
             : hasBranches
-              ? 'IF/ELSE gates stay on their wire; a double classical line drops from each to the c bus, labelled underneath. Once the bit is measured the branch shows ✓ taken or ⊘ skipped (faded, dashed). Click a wrapped gate to edit.'
+              ? 'IF/ELSE gates stay on their wire; a yellow double line drops from each to the c bus, labelled underneath. Once the bit is measured the branch shows ✓ taken or ⊘ skipped (faded, dashed). Click a wrapped gate to edit.'
               : 'Pick REC / IF / ELSE in the palette to tag gates. Wire kets update live (|0⟩, |1⟩, |+⟩, |−⟩). Inverse gates wear a dagger: blue in general, purple on the active step.'}
       </p>
     </section>

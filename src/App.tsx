@@ -1098,7 +1098,7 @@ function App() {
       const recursion = activeCanvasGate.recursion;
       const recursionNote = recursion
         ? `Recursive ${recursion.process} call · DEPTH ${recursion.depth} of ${recursion.rootDepth}. `
-          + 'The canvas shows one gate with a light-green D{n} badge; n counts down as you step, then hides when the call finishes.'
+          + 'The canvas shows one gate with a teal D{n} badge; n counts down as you step, then hides when the call finishes.'
         : undefined;
       const cycleNote = activeCanvasGate.type === 'CYCLE' && !recursion
         ? `Logical cycle ${activeCanvasGate.cycle ?? ''} boundary from INCREASECYCLE. This advances the stage; it does not loop.`
@@ -1575,7 +1575,7 @@ function App() {
               <p>
                 Child processes may declare <code>REC</code> or <code>TREC</code> and call <code>RECUR</code> (or self-
                 <code>RUNCHILD</code>). The parent must pass <code>-DEPTH N</code>. Expansion is compile-time only. On the
-                canvas a recursive call appears as <strong>one gate</strong> with a light-green <code>D{'{n}'}</code> badge;
+                canvas a recursive call appears as <strong>one gate</strong> with a teal <code>D{'{n}'}</code> badge;
                 step through to watch DEPTH count down, then the badge hides.
               </p>
               <ul>

@@ -95,7 +95,7 @@ export const uiTips = {
   phaseAngle: 'θ for PHASE, RX, RY, RZ, and CPHASE, in degrees.',
   addGate: 'Append the selected gate as the next column, using the target and controls chosen above.',
   increaseCycle: 'Insert an INCREASECYCLE boundary. This advances the logical stage but does not loop or repeat earlier gates. Recursive INCREASECYCLE markers stay hidden; the recursive gate shows D{n} instead.',
-  recursionDepth: 'Parent RUNCHILD of a recursive child must pass -DEPTH N. The canvas draws one gate with a light-green D{n} badge that counts down as you step through the expansion.',
+  recursionDepth: 'Parent RUNCHILD of a recursive child must pass -DEPTH N. The canvas draws one gate with a teal D{n} badge that counts down as you step through the expansion.',
   addParticle: 'Add a wire (or, after compiling a protocol, a PARAMS input).',
   removeParticle: 'Remove the last wire (or the last PARAMS input).',
   measureTarget: 'Measure only the target wire now, without adding a meter to the circuit.',

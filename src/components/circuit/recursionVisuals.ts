@@ -2,7 +2,7 @@
  * Canvas visuals for compile-time REC/TREC expansion.
  *
  * The simulator still holds the fully unrolled gate list. The canvas collapses
- * each recursive call to a single gate glyph with a light-green D{n} badge;
+ * each recursive call to a single gate glyph with a teal D{n} badge;
  * n counts down as the playhead traverses the expansion, then the badge hides.
  */
 import type { CircuitGate, RecursionFrameMeta } from '../../simulator/types';
