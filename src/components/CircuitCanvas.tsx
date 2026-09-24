@@ -32,12 +32,15 @@ type CircuitCanvasProps = {
   /** True when every gate has been stepped/run — hides recursive D{n} badges. */
   circuitComplete?: boolean;
   selectedGate: GateType | null;
+  /** When set, canvas gate clicks open the wrapper modal for this tool instead of removing. */
+  selectedWrapper?: string | null;
   measurements?: MeasurementMap;
   startStates?: ParticleStartState[];
   /** Live per-qubit particle snapshots; wire kets update from these as the run progresses. */
   particleSnapshots?: ParticleSnapshot[];
   onDropGate: (gate: GateType, qubit: number) => void;
-  onRemoveGate: (gateId: string) => void;
+  /** Primary gate click: wrap, edit wrappers, or remove depending on App state. */
+  onActivateGate: (gate: CircuitGate) => void;
 };
 
 const gateTouchesQubit = (gate: CircuitGate, qubit: number) => gate.targets.includes(qubit) || gate.controls.includes(qubit);
@@ -49,11 +52,12 @@ export function CircuitCanvas({
   activeStep,
   circuitComplete = false,
   selectedGate,
+  selectedWrapper = null,
   measurements = {},
   startStates = [],
   particleSnapshots = [],
   onDropGate,
-  onRemoveGate,
+  onActivateGate,
 }: CircuitCanvasProps) {
   const sorted = gates.slice().sort((a, b) => a.step - b.step);
   const trackingGates = (wireGates ?? gates).slice().sort((a, b) => a.step - b.step);
@@ -69,12 +73,14 @@ export function CircuitCanvas({
   const classicalLaneQubits = [...new Set([...classicalQubits, ...conditionedSourceQubits])].sort((a, b) => a - b);
   const showClassical = classicalLaneQubits.length > 0;
   const classicalRow = qubitCount + 1;
-  const rowCount = qubitCount + (showClassical ? 1 : 0);
+  const hasBranches = sorted.some((gate) => Boolean(gate.condition));
+  /** Extra row under c so IF/ELSE pills sit below the classical time wire. */
+  const pillRow = showClassical && hasBranches ? classicalRow + 1 : undefined;
+  const rowCount = qubitCount + (showClassical ? 1 : 0) + (pillRow ? 1 : 0);
   const measuredWithoutGate = classicalLaneQubits.filter(
     (qubit) => !measureGates.some((gate) => gate.targets.includes(qubit)),
   );
   const hasRecursion = visualColumns.some((column) => column.recursion);
-  const hasBranches = sorted.some((gate) => Boolean(gate.condition));
   const conditionedDisplayGates = visualColumns.flatMap((column) =>
     column.displayGates.filter((gate) => gate.condition && gate.targets.length > 0),
   );
@@ -90,8 +96,8 @@ export function CircuitCanvas({
     if (selectedGate) onDropGate(selectedGate, qubit);
   };
 
-  const removeVisualGate = (displayGate: CircuitGate) => {
-    onRemoveGate(displayGate.id);
+  const activateVisualGate = (displayGate: CircuitGate) => {
+    onActivateGate(displayGate);
   };
 
   return (
@@ -179,14 +185,16 @@ export function CircuitCanvas({
                     style={{ gridColumn: column + 2, gridRow: `${target + 1} / ${classicalRow + 1}` }}
                     title={label}
                   />
-                  <span
-                    aria-hidden="true"
-                    className={`circuit-condition-pill ${outcome}`}
-                    style={{ gridColumn: column + 2, gridRow: classicalRow }}
-                    title={label}
-                  >
-                    {label}
-                  </span>
+                  {pillRow !== undefined ? (
+                    <span
+                      aria-hidden="true"
+                      className={`circuit-condition-pill ${outcome}`}
+                      style={{ gridColumn: column + 2, gridRow: pillRow }}
+                      title={label}
+                    >
+                      {label}
+                    </span>
+                  ) : null}
                 </Fragment>
               );
             })}
@@ -252,7 +260,7 @@ export function CircuitCanvas({
             </div>
           )}
 
-          <div className={`circuit-drop-layer ${selectedGate ? 'ready' : ''}`}>
+          <div className={`circuit-drop-layer ${selectedGate ? 'ready' : ''} ${selectedWrapper ? 'wrapping' : ''}`}>
             {Array.from({ length: qubitCount }, (_, qubit) => (
               <div
                 className="circuit-drop"
@@ -296,11 +304,18 @@ export function CircuitCanvas({
                         </span>
                       ) : null}
                       <CircuitGlyph
+                        activateLabel={
+                          selectedWrapper
+                            ? `Apply ${selectedWrapper.toUpperCase()} wrapper to ${gate.type}`
+                            : gate.condition || gate.recursion
+                              ? `Edit wrappers on ${gate.type}`
+                              : `Remove ${gate.type}`
+                        }
                         active={active}
                         branchOutcome={outcome}
                         gate={gate}
                         labelOverride={isTarget ? column.displayLabel : undefined}
-                        onRemove={isTarget ? () => removeVisualGate(gate) : undefined}
+                        onActivate={isTarget ? () => activateVisualGate(gate) : undefined}
                         qubit={qubit}
                       />
                     </span>
@@ -312,11 +327,13 @@ export function CircuitCanvas({
         </div>
       </div>
       <p className="canvas-tip">
-        {hasRecursion
-          ? 'A recursive call draws as one gate with a light-green D{n} above it. Step through to watch DEPTH count down; when the call finishes the badge hides. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
-          : hasBranches
-            ? 'IF/ELSE labels sit in black pills on the c row. Double strokes mark feed-forward; the taken branch stays solid and the inactive branch fades. Wire kets update live as particles change. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
-            : 'Wire kets update live as particles change (|0⟩, |1⟩, |+⟩, |−⟩). Qubit wires stay single, and a measured qubit can still take later gates. The double stroke down to c marks the time of that measurement and the bit where the result lands. Inverse gates wear a dagger: blue in general, purple on the active step. Active steps use a red outline; measured particles turn red on their wire.'}
+        {selectedWrapper
+          ? `Wrapper tool ${selectedWrapper.toUpperCase()} is selected — click a gate to set DEPTH or IF/ELSE. Click the same wrapper again to cancel.`
+          : hasRecursion
+            ? 'A recursive call draws as one gate with a light-green D{n} above it. Click a wrapped gate to edit DEPTH or IF/ELSE. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
+            : hasBranches
+              ? 'IF/ELSE labels sit in black pills under the c row. Yellow feed lines pass behind crossing gates. Click a wrapped gate to edit. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
+              : 'Pick REC / IF / ELSE in the palette to tag gates. Wire kets update live (|0⟩, |1⟩, |+⟩, |−⟩). Inverse gates wear a dagger: blue in general, purple on the active step.'}
       </p>
     </section>
   );

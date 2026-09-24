@@ -8,6 +8,15 @@ import {
   replaceViewInLocation,
 } from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
+import { GateWrapperModal } from './components/circuit/GateWrapperModal';
+import {
+  applyWrappersToGateList,
+  draftFromGate,
+  gateHasWrappers,
+  stripWrappersFromGateList,
+  type GateWrapperTool,
+  type WrapperDraft,
+} from './components/circuit/gateWrappers';
 import { WorkbenchDocs } from './components/docs/WorkbenchDocs';
 import { CustomGatePanel, GatePalette, SelectorMapDiagram } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
@@ -188,6 +197,11 @@ function App() {
   const [playing, setPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
   const [selectedGate, setSelectedGate] = useState<GateType | null>('H');
+  const [selectedWrapper, setSelectedWrapper] = useState<GateWrapperTool | null>(null);
+  const [wrapperModal, setWrapperModal] = useState<{
+    gateId: string;
+    draft: WrapperDraft;
+  } | null>(null);
   const [inverseMode, setInverseMode] = useState(false);
   const [learningProgress, setLearningProgress] = useState<LearningProgress>(() => readLearningProgress());
   const [targetQubit, setTargetQubit] = useState(0);
@@ -408,6 +422,7 @@ function App() {
     setGates(nextGates);
     syncCanvasProtocol(nextGates);
     setSelectedGate(type);
+    setSelectedWrapper(null);
     resetRuntime();
   };
 
@@ -426,6 +441,49 @@ function App() {
     setGates(nextGates);
     syncCanvasProtocol(nextGates);
     resetRuntime();
+  };
+
+  const openWrapperModalForGate = (gate: CircuitGate, tool?: GateWrapperTool) => {
+    setWrapperModal({
+      gateId: gate.id,
+      draft: draftFromGate(gate, { tool, qubitCount: simulationQubitCount }),
+    });
+  };
+
+  const activateCanvasGate = (gate: CircuitGate) => {
+    if (selectedWrapper) {
+      openWrapperModalForGate(gate, selectedWrapper);
+      return;
+    }
+    if (gateHasWrappers(gate)) {
+      openWrapperModalForGate(gate);
+      return;
+    }
+    removeGate(gate.id);
+  };
+
+  const saveWrapperModal = () => {
+    if (!wrapperModal) return;
+    const nextGates = applyWrappersToGateList(gates, wrapperModal.gateId, wrapperModal.draft);
+    setGates(nextGates);
+    syncCanvasProtocol(nextGates);
+    resetRuntime();
+    setWrapperModal(null);
+    setSelectedWrapper(null);
+  };
+
+  const deleteWrapperModal = () => {
+    if (!wrapperModal) return;
+    const nextGates = stripWrappersFromGateList(gates, wrapperModal.gateId);
+    setGates(nextGates);
+    syncCanvasProtocol(nextGates);
+    resetRuntime();
+    setWrapperModal(null);
+    setSelectedWrapper(null);
+  };
+
+  const cancelWrapperModal = () => {
+    setWrapperModal(null);
   };
 
   // Run / step boundary: both paths write to the same shared vectors (state,
@@ -963,8 +1021,14 @@ function App() {
   const gateSymbol = (gateId: string) => (['X', 'NOT', 'CNOT', 'CCNOT'].includes(gateId) ? '⊕' : getGateDefinition(gateId)?.label ?? gateId);
   const focusSelection = () => setDocFocus('selection');
   const selectGate = (gate: GateType) => {
+    setSelectedWrapper(null);
     setSelectedGate(gate);
     focusSelection();
+  };
+
+  const selectWrapper = (tool: GateWrapperTool) => {
+    setSelectedGate(null);
+    setSelectedWrapper((current) => (current === tool ? null : tool));
   };
 
   const workbenchDocs = (() => {
@@ -1107,7 +1171,14 @@ function App() {
               <p className="eyebrow">Gate palette</p>
               <h2 id="palette-title">Pick up a block</h2>
             </div>
-            <GatePalette inverse={inverseMode} onSelectGate={selectGate} onToggleInverse={() => setInverseMode((on) => !on)} selectedGate={selectedGate} />
+            <GatePalette
+              inverse={inverseMode}
+              onSelectGate={selectGate}
+              onSelectWrapper={selectWrapper}
+              onToggleInverse={() => setInverseMode((on) => !on)}
+              selectedGate={selectedGate}
+              selectedWrapper={selectedWrapper}
+            />
           </section>
 
           <CustomGatePanel
@@ -1121,11 +1192,12 @@ function App() {
             circuitComplete={orderedGates.length > 0 && cursor >= orderedGates.length}
             gates={renderedGates}
             measurements={measurements}
+            onActivateGate={activateCanvasGate}
             onDropGate={addGate}
-            onRemoveGate={removeGate}
             particleSnapshots={particleSnapshots}
             qubitCount={simulationQubitCount}
             selectedGate={selectedGate}
+            selectedWrapper={selectedWrapper}
             startStates={startStates}
             wireGates={orderedGates}
           />
@@ -1626,6 +1698,22 @@ function App() {
           </div>
         </section>
       </PlaygroundPage>}
+
+      {wrapperModal ? (() => {
+        const modalGate = gates.find((gate) => gate.id === wrapperModal.gateId);
+        if (!modalGate) return null;
+        return (
+          <GateWrapperModal
+            draft={wrapperModal.draft}
+            gate={modalGate}
+            onCancel={cancelWrapperModal}
+            onChange={(draft) => setWrapperModal({ gateId: wrapperModal.gateId, draft })}
+            onDelete={deleteWrapperModal}
+            onSave={saveWrapperModal}
+            qubitCount={simulationQubitCount}
+          />
+        );
+      })() : null}
     </main>
   );
 }

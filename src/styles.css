@@ -76,6 +76,12 @@ button { font: inherit; }
 .palette-sections { display: grid; gap: 1rem; }
 .palette-section-title { margin: 0 0 .5rem; font-size: .82rem; color: #cbd5e1; text-transform: uppercase; letter-spacing: .08em; }
 .palette-empty { margin: 0; color: #94a3b8; font-size: .88rem; }
+.palette-wrapper-hint { margin-bottom: .55rem; }
+.palette-wrappers { grid-template-columns: repeat(3, minmax(3.25rem, 1fr)); }
+.gate-wrapper { cursor: pointer; }
+.gate-wrapper-rec { background: linear-gradient(135deg, #34d399, #059669); }
+.gate-wrapper-if { background: linear-gradient(135deg, #fbbf24, #d97706); }
+.gate-wrapper-else { background: linear-gradient(135deg, #f59e0b, #b45309); }
 .palette-custom { grid-template-columns: repeat(auto-fit, minmax(3.25rem, 1fr)); }
 .custom-gate-panel { grid-column: 1 / -1; }
 .custom-gate-form { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
@@ -269,6 +275,7 @@ button { font: inherit; }
   z-index: 3;
   pointer-events: none;
   overflow: visible;
+  isolation: isolate;
 }
 .circuit-glyph {
   pointer-events: auto;
@@ -285,17 +292,24 @@ button { font: inherit; }
   font-weight: 800;
   line-height: 1;
   cursor: pointer;
+  position: relative;
+  z-index: 3;
 }
 .circuit-glyph.glyph-control,
 .circuit-glyph.glyph-plus,
 .circuit-glyph.glyph-swap {
   border-color: transparent;
-  background: transparent;
+  /* Opaque plate so yellow IF feeds that cross this qubit stay behind the gate. */
+  background: #fff;
   min-width: 1.35rem;
   min-height: 1.35rem;
   padding: 0;
+  border-radius: 999px;
 }
-.circuit-glyph.glyph-control { cursor: default; }
+.circuit-glyph.glyph-control {
+  cursor: default;
+  background: transparent;
+}
 .glyph-control-dot {
   width: .72rem;
   height: .72rem;
@@ -348,7 +362,8 @@ button { font: inherit; }
   width: 3px;
   border-left: 3px double #f59e0b;
   pointer-events: none;
-  z-index: 2;
+  /* Sit under gate glyphs so a feed that crosses another qubit's gate is hidden. */
+  z-index: 1;
   position: relative;
 }
 .circuit-condition-feed.skipped {
@@ -363,7 +378,8 @@ button { font: inherit; }
 }
 .circuit-condition-pill {
   justify-self: center;
-  align-self: center;
+  align-self: start;
+  margin-top: 0.15rem;
   z-index: 4;
   pointer-events: none;
   white-space: nowrap;
@@ -385,6 +401,12 @@ button { font: inherit; }
 }
 .circuit-condition-pill.pending {
   opacity: 0.9;
+}
+.circuit-glyph.recursive {
+  box-shadow: inset 0 2px 0 #6ee7b7;
+}
+.circuit-glyph.conditioned.recursive {
+  box-shadow: inset 0 2px 0 #6ee7b7, inset 0 -2px 0 #f59e0b;
 }
 .circuit-glyph.glyph-control.active { outline: none; }
 .circuit-glyph.glyph-control.active .glyph-control-dot {
@@ -587,6 +609,68 @@ body.site-menu-open .app-shell { overflow: hidden; }
   outline: none;
 }
 .menu-backdrop { position: fixed; inset: 0; z-index: 45; border: 0; background: rgba(2,6,23,.58); cursor: pointer; }
+.wrapper-modal-root { position: fixed; inset: 0; z-index: 55; display: grid; place-items: center; padding: 1rem; }
+.wrapper-modal-root .menu-backdrop { z-index: 0; }
+.wrapper-modal {
+  position: relative;
+  z-index: 1;
+  width: min(26rem, 94vw);
+  display: grid;
+  gap: .85rem;
+  padding: 1.15rem 1.2rem 1.25rem;
+  border-radius: 1.1rem;
+  border: 1px solid rgba(148,163,184,.28);
+  background: linear-gradient(180deg, rgba(15,23,42,.98), rgba(30,41,59,.98));
+  box-shadow: 0 28px 80px rgba(0,0,0,.45);
+  color: #e2e8f0;
+}
+.wrapper-modal-heading h2 { margin: .15rem 0 .35rem; font-size: 1.15rem; color: #f8fafc; }
+.wrapper-modal-note { margin: 0; color: #94a3b8; font-size: .84rem; line-height: 1.4; }
+.wrapper-field { display: grid; gap: .35rem; color: #cbd5e1; font-size: .86rem; font-weight: 800; }
+.wrapper-field input,
+.wrapper-field select {
+  border: 1px solid rgba(148,163,184,.35);
+  border-radius: .8rem;
+  color: #f8fafc;
+  background: rgba(2,6,23,.72);
+  padding: .65rem .75rem;
+  font-weight: 700;
+}
+.wrapper-toggle {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: .55rem;
+}
+.wrapper-toggle input { width: 1.05rem; height: 1.05rem; }
+.wrapper-branch-grid {
+  display: grid;
+  gap: .65rem;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+}
+.wrapper-modal-actions {
+  display: grid;
+  gap: .55rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: .35rem;
+}
+.wrapper-modal-actions button {
+  border: 1px solid rgba(148,163,184,.28);
+  border-radius: .85rem;
+  padding: .75rem .7rem;
+  min-height: 2.75rem;
+  font-weight: 800;
+  cursor: pointer;
+  color: #f8fafc;
+  background: rgba(51,65,85,.9);
+}
+.wrapper-modal-actions .wrapper-save {
+  border-color: rgba(52,211,153,.5);
+  background: rgba(6,95,70,.9);
+}
+.wrapper-modal-actions .wrapper-delete {
+  border-color: rgba(248,113,113,.45);
+  background: rgba(127,29,29,.88);
+}
 .menu-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-bottom: .5rem; color: #f8fafc; }
 .menu-heading button,
 .site-menu button { border: 1px solid rgba(148,163,184,.22); color: #e2e8f0; background: rgba(51,65,85,.7); border-radius: .8rem; padding: .7rem .8rem; text-align: left; font-weight: 850; cursor: pointer; }

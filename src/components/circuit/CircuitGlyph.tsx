@@ -9,7 +9,9 @@ type CircuitGlyphProps = {
   branchOutcome?: 'taken' | 'skipped' | 'pending';
   /** Canvas-only label override (e.g. REC for collapsed multi-op recursion). */
   labelOverride?: string;
-  onRemove?: () => void;
+  /** Primary click: edit wrappers, apply a selected wrapper tool, or remove. */
+  onActivate?: () => void;
+  activateLabel?: string;
 };
 
 const PlusTarget = () => (
@@ -47,7 +49,8 @@ export function CircuitGlyph({
   active = false,
   branchOutcome = 'pending',
   labelOverride,
-  onRemove,
+  onActivate,
+  activateLabel,
 }: CircuitGlyphProps) {
   const kind = labelOverride ? 'box' : glyphKindFor(gate, qubit);
   const definition = getGateDefinition(String(gate.type));
@@ -61,25 +64,28 @@ export function CircuitGlyph({
         ? ' branch-skipped'
         : ''
     : '';
-  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${!labelOverride && gate.inverse ? ' inverse' : ''}${gate.condition ? ' conditioned' : ''}${active ? ' active' : ''}${branchClass}`;
+  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${!labelOverride && gate.inverse ? ' inverse' : ''}${gate.condition ? ' conditioned' : ''}${gate.recursion ? ' recursive' : ''}${active ? ' active' : ''}${branchClass}`;
   const conditionNote = gate.condition
     ? ` if q${gate.condition.qubit}=${gate.condition.equals}`
     : '';
   const branchNote = gate.branch
     ? ` (${gate.branch.kind.toUpperCase()} ${branchOutcome})`
     : '';
+  const recursionNote = gate.recursion
+    ? ` · recursive DEPTH ${gate.recursion.depth}/${gate.recursion.rootDepth}`
+    : '';
   const title = labelOverride
     ? `${labelOverride} recursive call${conditionNote}${branchNote}`
-    : `${gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}${conditionNote}${branchNote}`;
+    : `${gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}${conditionNote}${branchNote}${recursionNote}`;
 
-  if (onRemove) {
+  if (onActivate) {
     return (
       <button
-        aria-label={`Remove ${title}`}
+        aria-label={activateLabel ?? `Edit or remove ${title}`}
         className={className}
         onClick={(event) => {
           event.stopPropagation();
-          onRemove();
+          onActivate();
         }}
         title={title}
         type="button"
