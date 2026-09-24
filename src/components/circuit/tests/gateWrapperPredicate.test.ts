@@ -117,6 +117,11 @@ describe('draftFromGate reflects an existing Joined predicate', () => {
     const draft = draftFromGate(wrapped, { tool: 'if', qubitCount: 4 });
     expect(draft.joined).toBe(false);
   });
+
+  it('defaults an ELSE wrapper to the complement of the Joined test', () => {
+    expect(draftFromGate(gate(), { tool: 'if', qubitCount: 4 }).predicateDraft?.negate).toBe(false);
+    expect(draftFromGate(gate(), { tool: 'else', qubitCount: 4 }).predicateDraft?.negate).toBe(true);
+  });
 });
 
 describe('a GUI-built Joined condition runs correctly end to end', () => {

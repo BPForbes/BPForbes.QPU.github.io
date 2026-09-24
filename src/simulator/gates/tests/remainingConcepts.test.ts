@@ -173,4 +173,20 @@ describe('reversible custom-gate dagger', () => {
     });
     expect(record.reversible).toBe(false);
   });
+
+  it('marks a custom gate that leaves workspace dirty non-reversible', () => {
+    const record = registerCustomGate({
+      id: 'DirtySwap',
+      source: 'PARAMS: A:1\nMAIN-PROCESS DirtySwap\nCNOT -I A -O Tmp\nCNOT -I Tmp -O A\nRETURNVALS A',
+    });
+    expect(record.reversible).toBe(false);
+  });
+
+  it('keeps a custom gate that uncomputes its workspace reversible', () => {
+    const record = registerCustomGate({
+      id: 'CleanCopy',
+      source: 'PARAMS: A:1 B:1\nMAIN-PROCESS CleanCopy\nCNOT -I A -O Tmp\nCNOT -I Tmp -O B\nCNOT -I A -O Tmp\nRETURNVALS A B',
+    });
+    expect(record.reversible).toBe(true);
+  });
 });

@@ -99,6 +99,10 @@ export function GateWrapperModal({
                       ...draft,
                       branchKind: kind,
                       conditionEquals: kind === 'else' ? 0 : 1,
+                      // Switching IF↔ELSE flips a Joined test to its complement.
+                      predicateDraft: predicateDraft && kind !== draft.branchKind
+                        ? { ...predicateDraft, negate: !predicateDraft.negate }
+                        : predicateDraft,
                     });
                   }}
                   value={draft.branchKind}

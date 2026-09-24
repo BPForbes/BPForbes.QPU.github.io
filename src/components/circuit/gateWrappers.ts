@@ -194,7 +194,8 @@ export const draftFromGate = (
       joined: false,
       conditionQubit,
       conditionEquals: tool === 'else' ? 0 : 1,
-      predicateDraft: defaultPredicateDraft(outputQubit),
+      // ELSE runs on the complement of the IF test, as structured ELSE blocks do in the compiler.
+      predicateDraft: { ...defaultPredicateDraft(outputQubit), negate: tool === 'else' },
     };
   }
 

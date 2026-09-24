@@ -1138,7 +1138,10 @@ const executeProcess = (
         recursionState.level = plan.level;
         recursionState.mode = 'tco';
         syncActiveRecursion();
-        // Each rewound iteration may recreate tokens the previous one released or re-declare its returns.
+        // Each rewound iteration gets fresh locals, as a stacked call would: a new scope and only the call's output bindings.
+        frame.scope = `${process.name}#${state.processRuns}`;
+        state.processRuns += 1;
+        frame.aliases = new Map(outputBindings);
         frame.released.clear();
         frame.returnBases = [];
         frame.masterTokens = [];

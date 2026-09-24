@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compileQpuProtocol, visibleCircuitGates } from '../qpuAst';
-import { runCircuit } from '../../engine';
+import { measureAll, runCircuit } from '../../engine';
 import { magnitudeSquared } from '../../complex';
 import { MAX_COMPILER_RECURSION_DEPTH } from '../recursion';
 
@@ -227,5 +227,29 @@ RECUR -I Q
 RETURNVALS Q`,
     });
     expect(visibleCircuitGates(compiled.gates).filter((gate) => gate.type === 'CNOT')).toHaveLength(3);
+  });
+
+  it('gives each TCO iteration fresh frame-local tokens, like stacked recursion', () => {
+    const measureQ = (depth: number) => {
+      const compiled = compileQpuProtocol(`PARAMS: Q:state
+MAIN-PROCESS Parent
+DECLARECHILD Flip
+RUNCHILD Flip -DEPTH ${depth} -I Q
+RETURNVALS Q`, {
+        Flip: `PARAMS: Q:state
+MAIN-PROCESS Flip
+TREC MAXDEPTH 8
+EXIT WHEN DEPTH == 0
+SET Tmp 1p
+CNOT -I Tmp -O Q
+RECUR -I Q
+RETURNVALS Q`,
+      });
+      const executed = runCircuit(compiled.qubitCount, compiled.gates, ['0p']);
+      return measureAll(executed.state, compiled.qubitCount, executed.measurements).measurements[compiled.tokenMap.Q];
+    };
+    // Each iteration's Tmp starts at |1⟩, so Q flips once per level.
+    expect(measureQ(2)).toBe(0);
+    expect(measureQ(3)).toBe(1);
   });
 });
