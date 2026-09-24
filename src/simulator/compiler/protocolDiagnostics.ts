@@ -172,6 +172,7 @@ export const analyzeQpuProtocol = (
       const command = parseCommand(line.text);
       if (
         command.reverse
+        && !command.customGateId
         && !reversibleGates.has(command.op)
       ) {
         diagnostics.push({

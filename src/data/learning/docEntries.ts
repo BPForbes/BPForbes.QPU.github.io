@@ -234,7 +234,7 @@ export const gateDocEntry = (gateId: string): DocEntry | undefined => {
 };
 
 const CHILD_CALL = /^\s*(?:RUNCHILD|CALL|DECLARECHILD)\s+([A-Za-z_][\w-]*)/;
-const REC_DECL = /^\s*(REC|TREC)(?:\s+MAXDEPTH\s+(\d+))?/i;
+const REC_DECL = /^\s*(REC|TREC)\b(?:\s+MAXDEPTH\s+(\d+))?/i;
 const HAS_RECUR = /^\s*(?:RECUR|RUNCHILD\s+\S+)/m;
 
 /** Child process names a protocol declares or runs, in first-use order. */

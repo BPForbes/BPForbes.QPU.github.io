@@ -209,4 +209,23 @@ RETURNVALS Q`,
     // One child scope plus TCO rewinds — not 40 nested NonTail-style scopes.
     expect(compiled.log.filter((line) => /MAIN-PROCESS RecursiveH compiled in scope/.test(line))).toHaveLength(1);
   });
+
+  it('lets each TCO iteration recreate a token the previous iteration freed', () => {
+    const compiled = compileQpuProtocol(`PARAMS: Q:state
+MAIN-PROCESS Parent
+DECLARECHILD Scratch
+RUNCHILD Scratch -DEPTH 3 -I Q
+RETURNVALS Q`, {
+      Scratch: `PARAMS: Q:state
+MAIN-PROCESS Scratch
+TREC MAXDEPTH 8
+EXIT WHEN DEPTH == 0
+SET T 0p
+CNOT -I Q -O T
+FREE T
+RECUR -I Q
+RETURNVALS Q`,
+    });
+    expect(visibleCircuitGates(compiled.gates).filter((gate) => gate.type === 'CNOT')).toHaveLength(3);
+  });
 });

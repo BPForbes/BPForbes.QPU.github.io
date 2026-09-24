@@ -176,10 +176,12 @@ export const draftFromGate = (
       depth: gate.recursion?.rootDepth ?? gate.recursion?.depth ?? 4,
       branchEnabled: Boolean(gate.condition || gate.branch),
       branchKind: gate.branch?.kind ?? 'if',
-      joined: false,
+      joined: Boolean(gate.condition?.predicate),
       conditionQubit,
       conditionEquals: gate.condition?.equals ?? gate.branch?.equals ?? 1,
-      predicateDraft: defaultPredicateDraft(outputQubit),
+      predicateDraft: gate.condition?.predicate
+        ? predicateDraftFromPredicate(gate.condition.predicate)
+        : defaultPredicateDraft(outputQubit),
     };
   }
 

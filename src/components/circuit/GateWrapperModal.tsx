@@ -214,7 +214,7 @@ export function GateWrapperModal({
                   <select
                     onChange={(event) => onChange({
                       ...draft,
-                      predicateDraft: { ...predicateDraft, expect: event.target.value as ConditionValue },
+                      predicateDraft: { ...predicateDraft, expect: (event.target.value === 's' ? 's' : Number(event.target.value)) as ConditionValue },
                     })}
                     value={predicateDraft.expect}
                   >
