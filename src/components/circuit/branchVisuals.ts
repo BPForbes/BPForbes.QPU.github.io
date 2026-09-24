@@ -17,11 +17,29 @@ export const branchOutcomeFor = (
   return measured === gate.condition.equals ? 'taken' : 'skipped';
 };
 
-/** Label used by IF/ELSE black pills on the classical c row. */
-export const conditionFeedLabel = (gate: CircuitGate): string => {
-  if (gate.branch?.kind === 'else') return `ELSE =${gate.condition?.equals ?? 0}`;
-  if (gate.branch?.kind === 'if') return `IF =${gate.condition?.equals ?? 1}`;
-  return `c=${gate.condition?.equals ?? ''}`;
+/** Keyword for the IF/ELSE label under the classical c row. */
+export const conditionFeedKeyword = (gate: CircuitGate): string => {
+  if (gate.branch?.kind === 'else') return 'ELSE';
+  if (gate.branch?.kind === 'if') return 'IF';
+  return 'IF';
+};
+
+/** Condition text for the c-row label, e.g. `A=1` (falls back to `q0=1`). */
+export const conditionFeedTest = (gate: CircuitGate, sourceName?: string): string => {
+  const qubit = gate.condition?.qubit;
+  const name = sourceName ?? (qubit !== undefined ? `q${qubit}` : 'c');
+  return `${name}=${gate.condition?.equals ?? ''}`;
+};
+
+/** Single-line IF/ELSE label, e.g. `IF · A=1`. */
+export const conditionFeedLabel = (gate: CircuitGate, sourceName?: string): string =>
+  `${conditionFeedKeyword(gate)} · ${conditionFeedTest(gate, sourceName)}`;
+
+/** Status line under a resolved branch label. Pending branches show none. */
+export const branchOutcomeNote = (outcome: BranchOutcome): string | undefined => {
+  if (outcome === 'taken') return '✓ taken';
+  if (outcome === 'skipped') return '⊘ skipped';
+  return undefined;
 };
 
 /** @deprecated Prefer conditionFeedLabel; kept for tests / title text. */

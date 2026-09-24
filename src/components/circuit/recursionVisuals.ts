@@ -24,6 +24,8 @@ export type VisualCircuitColumn = {
     rootDepth: number;
     /** Depth to show for each covered simulator step. */
     depthByStep: Record<number, number>;
+    /** Every wire the recursive body touches; a collapsed REC box spans these. */
+    qubits: number[];
   };
 };
 
@@ -74,6 +76,7 @@ export const buildVisualCircuitColumns = (gates: readonly CircuitGate[]): Visual
           process: meta.process,
           rootDepth: meta.rootDepth,
           depthByStep,
+          qubits: [...new Set(group.flatMap((entry) => [...entry.controls, ...entry.targets]))].sort((a, b) => a - b),
         },
       });
       column += 1;
@@ -168,4 +171,76 @@ export const visualColumnIndexForStep = (
 ): number | undefined => {
   const found = columns.find((column) => columnContainsStep(column, step));
   return found?.column;
+};
+
+/** One unrolled level of a collapsed recursive call, for the expanded detail view. */
+export type RecursionFrame = {
+  process: string;
+  depth: number;
+  level: number;
+  rootDepth: number;
+  mode: RecursionFrameMeta['mode'];
+  /** Body gates of this level in step order (the recursive CYCLE is split out). */
+  body: CircuitGate[];
+  /** INCREASECYCLE that closes this level before the tail call. */
+  cycleGate?: CircuitGate;
+  /** Index in `body` where the adjoint (uncompute) region starts; body.length when none. */
+  inverseStart: number;
+  /** Wires touched anywhere in the recursive call. */
+  qubits: number[];
+};
+
+/**
+ * Extract one level of the recursive call drawn by `visual`.
+ * `level` defaults to the first level; out-of-range levels return undefined.
+ */
+export const recursionFrameForColumn = (
+  gates: readonly CircuitGate[],
+  visual: VisualCircuitColumn,
+  level?: number,
+): RecursionFrame | undefined => {
+  if (!visual.recursion) return undefined;
+  const covered = new Set(visual.coveredSteps);
+  const group = gates
+    .filter((gate) => covered.has(gate.step) && gate.recursion)
+    .sort((a, b) => a.step - b.step);
+  const targetLevel = level ?? Math.min(...group.map((gate) => gate.recursion!.level));
+  const frameGates = group.filter((gate) => gate.recursion!.level === targetLevel);
+  if (frameGates.length === 0) return undefined;
+  const meta = frameGates[0].recursion!;
+  const body = frameGates.filter((gate) => gate.type !== 'CYCLE');
+  const firstInverse = body.findIndex((gate) => gate.inverse);
+  return {
+    process: meta.process,
+    depth: meta.depth,
+    level: meta.level,
+    rootDepth: meta.rootDepth,
+    mode: meta.mode,
+    body,
+    cycleGate: frameGates.find((gate) => gate.type === 'CYCLE'),
+    inverseStart: firstInverse < 0 ? body.length : firstInverse,
+    qubits: visual.recursion.qubits,
+  };
+};
+
+/** Frame containing the playhead, or undefined when the step is outside every recursive call. */
+export const recursionFrameForStep = (
+  gates: readonly CircuitGate[],
+  step: number,
+): RecursionFrame | undefined => {
+  const active = gates.find((gate) => gate.step === step);
+  if (!active?.recursion) return undefined;
+  const visual = buildVisualCircuitColumns(gates).find((column) => column.recursion && columnContainsStep(column, step));
+  return visual ? recursionFrameForColumn(gates, visual, active.recursion.level) : undefined;
+};
+
+/**
+ * Forward gate name recovered from protocol source when lowering renamed it
+ * (e.g. `Tdg` lowers to PHASE(-π/4) but should still read as T†).
+ */
+export const sourceGateLabel = (gate: CircuitGate): string | undefined => {
+  const token = gate.source?.trim().split(/\s+/)[0]?.split('=')[0];
+  if (!token || gate.type !== 'PHASE') return undefined;
+  const base = token.replace(/^(dg|inv)(?=[A-Z])/, '').replace(/(dg|inv)$/, '');
+  return /^[A-Z]{1,2}$/.test(base) && base !== 'P' ? base : undefined;
 };

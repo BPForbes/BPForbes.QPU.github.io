@@ -9,6 +9,10 @@ type CircuitGlyphProps = {
   branchOutcome?: 'taken' | 'skipped' | 'pending';
   /** Canvas-only label override (e.g. REC for collapsed multi-op recursion). */
   labelOverride?: string;
+  /** Forward name to show instead of the registry label; keeps glyph kind and dagger (e.g. T for lowered Tdg). */
+  forwardLabel?: string;
+  /** Collapsed REC: colour as inverse while the playhead is in the adjoint half of the frame. */
+  inverseOverride?: boolean;
   /** Primary click: edit wrappers, apply a selected wrapper tool, or remove. */
   onActivate?: () => void;
   activateLabel?: string;
@@ -49,13 +53,16 @@ export function CircuitGlyph({
   active = false,
   branchOutcome = 'pending',
   labelOverride,
+  forwardLabel: forwardLabelProp,
+  inverseOverride,
   onActivate,
   activateLabel,
 }: CircuitGlyphProps) {
   const kind = labelOverride ? 'box' : glyphKindFor(gate, qubit);
   const definition = getGateDefinition(String(gate.type));
   const forwardLabel = labelOverride
-    ?? glyphLabelFor(gate, qubit, definition?.label ?? String(gate.type));
+    ?? glyphLabelFor(gate, qubit, forwardLabelProp ?? definition?.label ?? String(gate.type));
+  const inverse = inverseOverride ?? (!labelOverride && gate.inverse);
   const label = !labelOverride && gate.inverse && kind === 'box' ? `${forwardLabel}†` : forwardLabel;
   const branchClass = gate.condition
     ? branchOutcome === 'taken'
@@ -64,7 +71,7 @@ export function CircuitGlyph({
         ? ' branch-skipped'
         : ''
     : '';
-  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${!labelOverride && gate.inverse ? ' inverse' : ''}${gate.condition ? ' conditioned' : ''}${gate.recursion ? ' recursive' : ''}${active ? ' active' : ''}${branchClass}`;
+  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${inverse ? ' inverse' : ''}${gate.condition ? ' conditioned' : ''}${gate.recursion ? ' recursive' : ''}${active ? ' active' : ''}${branchClass}`;
   const conditionNote = gate.condition
     ? ` if q${gate.condition.qubit}=${gate.condition.equals}`
     : '';
@@ -76,7 +83,7 @@ export function CircuitGlyph({
     : '';
   const title = labelOverride
     ? `${labelOverride} recursive call${conditionNote}${branchNote}`
-    : `${gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}${conditionNote}${branchNote}${recursionNote}`;
+    : `${forwardLabelProp ?? gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}${conditionNote}${branchNote}${recursionNote}`;
 
   if (onActivate) {
     return (

@@ -9,6 +9,12 @@ import {
 } from './embedMode';
 import { CircuitCanvas } from './components/CircuitCanvas';
 import { GateWrapperModal } from './components/circuit/GateWrapperModal';
+import { RecursionFrameView } from './components/circuit/RecursionFrameView';
+import {
+  buildVisualCircuitColumns,
+  recursionFrameForColumn,
+  recursionFrameForStep,
+} from './components/circuit/recursionVisuals';
 import {
   applyWrappersToGateList,
   draftFromGate,
@@ -261,6 +267,14 @@ function App() {
     if (inRange.length > 0) return inRange;
     return Array.from({ length: qubitCount }, (_, qubit) => ({ name: `q${qubit}`, type: '1', qubitIndex: qubit }));
   }, [processParams, qubitCount, simulationQubitCount]);
+  // Compiled protocol names (A, B, C…) per simulator wire; canvas mode has none.
+  const wireParamNames = useMemo(() => {
+    const names: (string | undefined)[] = [];
+    processParams.forEach((param) => {
+      if (param.qubitIndex >= 0) names[param.qubitIndex] = param.name;
+    });
+    return names;
+  }, [processParams]);
   const paramQubitIndices = useMemo(() => controllableParams.map((param) => param.qubitIndex), [controllableParams]);
   // Compiled processes can use hidden workspace qubits, so result panels project the full state down to RETURNVALS or PARAMS.
   const displayQubitIndices = useMemo(
@@ -1031,6 +1045,31 @@ function App() {
     setSelectedWrapper((current) => (current === tool ? null : tool));
   };
 
+  // Expanded REC detail: the frame under the playhead, else the first frame on demand.
+  const activeRecursionFrame = activeCanvasGate?.recursion
+    ? recursionFrameForStep(renderedGates, activeCanvasGate.step)
+    : undefined;
+  const inspectableRecursionFrame = (() => {
+    if (activeRecursionFrame) return undefined;
+    const column = buildVisualCircuitColumns(renderedGates).find((entry) => entry.recursion);
+    return column ? recursionFrameForColumn(renderedGates, column) : undefined;
+  })();
+  const recursionFrameDetail = activeRecursionFrame ? (
+    <aside aria-label="Expanded recursive frame" className="workbench-docs">
+      <div className="workbench-docs-heading">
+        <p className="eyebrow">Recursive frame · step {cursor} of {orderedGates.length}</p>
+      </div>
+      <RecursionFrameView activeStep={cursor - 1} frame={activeRecursionFrame} qubitNames={wireParamNames} />
+    </aside>
+  ) : inspectableRecursionFrame ? (
+    <details className="workbench-docs recursion-frame-inspect">
+      <summary>
+        Expand {inspectableRecursionFrame.process} · first frame of DEPTH {inspectableRecursionFrame.rootDepth}
+      </summary>
+      <RecursionFrameView activeStep={cursor - 1} frame={inspectableRecursionFrame} qubitNames={wireParamNames} />
+    </details>
+  ) : null;
+
   const workbenchDocs = (() => {
     if (docFocus === 'circuit' && activeCanvasGate && activeCanvasGateId && circuitDoc) {
       const touched = [...activeCanvasGate.controls, ...activeCanvasGate.targets];
@@ -1196,6 +1235,7 @@ function App() {
             onDropGate={addGate}
             particleSnapshots={particleSnapshots}
             qubitCount={simulationQubitCount}
+            qubitNames={wireParamNames}
             selectedGate={selectedGate}
             selectedWrapper={selectedWrapper}
             startStates={startStates}
@@ -1239,6 +1279,7 @@ function App() {
                 </label>
               ) : null}
             </div>
+            {recursionFrameDetail}
             {workbenchDocs}
             {protocolDoc ? (
               <WorkbenchDocs
