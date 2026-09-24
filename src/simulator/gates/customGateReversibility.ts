@@ -5,7 +5,7 @@
  * wires (PARAMS and RETURNVALS) is a unitary matrix U whose dagger, as the engine
  * actually runs it on fresh |0⟩ workspace, recovers every input:
  *   1. Unitary: U†U = UU† = I.
- *   2. Recovery: running the dagger steps on U|x⟩ gives back |x⟩.
+ *   2. Recovery: running the dagger steps on U|x⟩ gives back |x⟩, up to one global phase.
  *   3. Bijective: distinct inputs map to distinct (orthogonal) outputs.
  *   4. Norm preserving: every output has norm 1.
  * The matrix is built by simulating each basis input, so the gate must first be
@@ -41,7 +41,7 @@ type WireLayout = {
 };
 
 /** Bump when the rules change so records saved under older rules are re-checked. */
-export const REVERSIBILITY_CHECK_VERSION = 3;
+export const REVERSIBILITY_CHECK_VERSION = 4;
 
 const NON_UNITARY_TYPES = new Set(['MEASURE', 'RESET', 'SAVE_STATE', 'LOAD_STATE']);
 const MAX_VISIBLE_WIRES = 8;
@@ -139,20 +139,27 @@ const leavesWorkspaceDirty = (output: Complex[], { workspace, qubitCount }: Wire
   magnitudeSquared(amplitude) > EPSILON && workspace.some((qubit) => hasBit(index, qubit, qubitCount))
 ));
 
-const recoveryIssue = (
-  layout: WireLayout,
-  bits: number,
-  output: Complex[],
-  inverseSteps: CircuitGate[],
-  runNested: NestedCustomGateRunner,
-) => {
+/** True when `state` equals `phase`·|index⟩ in every amplitude, not just in probability. */
+const matchesBasisUpToPhase = (state: Complex[], index: number, phase: Complex) => state.every((amplitude, entry) => (
+  Math.hypot(amplitude.re - (entry === index ? phase.re : 0), amplitude.im - (entry === index ? phase.im : 0)) < EPSILON
+));
+
+/**
+ * The dagger must return |x⟩ exactly, allowing only one global phase shared by every input.
+ * A phase that differs between inputs would pass a probability test but break superpositions.
+ */
+const recoveryIssue = (layout: WireLayout, bits: number, output: Complex[], recovered: Complex[], globalPhase: Complex) => {
+  const label = inputLabel(layout, bits);
   if (leavesWorkspaceDirty(output, layout)) {
-    return `Input ${inputLabel(layout, bits)} leaves an internal wire away from |0⟩, so the dagger (which starts internal wires at |0⟩) cannot recover it (criterion 2).`;
+    return `Input ${label} leaves an internal wire away from |0⟩, so the dagger (which starts internal wires at |0⟩) cannot recover it (criterion 2).`;
   }
-  const recovered = runSteps(output, layout.qubitCount, inverseSteps, runNested);
-  return magnitudeSquared(recovered[basisIndex(layout, bits)]) < 1 - EPSILON
-    ? `Running the dagger after the gate does not return input ${inputLabel(layout, bits)} (criterion 2).`
-    : undefined;
+  const index = basisIndex(layout, bits);
+  if (magnitudeSquared(recovered[index]) < 1 - EPSILON) {
+    return `Running the dagger after the gate does not return input ${label} (criterion 2).`;
+  }
+  return matchesBasisUpToPhase(recovered, index, globalPhase)
+    ? undefined
+    : `Running the dagger after the gate returns input ${label} with a different phase than input ${inputLabel(layout, 0)}, so superpositions are not recovered (criterion 2).`;
 };
 
 /** Simulate every basis input; returns U's columns on the visible wires, or the first recovery failure. */
@@ -163,9 +170,14 @@ const buildColumns = (
 ): { columns: Complex[][] } | { issue: string } => {
   const inverseSteps = compiled.gates.slice().reverse().map(invertCircuitGate);
   const columns: Complex[][] = [];
+  let globalPhase: Complex | undefined;
   for (let bits = 0; bits < layout.dimension; bits += 1) {
-    const output = runSteps(basisState(basisIndex(layout, bits), layout.qubitCount), layout.qubitCount, compiled.gates, runNested);
-    const issue = recoveryIssue(layout, bits, output, inverseSteps, runNested);
+    const index = basisIndex(layout, bits);
+    const output = runSteps(basisState(index, layout.qubitCount), layout.qubitCount, compiled.gates, runNested);
+    const recovered = runSteps(output, layout.qubitCount, inverseSteps, runNested);
+    // Input 0 fixes the one global phase every other input must share.
+    globalPhase ??= recovered[index];
+    const issue = recoveryIssue(layout, bits, output, recovered, globalPhase);
     if (issue) return { issue };
     columns.push(Array.from({ length: layout.dimension }, (_, row) => output[basisIndex(layout, row)]));
   }

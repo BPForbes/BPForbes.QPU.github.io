@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileQpuProtocol } from '../../compiler/qpuAst';
 import { checkCustomGateReversibility } from '../customGateReversibility';
-import { applyCustomGateProcess, getCustomGateRecord, registerCustomGate } from '../customGateEngine';
+import { applyCustomGateProcess, getCustomGateRecord, registerCustomGate, removeCustomGateRecord } from '../customGateEngine';
+import { applySingleQubitGate } from '../operations';
+import { phaseMatrix } from '../matrices';
 import { magnitudeSquared } from '../../complex';
 import { runCircuit } from '../../engine';
 import type { CircuitGate } from '../../types';
@@ -113,5 +115,54 @@ describe('custom gate records', () => {
     const outer = registerCustomGate({ id: 'UsesPeek', source: 'PARAMS: A:1\nMAIN-PROCESS UsesPeek\nPeek -I A -O A\nRETURNVALS A' });
     expect(outer.reversible).toBe(false);
     expect(outer.reversibilityIssue).toMatch(/Custom gate Peek is not reversible.*MEASURE/);
+  });
+
+  it('re-checks a gate when a custom gate it uses is replaced or removed', () => {
+    const inner = (body: string) => registerCustomGate({ id: 'Inner', source: `PARAMS: A:1\nMAIN-PROCESS Inner\n${body}\nRETURNVALS A` });
+    const outerDagger = 'PARAMS: Q:1\nMAIN-PROCESS P\nOuterdg -I Q -O Q\nRETURNVALS Q';
+    inner('X -I A -O A');
+    refreshCustomGateRegistry();
+    registerCustomGate({ id: 'Outer', source: 'PARAMS: A:1\nMAIN-PROCESS Outer\nInner -I A -O A\nRETURNVALS A' });
+    expect(getCustomGateRecord('Outer')?.reversible).toBe(true);
+
+    // Replacing Inner with a measuring version makes Outer non-unitary, so its dagger must be refused up front.
+    inner('MEASURE -I A');
+    refreshCustomGateRegistry();
+    expect(getCustomGateRecord('Outer')?.reversible).toBe(false);
+    expect(getCustomGateRecord('Outer')?.reversibilityIssue).toMatch(/Custom gate Inner is not reversible/);
+    expect(() => compileQpuProtocol(outerDagger)).toThrow(/Outer' is not reversible/);
+
+    inner('X -I A -O A');
+    expect(getCustomGateRecord('Outer')?.reversible).toBe(true);
+
+    removeCustomGateRecord('Inner');
+    expect(getCustomGateRecord('Outer')?.reversible).toBe(false);
+  });
+});
+
+describe('recovery compares amplitudes, not just probabilities', () => {
+  beforeEach(() => {
+    const storage: Record<string, string> = {};
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => storage[key] ?? null,
+      setItem: (key: string, value: string) => { storage[key] = value; },
+      removeItem: (key: string) => { delete storage[key]; },
+    });
+    refreshCustomGateRegistry();
+  });
+
+  it('rejects a dagger that recovers each basis input only up to a different phase', () => {
+    registerCustomGate({ id: 'PhaseS', source: 'PARAMS: A:1\nMAIN-PROCESS PhaseS\nS -I A -O A\nRETURNVALS A' });
+    refreshCustomGateRegistry();
+    const compiled = compileQpuProtocol('PARAMS: A:1\nMAIN-PROCESS W\nPhaseS -I A -O A\nRETURNVALS A');
+    expect(checkCustomGateReversibility(compiled, runNested).reversible).toBe(true);
+
+    // A broken dagger that re-applies S instead of S†: |0⟩ → |0⟩ but |1⟩ → −|1⟩, so |+⟩ would come back as |−⟩.
+    const sBothWays = (state: Parameters<typeof applyCustomGateProcess>[0], qubitCount: number, gate: CircuitGate) => ({
+      state: applySingleQubitGate(state, qubitCount, gate.targets[0], phaseMatrix(Math.PI / 2)),
+      measurements: {},
+      log: [],
+    });
+    expect(reasonOf(checkCustomGateReversibility(compiled, sBothWays))).toMatch(/different phase.*criterion 2/);
   });
 });
