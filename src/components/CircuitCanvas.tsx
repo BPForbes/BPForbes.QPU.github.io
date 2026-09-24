@@ -1,4 +1,6 @@
+import { Fragment } from 'react';
 import { isKnownGateType } from '../simulator/gates/registry';
+import type { ParticleSnapshot } from '../simulator/physics/particleTracking';
 import { CircuitGate, GateType, MeasurementMap, ParticleStartState } from '../simulator/types';
 import { branchOutcomeFor, conditionFeedLabel } from './circuit/branchVisuals';
 import { CircuitGlyph } from './circuit/CircuitGlyph';
@@ -18,7 +20,7 @@ import {
   MAX_SLOT_REM,
   MIN_SLOT_REM,
   needsConnector,
-  startStateKet,
+  wireKetLabel,
 } from './circuitLayout';
 
 type CircuitCanvasProps = {
@@ -32,6 +34,8 @@ type CircuitCanvasProps = {
   selectedGate: GateType | null;
   measurements?: MeasurementMap;
   startStates?: ParticleStartState[];
+  /** Live per-qubit particle snapshots; wire kets update from these as the run progresses. */
+  particleSnapshots?: ParticleSnapshot[];
   onDropGate: (gate: GateType, qubit: number) => void;
   onRemoveGate: (gateId: string) => void;
 };
@@ -47,6 +51,7 @@ export function CircuitCanvas({
   selectedGate,
   measurements = {},
   startStates = [],
+  particleSnapshots = [],
   onDropGate,
   onRemoveGate,
 }: CircuitCanvasProps) {
@@ -73,6 +78,7 @@ export function CircuitCanvas({
   const conditionedDisplayGates = visualColumns.flatMap((column) =>
     column.displayGates.filter((gate) => gate.condition && gate.targets.length > 0),
   );
+  const snapshotByQubit = new Map(particleSnapshots.map((entry) => [entry.qubit, entry]));
 
   const handleDrop = (event: React.DragEvent, qubit: number) => {
     event.preventDefault();
@@ -164,16 +170,24 @@ export function CircuitCanvas({
               if (column === undefined) return null;
               const target = gate.targets[0];
               const outcome = branchOutcomeFor(gate, measurements);
+              const label = conditionFeedLabel(gate);
               return (
-                <span
-                  aria-hidden="true"
-                  className={`circuit-condition-feed ${outcome}`}
-                  key={`cond-feed-${gate.id}`}
-                  style={{ gridColumn: column + 2, gridRow: `${target + 1} / ${classicalRow + 1}` }}
-                  title={conditionFeedLabel(gate)}
-                >
-                  <span className="circuit-condition-value">{conditionFeedLabel(gate)}</span>
-                </span>
+                <Fragment key={`cond-feed-${gate.id}`}>
+                  <span
+                    aria-hidden="true"
+                    className={`circuit-condition-feed ${outcome}`}
+                    style={{ gridColumn: column + 2, gridRow: `${target + 1} / ${classicalRow + 1}` }}
+                    title={label}
+                  />
+                  <span
+                    aria-hidden="true"
+                    className={`circuit-condition-pill ${outcome}`}
+                    style={{ gridColumn: column + 2, gridRow: classicalRow }}
+                    title={label}
+                  >
+                    {label}
+                  </span>
+                </Fragment>
               );
             })}
 
@@ -218,10 +232,11 @@ export function CircuitCanvas({
           {Array.from({ length: qubitCount }, (_, qubit) => {
             const measured = measurements[qubit] !== undefined;
             const activeOnWire = Boolean(activeGate && gateTouchesQubit(activeGate, qubit));
+            const ket = wireKetLabel(snapshotByQubit.get(qubit), startStates[qubit]);
             return (
               <div className="circuit-label-cell" key={`label-${qubit}`} style={{ gridColumn: 1, gridRow: qubit + 1 }}>
                 <span className="circuit-q">q{qubit}</span>
-                <span className="circuit-ket">{startStateKet(startStates[qubit])}</span>
+                <span className="circuit-ket">{ket}</span>
                 <span
                   aria-label={measured ? `q${qubit} measured` : `q${qubit} particle`}
                   className={`circuit-particle ${measured ? 'measured' : ''} ${activeOnWire ? 'hot' : ''}`}
@@ -300,8 +315,8 @@ export function CircuitCanvas({
         {hasRecursion
           ? 'A recursive call draws as one gate with a light-green D{n} above it. Step through to watch DEPTH count down; when the call finishes the badge hides. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
           : hasBranches
-            ? 'IF/ELSE lowers to classically conditioned gates on a linear wire. Double strokes from c mark feed-forward; taken branches stay solid and skipped branches fade. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
-            : 'Qubit wires stay single, and a measured qubit can still take later gates. The double stroke down to c marks the time of that measurement and the bit where the result lands. Inverse gates wear a dagger: blue in general, purple on the active step. Active steps use a red outline; measured particles turn red on their wire.'}
+            ? 'IF/ELSE labels sit in black pills on the c row. Double strokes mark feed-forward; the taken branch stays solid and the inactive branch fades. Wire kets update live as particles change. Forward gates stay black/red; inverse (dg/inv) stay blue/purple.'
+            : 'Wire kets update live as particles change (|0⟩, |1⟩, |+⟩, |−⟩). Qubit wires stay single, and a measured qubit can still take later gates. The double stroke down to c marks the time of that measurement and the bit where the result lands. Inverse gates wear a dagger: blue in general, purple on the active step. Active steps use a red outline; measured particles turn red on their wire.'}
       </p>
     </section>
   );

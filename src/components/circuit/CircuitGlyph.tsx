@@ -1,7 +1,6 @@
 import { getGateDefinition } from '../../simulator/gates/registry';
 import type { CircuitGate } from '../../simulator/types';
 import { glyphKindFor, glyphLabelFor, type CircuitGlyphKind } from '../circuitLayout';
-import { conditionBadgeLabel } from './branchVisuals';
 
 type CircuitGlyphProps = {
   gate: CircuitGate;
@@ -55,7 +54,6 @@ export function CircuitGlyph({
   const forwardLabel = labelOverride
     ?? glyphLabelFor(gate, qubit, definition?.label ?? String(gate.type));
   const label = !labelOverride && gate.inverse && kind === 'box' ? `${forwardLabel}†` : forwardLabel;
-  const badge = conditionBadgeLabel(gate);
   const branchClass = gate.condition
     ? branchOutcome === 'taken'
       ? ' branch-taken'
@@ -88,7 +86,6 @@ export function CircuitGlyph({
       >
         {glyphContent(kind, label)}
         {gate.inverse && kind !== 'box' ? <span className="glyph-dagger">†</span> : null}
-        {badge && kind === 'box' ? <span className="glyph-condition">{badge}</span> : null}
       </button>
     );
   }
@@ -97,7 +94,6 @@ export function CircuitGlyph({
     <span className={className} title={title}>
       {glyphContent(kind, label)}
       {gate.inverse && kind !== 'box' ? <span className="glyph-dagger">†</span> : null}
-      {badge && kind === 'box' ? <span className="glyph-condition">{badge}</span> : null}
     </span>
   );
 }

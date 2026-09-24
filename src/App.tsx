@@ -73,6 +73,7 @@ import {
 } from './simulator/compiler';
 import { controlsForGateType, getGateDefinition, paletteGateIds } from './simulator/gates/registry';
 import type { OperationTransition, ParticleSnapshot } from './simulator/physics';
+import { snapshotAllParticles } from './simulator/physics';
 import { CircuitGate, GateType, MeasurementMap, ParticleStartState, StateCheckpoint } from './simulator/types';
 import { Complex } from './simulator/complex';
 import './styles.css';
@@ -375,7 +376,8 @@ function App() {
       ? activeControllable.map((param) => param.qubitIndex)
       : undefined;
     checkpointsRef.current = {};
-    setState(createInitialState(nextSimulationQubitCount, nextStartStates, activeParamIndices));
+    const initialState = createInitialState(nextSimulationQubitCount, nextStartStates, activeParamIndices);
+    setState(initialState);
     setRuntimeQubitCount(nextSimulationQubitCount);
     setMeasurements({});
     const initDesc = activeControllable.length
@@ -384,7 +386,7 @@ function App() {
     setLog([reason ?? `Initialized ${initDesc}.`]);
     setCursor(0);
     setPlaying(false);
-    setParticleSnapshots([]);
+    setParticleSnapshots(snapshotAllParticles(initialState, nextSimulationQubitCount, {}));
     setParticleTransitions([]);
   };
 
@@ -1121,6 +1123,7 @@ function App() {
             measurements={measurements}
             onDropGate={addGate}
             onRemoveGate={removeGate}
+            particleSnapshots={particleSnapshots}
             qubitCount={simulationQubitCount}
             selectedGate={selectedGate}
             startStates={startStates}

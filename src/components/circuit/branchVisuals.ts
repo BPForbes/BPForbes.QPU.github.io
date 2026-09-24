@@ -17,16 +17,17 @@ export const branchOutcomeFor = (
   return measured === gate.condition.equals ? 'taken' : 'skipped';
 };
 
-/** Label shown on conditioned glyphs: IF · c=1, ELSE · c=0, or bare c=1. */
+/** Label used by IF/ELSE black pills on the classical c row. */
+export const conditionFeedLabel = (gate: CircuitGate): string => {
+  if (gate.branch?.kind === 'else') return `ELSE =${gate.condition?.equals ?? 0}`;
+  if (gate.branch?.kind === 'if') return `IF =${gate.condition?.equals ?? 1}`;
+  return `c=${gate.condition?.equals ?? ''}`;
+};
+
+/** @deprecated Prefer conditionFeedLabel; kept for tests / title text. */
 export const conditionBadgeLabel = (gate: CircuitGate): string | undefined => {
   if (!gate.condition) return undefined;
   if (gate.branch?.kind === 'if') return `IF · c=${gate.condition.equals}`;
   if (gate.branch?.kind === 'else') return `ELSE · c=${gate.condition.equals}`;
   return `c=${gate.condition.equals}`;
-};
-
-export const conditionFeedLabel = (gate: CircuitGate): string => {
-  if (gate.branch?.kind === 'else') return `ELSE =${gate.condition?.equals ?? 0}`;
-  if (gate.branch?.kind === 'if') return `IF =${gate.condition?.equals ?? 1}`;
-  return `c=${gate.condition?.equals ?? ''}`;
 };
