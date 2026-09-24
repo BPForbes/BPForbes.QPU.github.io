@@ -3,6 +3,7 @@ import {
   parseCommand,
   parseParameters,
 } from './qpuAst';
+import { astReversibleGateIds } from '../gates/metadata';
 
 export type ProtocolDiagnosticSeverity = 'error' | 'warning';
 
@@ -28,17 +29,7 @@ type NumberedProtocolLine = {
   line: number;
 };
 
-const SELF_INVERSE_PRIMITIVES = new Set([
-  'X',
-  'Y',
-  'Z',
-  'H',
-  'CNOT',
-  'CCNOT',
-  'CZ',
-  'CY',
-  'SWAP',
-]);
+const reversibleGates = new Set(astReversibleGateIds());
 
 // Diagnostics retain physical start lines while matching the compiler's continuation and comment rules.
 const readNumberedProtocolLines = (source: string): NumberedProtocolLine[] => {
@@ -179,14 +170,17 @@ export const analyzeQpuProtocol = (
 
     try {
       const command = parseCommand(line.text);
-      if (command.reverse && command.op !== 'PHASE' && command.op !== 'S' && command.op !== 'T' && !SELF_INVERSE_PRIMITIVES.has(command.op)) {
+      if (
+        command.reverse
+        && !reversibleGates.has(command.op)
+      ) {
         diagnostics.push({
           severity: 'warning',
           code: 'INACTIVE_INVERSE_MARKER',
           message: `The dg/inv marker on ${command.op} does not synthesize an inverse operation.`,
           line: line.line,
           source: line.text,
-          suggestion: 'Remove the dg or inv marker. Only PHASE, S, T, and the self-inverse primitives use it as an inverse.',
+          suggestion: 'Remove the dg or inv marker. Only reversible gates accept dg/inv as an inverse.',
         });
       }
       if (command.op === 'RETURNVALS' && command.args.some((arg) => arg.startsWith('-'))) {

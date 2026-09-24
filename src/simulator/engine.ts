@@ -1,8 +1,8 @@
 // Circuit execution orchestration: initial state, per-gate application via the gate registry, and full runs.
 import { Complex, magnitudeSquared, ONE, ZERO } from './complex';
-import { applyGate as applyRegisteredGate } from './gates/registry';
+import { applyGate as applyRegisteredGate, getGateDefinition } from './gates/registry';
 import { applySingleQubitGate, applyStartState, hasBit, measureQubit, padStateVector } from './gates/operations';
-import { phaseMatrix } from './gates/matrices';
+import { applyInverseAwareDefinition } from './gates/inverse';
 import { buildOperationTransition, snapshotAllParticles } from './physics/particleTracking';
 import { CircuitGate, ExecutionResult, MeasurementMap, OperationTransition, ParticleStartState, StateCheckpoint } from './types';
 
@@ -37,6 +37,20 @@ export const projectStateOntoQubits = (
   });
 
   return probabilities.map((probability) => (probability > 0 ? { re: Math.sqrt(probability), im: 0 } : ZERO));
+};
+
+export const conditionSatisfied = (
+  gate: CircuitGate,
+  measurements: MeasurementMap,
+): boolean => {
+  if (!gate.condition) return true;
+  const value = measurements[gate.condition.qubit];
+  if (value === undefined) {
+    throw new Error(
+      `Conditional gate requires q${gate.condition.qubit} to be measured first.`,
+    );
+  }
+  return value === gate.condition.equals;
 };
 
 // When the compiler does not supply explicit param indices, start states bind to the first N simulator wires.
@@ -176,16 +190,18 @@ const applyInverseOrRegistered = (
   measurements: MeasurementMap,
   librarySources: Record<string, string>,
 ): ExecutionResult => {
-  if (gate.inverse && (gate.type === 'S' || gate.type === 'T')) {
-    const angle = gate.type === 'S' ? -Math.PI / 2 : -Math.PI / 4;
-    const target = gate.targets[0];
+  if (!conditionSatisfied(gate, measurements)) {
     return {
-      state: applySingleQubitGate(state, qubitCount, target, phaseMatrix(angle)),
+      state,
       measurements,
-      log: [`${gate.type}† applied phase ${angle.toFixed(3)} on q${target}.`],
+      log: [`${gate.type} skipped because classical condition was false.`],
     };
   }
-  return applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
+  const definition = getGateDefinition(String(gate.type));
+  if (!definition) {
+    return applyRegisteredGate(state, qubitCount, gate, measurements, librarySources);
+  }
+  return applyInverseAwareDefinition(definition, state, qubitCount, gate, measurements, librarySources);
 };
 
 // Gate application pads the state vector on demand because compiled child processes may introduce workspace qubits.

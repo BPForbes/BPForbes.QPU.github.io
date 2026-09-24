@@ -78,9 +78,38 @@ describe('particleTracking', () => {
     const pure = mixedStateMetrics({ r: 1, theta: Math.PI / 4, phi: 0 });
     const mixed = mixedStateMetrics({ r: 0.4, theta: Math.PI / 3, phi: Math.PI / 6 });
     expect(pure.isPure).toBe(true);
+    expect(pure.purity).toBeCloseTo(1, 5);
+    expect(pure.mixedness).toBeCloseTo(0, 5);
+    expect(pure.blochRadius).toBeCloseTo(1, 5);
     expect(mixed.isPure).toBe(false);
+    expect(mixed.blochRadius).toBeCloseTo(0.4, 5);
+    expect(mixed.purity).toBeCloseTo((1 + 0.16) / 2, 5);
+    expect(mixed.mixedness).toBeCloseTo(2 * (1 - mixed.purity), 5);
     expect(mixed.rhoExpectation).toBeLessThan(pure.rhoExpectation);
-    expect(blochBallRhoExpectation(0.4, Math.PI / 3, Math.PI / 6, 0.6)).toBeGreaterThan(0);
+    expect(blochBallRhoExpectation(0.4, Math.PI / 3, Math.PI / 6, mixed.mixedness)).toBeGreaterThan(0);
+  });
+
+  it('distinguishes local mixedness from physical noise', () => {
+    const mixed = mixedStateMetrics({
+      r: 0,
+      theta: 0,
+      phi: 0,
+    });
+    expect(mixed.purity).toBeCloseTo(0.5);
+    expect(mixed.mixedness).toBeCloseTo(1);
+    expect(mixed.isPure).toBe(false);
+  });
+
+  it('flags entanglement with the register for Bell marginals', () => {
+    const result = runCircuit(2, [gate('H', 0, [0]), gate('CNOT', 1, [1], [0])], undefined, undefined, {
+      trackParticles: true,
+    });
+    const q0 = snapshotParticle(result.state, 2, 0);
+    const q1 = snapshotParticle(result.state, 2, 1);
+    expect(q0.mixed.purity).toBeCloseTo(0.5, 5);
+    expect(q1.mixed.purity).toBeCloseTo(0.5, 5);
+    expect(q0.entangledWithRegister).toBe(true);
+    expect(q1.entangledWithRegister).toBe(true);
   });
 
 // Case: records transitions when runCircuit tracking is enabled.

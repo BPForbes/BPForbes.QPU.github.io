@@ -126,10 +126,16 @@ export function ParticleView({
                     <span>y {snapshot.bloch.y.toFixed(3)}</span>
                     <span>z {snapshot.bloch.z.toFixed(3)}</span>
                   </div>
-                  {!snapshot.mixed.isPure && (
-                    <div className="particle-mixed" aria-label={`q${physicalQubit} mixed-state metrics`}>
+                  <div className="particle-mixed" aria-label={`q${physicalQubit} mixed-state metrics`}>
+                    <span>purity {snapshot.mixed.purity.toFixed(3)}</span>
+                    <span>mixedness {snapshot.mixed.mixedness.toFixed(3)}</span>
+                    {!snapshot.mixed.isPure && (
                       <span>⟨ρ⟩ {snapshot.mixed.rhoExpectation.toFixed(3)}</span>
-                      <span>noise {snapshot.mixed.noise.toFixed(3)}</span>
+                    )}
+                  </div>
+                  {snapshot.entangledWithRegister && (
+                    <div className="particle-entangled" aria-label={`q${physicalQubit} entangled with register`}>
+                      Entangled with register
                     </div>
                   )}
                 </>

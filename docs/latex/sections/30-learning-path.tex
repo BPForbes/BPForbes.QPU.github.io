@@ -121,11 +121,14 @@ use it, then \emph{uncompute} it so workspace returns to 0. Child processes
 (\code{RUNCHILD}) and custom gates reuse whole circuits as single steps.
 Oracle algorithms combine all of the above.
 
-\textbf{Starter circuit:} \emph{Grover search (2 qubits)}; then the
-multi-stage listings in \emph{Advanced worked circuits}.
+\textbf{Starter circuits:} \emph{Grover search (2 qubits)},
+\emph{T state transition across cycles}, and
+\emph{Quantum teleportation} (uses forward classical \code{-IF} conditions).
 
-\textbf{Read:} \emph{Process composition and return values} in the Language
-Reference; \emph{Custom gates} in Examples and Troubleshooting.
+\textbf{Read:} \emph{Process composition and return values} and
+\emph{Cycle-based state evolution} in the Language Reference;
+\emph{Custom gates} in Examples and Troubleshooting.
 
 \textbf{Checkpoint:} after an uncompute stage, what value should every
 temporary wire hold, and how can a truth-table test prove it?
+Why is \code{INCREASECYCLE} not a loop?

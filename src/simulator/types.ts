@@ -14,10 +14,14 @@ export type PreconfiguredGateType =
   | 'H'
   | 'S'
   | 'T'
+  | 'RX'
+  | 'RY'
+  | 'RZ'
   | 'CNOT'
   | 'CCNOT'
   | 'CZ'
   | 'CY'
+  | 'CPHASE'
   | 'SWAP'
   | 'PHASE'
   | 'MEASURE'
@@ -40,10 +44,14 @@ export const preconfiguredGateTypes = [
   'H',
   'S',
   'T',
+  'RX',
+  'RY',
+  'RZ',
   'CNOT',
   'CCNOT',
   'CZ',
   'CY',
+  'CPHASE',
   'SWAP',
   'PHASE',
   'MEASURE',
@@ -95,16 +103,26 @@ export type PrimitiveGateType =
   | 'H'
   | 'S'
   | 'T'
+  | 'RX'
+  | 'RY'
+  | 'RZ'
   | 'CNOT'
   | 'CCNOT'
   | 'CZ'
   | 'CY'
+  | 'CPHASE'
   | 'SWAP'
   | 'PHASE'
   | 'MEASURE'
   | 'RESET';
 
 export type DerivedGateType = 'NOT' | 'AND' | 'NAND' | 'OR' | 'XOR';
+
+/** Classical feed-forward condition checked against a prior measurement. */
+export type GateCondition = {
+  qubit: number;
+  equals: 0 | 1;
+};
 
 export type CircuitGate = {
   id: string;
@@ -121,6 +139,8 @@ export type CircuitGate = {
   cycle?: number;
   /** Named simulator checkpoint for SAVE_STATE and LOAD_STATE. */
   checkpoint?: string;
+  /** Optional classical condition; evaluated only after the named qubit is measured. */
+  condition?: GateCondition;
 };
 
 export type MeasurementMap = Record<number, 0 | 1>;

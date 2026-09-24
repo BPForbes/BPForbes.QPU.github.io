@@ -27,6 +27,12 @@ import {
   workbenchSelectorUse,
   type DocTarget,
 } from './data/learning/learningHelp';
+import {
+  readLearningProgress,
+  suggestNextLearningStep,
+  toggleLearningStep,
+  type LearningProgress,
+} from './data/learning/learningProgress';
 import { protocolDocEntry, resolveDocEntry } from './data/learning/docEntries';
 import { startStateWireValue, wireValuesFromState } from './data/learning/docContext';
 import {
@@ -182,6 +188,7 @@ function App() {
   const [playSpeed, setPlaySpeed] = useState(1);
   const [selectedGate, setSelectedGate] = useState<GateType | null>('H');
   const [inverseMode, setInverseMode] = useState(false);
+  const [learningProgress, setLearningProgress] = useState<LearningProgress>(() => readLearningProgress());
   const [targetQubit, setTargetQubit] = useState(0);
   const [controlQubit, setControlQubit] = useState(1);
   const [secondControlQubit, setSecondControlQubit] = useState(2);
@@ -578,6 +585,34 @@ function App() {
       return;
     }
     addGate(selectedGate, selectedSimulationQubit, workbenchControlsForGate(selectedGate, selectedSimulationQubit));
+  };
+
+  const addCycleBoundary = () => {
+    const step =
+      gates.length === 0
+        ? 0
+        : Math.max(...gates.map((gate) => gate.step)) + 1;
+    const previousCycle = gates.reduce(
+      (highest, gate) => Math.max(highest, gate.cycle ?? 0),
+      0,
+    );
+    const marker: CircuitGate = {
+      id: `cycle-${crypto.randomUUID()}`,
+      type: 'CYCLE',
+      step,
+      targets: [],
+      controls: [],
+      cycle: previousCycle + 1,
+      source: 'INCREASECYCLE',
+    };
+    const nextGates = [...gates, marker];
+    setGates(nextGates);
+    syncCanvasProtocol(nextGates);
+    resetRuntime();
+    setLog((current) => [
+      ...current,
+      `Added INCREASECYCLE boundary (cycle ${previousCycle + 1}). This advances the logical stage; it does not loop.`,
+    ]);
   };
 
   // Particle count controls either raw canvas wires or process PARAMS, depending on which authoring mode is active.
@@ -1111,6 +1146,7 @@ function App() {
             ) : null}
             <div className="workbench-actions">
               <button onClick={addGateFromWorkbench} title={uiTips.addGate} type="button">Add gate to target</button>
+              <button onClick={addCycleBoundary} title={uiTips.increaseCycle} type="button">Add cycle boundary</button>
               <button onClick={addParticle} title={uiTips.addParticle} type="button">Add particle</button>
               <button onClick={removeParticle} title={uiTips.removeParticle} type="button">Remove particle</button>
               <button onClick={measureSelectedQubit} title={uiTips.measureTarget} type="button">Measure target</button>
@@ -1192,6 +1228,26 @@ function App() {
                 <li><strong>Multi-stage:</strong> compute, use, and uncompute helper wires; reuse circuits as child processes or custom gates.</li>
               </ol>
               <p>Cards below are numbered by step. For each one, predict the result, then use Step gate and compare.</p>
+              <div className="learning-progress" aria-label="Learning path progress">
+                {learningSteps.map((label, index) => {
+                  const step = index + 1;
+                  const done = learningProgress.completedSteps.includes(step);
+                  const suggested = suggestNextLearningStep(learningProgress) === step;
+                  return (
+                    <label className={`learning-progress-step ${done ? 'done' : ''} ${suggested ? 'suggested' : ''}`} key={label}>
+                      <input
+                        checked={done}
+                        onChange={(event) => setLearningProgress(toggleLearningStep(step, event.target.checked))}
+                        type="checkbox"
+                      />
+                      <span>Step {step}{done ? ' ✓' : suggested ? ' →' : ''} · {label}</span>
+                    </label>
+                  );
+                })}
+                <p className="learning-progress-note">
+                  Mark a checkpoint yourself when you understand it. Progress is saved in this browser and never blocks jumping ahead.
+                </p>
+              </div>
               <p className="help-links">
                 <DocLink target={docTargets.learningPath} />
                 <DocLink target={docTargets.advancedCircuits} />
@@ -1379,7 +1435,7 @@ function App() {
               <h3>QPU protocol requirements</h3>
               <p>A protocol can begin with <code>PARAMS:</code>, should name its entry point with <code>MAIN-PROCESS</code>, and compiles commands with explicit <code>-I</code> inputs and <code>-O</code> outputs where required.</p>
               <ul>
-                <li>Primitive gates include X, Y, Z, H, S, T, CNOT, CCNOT, CZ, CY, SWAP, and PHASE.</li>
+                <li>Primitive gates include X, Y, Z, H, S, T, RX, RY, RZ, CNOT, CCNOT, CZ, CY, CPHASE, SWAP, and PHASE.</li>
                 <li>Derived Boolean gates include NOT, AND, NAND, OR, and XOR.</li>
                 <li>Child protocols can be declared, run, and accepted through DECLARECHILD, RUNCHILD, and ACCEPTVALS.</li>
                 <li>Constants <code>0p</code>, <code>1p</code>, and <code>sp</code> initialize zero, one, and superposition registers.</li>

@@ -28,6 +28,17 @@ existing state. SWAP is exceptional: it requires two outputs matching its two
 inputs. MEASURE takes no output flag because the measurement map stores its
 classical result.
 
+\subsection{\code{-IF}: classical feed-forward (optional)}
+
+A gate may carry a forward-only classical condition after a prior MEASURE:
+\begin{lstlisting}
+X -I Bob -O Bob -IF Alice=1
+Z -I Bob -O Bob -IF M0=1
+\end{lstlisting}
+The named token must already have been measured. If the classical bit does not
+match, the gate is skipped and execution continues. There is no \code{IF}/\code{ENDIF}
+block and no backward edge---the circuit remains a finite ordered list.
+
 \subsection{Where a flag list ends}
 
 An \code{-I} or \code{-O} list continues until the next token beginning with a

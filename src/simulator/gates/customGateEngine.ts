@@ -4,6 +4,8 @@ import type { GateDefinition } from './types';
 import { gateIoArity } from './types';
 import { padStateVector } from './operations';
 import { preconfiguredGateMap } from './preconfigured';
+import { applyInverseAwareDefinition, invertCircuitGate } from './inverse';
+
 const assertCustomGateIdAvailable = (trimmedId: string) => {
   const conflict = Object.keys(preconfiguredGateMap).find((id) => id.toLowerCase() === trimmedId.toLowerCase());
   if (conflict) {
@@ -21,9 +23,25 @@ export type CustomGateRecord = {
   inputParamNames: string[];
   outputParamNames: string[];
   createdAt: string;
+  /** True when every compiled step is reversible (no MEASURE/RESET/SAVE/LOAD). */
+  reversible: boolean;
 };
 
 const STORAGE_KEY = 'qpu-custom-gates-v1';
+
+const NON_REVERSIBLE_TYPES = new Set([
+  'MEASURE',
+  'RESET',
+  'SAVE_STATE',
+  'LOAD_STATE',
+]);
+
+const analyzeReversibility = (gates: CircuitGate[]): boolean =>
+  gates.every((gate) => {
+    if (gate.type === 'CYCLE') return true;
+    if (NON_REVERSIBLE_TYPES.has(String(gate.type))) return false;
+    return preconfiguredGateMap[String(gate.type)]?.supportsReverse ?? false;
+  });
 
 const PRECONFIGURED_HUES = [0, 25, 195, 260, 290, 120, 84, 205, 270, 142, 158, 228, 45, 315];
 
@@ -44,7 +62,12 @@ const readStore = (): CustomGateRecord[] => {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as CustomGateRecord[];
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed)
+      ? parsed.map((record) => ({
+          ...record,
+          reversible: record.reversible ?? false,
+        }))
+      : [];
   } catch {
     return [];
   }
@@ -104,6 +127,7 @@ export const registerCustomGate = ({
     inputParamNames: compiled.processParams.map((param) => param.name),
     outputParamNames: compiled.returnValues.map((value) => value.name),
     createdAt: new Date().toISOString(),
+    reversible: analyzeReversibility(compiled.gates),
   };
 
   const next = readStore().filter((existing) => existing.id.toLowerCase() !== trimmedId.toLowerCase());
@@ -188,19 +212,31 @@ export const applyCustomGateProcess = (
 
   let nextState = padStateVector(state, qubitCount, expandedQubitCount);
   let nextMeasurements = { ...measurements };
-  const log: string[] = [`Custom gate ${record.label} executing ${compiled.gates.length} compiled step(s).`];
+  const forwardSteps = compiled.gates;
+  if (gate.inverse && !record.reversible) {
+    throw new Error(`Custom gate '${record.id}' is not reversible and cannot be inverted.`);
+  }
+  const steps = gate.inverse && record.reversible
+    ? forwardSteps.slice().reverse().map(invertCircuitGate)
+    : forwardSteps;
+  const log: string[] = [
+    gate.inverse
+      ? `Custom gate ${record.label}† executing ${steps.length} inverted step(s).`
+      : `Custom gate ${record.label} executing ${steps.length} compiled step(s).`,
+  ];
 
-  for (const innerGate of compiled.gates) {
+  for (const innerGate of steps) {
     const remapped = remapInnerGate(innerGate, remap);
     const definition = preconfiguredGateMap[remapped.type];
     if (!definition) throw new Error(`Custom gate '${record.id}' lowered unknown inner gate '${remapped.type}'.`);
-    const result = definition.apply({
-      state: nextState,
-      qubitCount: expandedQubitCount,
-      gate: remapped,
-      measurements: nextMeasurements,
-      librarySources: mergedLibrary,
-    });
+    const result = applyInverseAwareDefinition(
+      definition,
+      nextState,
+      expandedQubitCount,
+      remapped,
+      nextMeasurements,
+      mergedLibrary,
+    );
     nextState = result.state;
     nextMeasurements = result.measurements;
     log.push(...result.log);
@@ -224,7 +260,7 @@ export const customGateToDefinition = (record: CustomGateRecord): GateDefinition
   inPalette: true,
   isAstPrimitive: false,
   isAstDerived: false,
-  supportsReverse: false,
+  supportsReverse: record.reversible,
   supportsPhase: false,
   cssClass: `gate-custom gate-custom-${record.id.toLowerCase()}`,
   color: record.color,

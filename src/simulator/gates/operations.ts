@@ -1,4 +1,4 @@
-import { add, Complex, magnitudeSquared, mul, ONE, scale, ZERO } from '../complex';
+import { add, Complex, complex, magnitudeSquared, mul, ONE, scale, ZERO } from '../complex';
 import { MATRIX_H, MATRIX_X } from './matrices';
 const bitMask = (qubit: number, qubitCount: number) => 1 << (qubitCount - qubit - 1);
 
@@ -74,6 +74,22 @@ export const applyControlledZ = (state: Complex[], qubitCount: number, controls:
   }
 
   return next;
+};
+
+export const applyControlledPhase = (
+  state: Complex[],
+  qubitCount: number,
+  control: number,
+  target: number,
+  theta: number,
+): Complex[] => {
+  const multiplier = complex(Math.cos(theta), Math.sin(theta));
+  return state.map((amplitude, index) => {
+    if (hasBit(index, control, qubitCount) && hasBit(index, target, qubitCount)) {
+      return mul(amplitude, multiplier);
+    }
+    return amplitude;
+  });
 };
 
 export const applyControlledSingleQubit = (

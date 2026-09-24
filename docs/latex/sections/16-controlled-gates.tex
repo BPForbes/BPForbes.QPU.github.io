@@ -75,6 +75,19 @@ CZ -I Control -O Target
 \end{center}
 The classical columns are unchanged; the quantum phase is the operation.
 
+\GateHeading{Controlled phase}{CPHASE}{\ControlledSegment{$P(\theta)$}}
+
+\[
+\ket{11}\longmapsto e^{i\theta}\ket{11},
+\]
+while $\ket{00}$, $\ket{01}$, and $\ket{10}$ are unchanged. CZ is the special
+case $\theta=\pi$. CPHASE unlocks compact Quantum Fourier Transform and
+phase-estimation demos.
+\begin{lstlisting}
+CPHASE=pi/2 -I Control -O Target
+CPHASE=90d -I Control -O Target
+\end{lstlisting}
+
 \GateHeading{Controlled Y}{CY}{\ControlledSegment{Y}}
 
 \[

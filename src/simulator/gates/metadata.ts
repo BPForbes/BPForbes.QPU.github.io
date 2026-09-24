@@ -13,6 +13,9 @@ export const astPrimitiveGateIds = () =>
 export const astDerivedGateIds = () =>
   preconfiguredGates.filter((gate) => gate.isAstDerived).map((gate) => gate.id);
 
+export const astReversibleGateIds = () =>
+  preconfiguredGates.filter((gate) => gate.supportsReverse).map((gate) => gate.id);
+
 export const astGateInputCounts = (): Record<string, number> => {
   const counts: Record<string, number> = {};
   preconfiguredGates.forEach((gate) => {

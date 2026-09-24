@@ -43,8 +43,11 @@ export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitG
   const definition = getGateDefinition(String(gate.type));
   const forwardLabel = glyphLabelFor(gate, qubit, definition?.label ?? String(gate.type));
   const label = gate.inverse && kind === 'box' ? `${forwardLabel}†` : forwardLabel;
-  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${gate.inverse ? ' inverse' : ''}${active ? ' active' : ''}`;
-  const title = `${gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}`;
+  const className = `circuit-glyph glyph-${kind}${label.length > 2 && kind === 'box' ? ' glyph-wide' : ''}${gate.inverse ? ' inverse' : ''}${gate.condition ? ' conditioned' : ''}${active ? ' active' : ''}`;
+  const conditionNote = gate.condition
+    ? ` if q${gate.condition.qubit}=${gate.condition.equals}`
+    : '';
+  const title = `${gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}${conditionNote}`;
 
   if (onRemove) {
     return (
@@ -60,6 +63,9 @@ export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitG
       >
         {glyphContent(kind, label)}
         {gate.inverse && kind !== 'box' ? <span className="glyph-dagger">†</span> : null}
+        {gate.condition && kind === 'box' ? (
+          <span className="glyph-condition">c={gate.condition.equals}</span>
+        ) : null}
       </button>
     );
   }
@@ -68,6 +74,9 @@ export function CircuitGlyph({ gate, qubit, active = false, onRemove }: CircuitG
     <span className={className} title={title}>
       {glyphContent(kind, label)}
       {gate.inverse && kind !== 'box' ? <span className="glyph-dagger">†</span> : null}
+      {gate.condition && kind === 'box' ? (
+        <span className="glyph-condition">c={gate.condition.equals}</span>
+      ) : null}
     </span>
   );
 }

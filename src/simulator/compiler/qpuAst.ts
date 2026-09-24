@@ -12,6 +12,8 @@ export type ParsedCommand = {
   phase?: number;
   reverse: boolean;
   noParameterSubstitution: boolean;
+  /** Classical feed-forward: token name and required measurement value. */
+  condition?: { token: string; equals: 0 | 1 };
 };
 
 export type ProtocolProcess = {
@@ -55,6 +57,7 @@ const NUMERIC_PARAM_TYPES = ['int', 'float'] as const;
 
 const primitiveGates = new Set(astPrimitiveGateIds());
 const derivedGates = new Set(astDerivedGateIds());
+const knownAstGates = new Set([...primitiveGates, ...derivedGates]);
 
 export const supportedQpuOperations: QpuOperation[] = [
   'INCREASECYCLE',
@@ -86,10 +89,14 @@ export const supportedQpuOperations: QpuOperation[] = [
   'H',
   'S',
   'T',
+  'RX',
+  'RY',
+  'RZ',
   'CNOT',
   'CCNOT',
   'CZ',
   'CY',
+  'CPHASE',
   'SWAP',
   'PHASE',
 ];
@@ -219,11 +226,12 @@ const stripInverseMarker = (normalized: string): { opcode: string; reverse: bool
   for (const marker of INVERSE_MARKERS) {
     if (head.length > marker.length && head.endsWith(marker)) {
       const candidate = head.slice(0, -marker.length);
-      if (primitiveGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
+      // Strip on any known AST gate so MEASUREdg still parses and can warn as inactive.
+      if (knownAstGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
     }
     if (head.length > marker.length && head.startsWith(marker)) {
       const candidate = head.slice(marker.length);
-      if (primitiveGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
+      if (knownAstGates.has(candidate)) return { opcode: `${candidate}${tail}`, reverse: true };
     }
   }
 
@@ -238,6 +246,18 @@ const splitFlagArgs = (tokens: string[], flag: '-I' | '-O') => {
   return tokens.slice(start + 1, end === -1 ? tokens.length : end);
 };
 
+/** Parse `-IF Token=0|1` classical feed-forward without introducing block control flow. */
+const parseConditionFlag = (tokens: string[]): ParsedCommand['condition'] => {
+  const upper = tokens.map((token) => token.toUpperCase());
+  const start = upper.indexOf('-IF');
+  if (start === -1) return undefined;
+  const raw = tokens[start + 1];
+  if (!raw) throw new Error('-IF requires Token=0 or Token=1');
+  const match = raw.match(/^([A-Za-z_][\w]*)=(0|1)$/);
+  if (!match) throw new Error(`Invalid -IF condition '${raw}' (expected Token=0 or Token=1)`);
+  return { token: match[1], equals: Number(match[2]) as 0 | 1 };
+};
+
 export const parseCommand = (line: string): ParsedCommand => {
   let tokens = line.trim().split(/\s+/);
   if (!tokens.length) throw new Error('Empty command');
@@ -248,8 +268,8 @@ export const parseCommand = (line: string): ParsedCommand => {
   const noParameterSubstitution = upperTokens.includes('-$R');
   let phase: number | undefined;
 
-  // dg (dagger) and inv (inverse) mark a primitive, either as a suffix (Sdg) or a prefix (dgS).
-  // PHASE keeps its angle on the opcode token: PHASEdg=pi/4 and dgPHASE=pi/4.
+  // dg (dagger) and inv (inverse) mark a reversible gate, either as a suffix (Sdg) or a prefix (dgS).
+  // PHASE/RX/RY/RZ/CPHASE keep their angle on the opcode token: PHASEdg=pi/4 and dgPHASE=pi/4.
   const marked = stripInverseMarker(rawOp.toUpperCase());
   let normalized = marked.opcode;
   const reverse = marked.reverse;
@@ -258,11 +278,17 @@ export const parseCommand = (line: string): ParsedCommand => {
     const [gate, value] = normalized.split('=', 2);
     normalized = gate;
     phase = parseRotationParameter(value, gate);
-    if (reverse && normalized === 'PHASE') phase *= -1;
+    if (
+      reverse
+      && (normalized === 'PHASE' || normalized === 'RX' || normalized === 'RY' || normalized === 'RZ' || normalized === 'CPHASE')
+    ) {
+      phase *= -1;
+    }
   }
 
   const inputs = splitFlagArgs(tokens, '-I');
   const outputs = splitFlagArgs(tokens, '-O');
+  const condition = parseConditionFlag(tokens);
   const op = normalized as QpuOperation;
 
   if (!supportedQpuOperations.includes(op)) throw new Error(`Unknown command: ${normalized}`);
@@ -276,7 +302,7 @@ export const parseCommand = (line: string): ParsedCommand => {
     assertGateArity(op, inputs.length, outputs.length);
   }
 
-  return { op, raw: line, inputs, outputs, args: tokens.slice(1), phase, reverse, noParameterSubstitution };
+  return { op, raw: line, inputs, outputs, args: tokens.slice(1), phase, reverse, noParameterSubstitution, condition };
 };
 
 export const parseProtocol = (source: string): ProtocolProcess => {
@@ -402,6 +428,7 @@ const emitGate = (
   phase?: number,
   checkpoint?: string,
   inverse?: boolean,
+  condition?: { qubit: number; equals: 0 | 1 },
 ) => {
   state.gates.push({
     id: `${type}-${state.gates.length}-${targets.join('-')}`,
@@ -414,6 +441,7 @@ const emitGate = (
     cycle: state.timelineCycle,
     checkpoint,
     inverse: inverse || undefined,
+    condition,
   });
   if (type === 'RESET') {
     targets.forEach((qubit) => state.knownZero.add(qubit));
@@ -855,14 +883,22 @@ const executeProcess = (
 
     if (primitiveGates.has(command.op)) {
       flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      const condition = command.condition
+        ? {
+            qubit: resolveInputQubit(state, frame, command.condition.token, line, parentFrame, skipParams),
+            equals: command.condition.equals,
+          }
+        : undefined;
       const loweredPhase = command.reverse && command.op === 'S'
         ? -Math.PI / 2
         : command.reverse && command.op === 'T'
           ? -Math.PI / 4
-          : command.op === 'PHASE'
+          : command.op === 'PHASE' || command.op === 'RX' || command.op === 'RY' || command.op === 'RZ' || command.op === 'CPHASE'
             ? command.phase ?? 0
             : undefined;
-      const loweredType: GateType = loweredPhase !== undefined && command.op !== 'PHASE' ? 'PHASE' : command.op as GateType;
+      const loweredType: GateType = loweredPhase !== undefined && (command.op === 'S' || command.op === 'T')
+        ? 'PHASE'
+        : command.op as GateType;
       if (command.op === 'SWAP') {
         const swapQubits = command.inputs
           .slice(0, 2)
@@ -879,7 +915,7 @@ const executeProcess = (
             }
           });
         }
-        emitGate(state, 'SWAP', swapQubits, [], line, undefined, undefined, command.reverse);
+        emitGate(state, 'SWAP', swapQubits, [], line, undefined, undefined, command.reverse, condition);
         continue;
       }
       // For primitive and derived AST gates, -O names the mutated target and -I names controls/inputs.
@@ -889,18 +925,24 @@ const executeProcess = (
         .map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams))
         // When -O names the mutated wire, drop it from the control list so self-controlled ops do not deadlock.
         .filter((qubit) => qubit !== target);
-      emitGate(state, loweredType, [target], controls, line, loweredPhase, undefined, command.reverse);
+      emitGate(state, loweredType, [target], controls, line, loweredPhase, undefined, command.reverse, condition);
       continue;
     }
 
-    // Derived gates share the same -I/-O lowering as primitives but never carry PHASE metadata.
+    // Derived gates share the same -I/-O lowering as primitives; self-inverse ops keep reverse for dagger display.
     if (derivedGates.has(command.op)) {
       flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      const condition = command.condition
+        ? {
+            qubit: resolveInputQubit(state, frame, command.condition.token, line, parentFrame, skipParams),
+            equals: command.condition.equals,
+          }
+        : undefined;
       const target = resolveInputQubit(state, frame, command.outputs[0], line, parentFrame, skipParams);
       const controls = command.inputs
         .map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams))
         .filter((qubit) => qubit !== target);
-      emitGate(state, command.op as GateType, [target], controls, line);
+      emitGate(state, command.op as GateType, [target], controls, line, undefined, undefined, command.reverse, condition);
       continue;
     }
   }

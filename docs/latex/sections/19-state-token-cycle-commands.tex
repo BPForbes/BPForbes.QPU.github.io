@@ -73,6 +73,34 @@ canvas draws a dashed slice at \code{INCREASECYCLE}. An integer suffix such as
 cycle 0, so its own \code{:0} labels stay valid after the parent advances.
 Non-numeric suffixes stay labels. The suffix does not allocate another wire.
 
+\subsection{Cycle-based state evolution}
+\hypertarget{cycle-based-state-evolution}{}
+
+Cycle does \emph{not} mean loop. Cycle does not mean parallel execution. Cycle
+does not mean wall-clock time. Cycle means the next logical stage of the same
+finite circuit:
+
+\begin{center}
+\texttt{Cycle 0} \quad$\rightarrow$\quad \texttt{INCREASECYCLE}
+\quad$\rightarrow$\quad \texttt{Cycle 1}
+\quad$\rightarrow$\quad \texttt{INCREASECYCLE}
+\quad$\rightarrow$\quad \texttt{Cycle 2}
+\end{center}
+
+A classical sequential rule such as $Q_{\mathrm{next}}=Q\oplus T$ is shown by
+\emph{unrolling}:
+\begin{lstlisting}
+CNOT -I T -O Q
+INCREASECYCLE
+CNOT -I T -O Q
+INCREASECYCLE
+CNOT -I T -O Q
+\end{lstlisting}
+Conceptually $Q_0\to Q_1\to Q_2\to Q_3$. There is no backward execution edge.
+The Interactive Workbench button \textbf{Add cycle boundary} inserts the same
+marker visually. The starter circuit \emph{T state transition across cycles}
+demonstrates this pattern.
+
 \subsection{\code{JOIN} --- name an ordered register (\implemented)}
 
 \begin{lstlisting}

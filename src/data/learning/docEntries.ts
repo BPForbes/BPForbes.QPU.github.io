@@ -120,6 +120,24 @@ export const gateDocs: Record<string, GateDoc> = {
     syntax: ['PHASE=90d -I Q -O Q      # degrees', 'PHASE=1.5708 -I Q -O Q   # radians'],
     table: ketTable(['t', "t'"], [['|0⟩', '|0⟩'], ['|1⟩', 'e^{iθ}|1⟩']]),
   },
+  RX: {
+    how: 'RX rotates the Bloch vector about the x-axis by θ. RX(π) is X up to a global phase.',
+    target: singleWireTarget,
+    syntax: ['RX=pi/2 -I Q -O Q', 'RX=90d -I Q -O Q'],
+    table: ketTable(['t', "t'"], [['|0⟩', 'cos(θ/2)|0⟩ − i sin(θ/2)|1⟩'], ['|1⟩', '−i sin(θ/2)|0⟩ + cos(θ/2)|1⟩']]),
+  },
+  RY: {
+    how: 'RY rotates the Bloch vector about the y-axis by θ. Useful for preparing arbitrary real amplitudes.',
+    target: singleWireTarget,
+    syntax: ['RY=pi/2 -I Q -O Q', 'RY=90d -I Q -O Q'],
+    table: ketTable(['t', "t'"], [['|0⟩', 'cos(θ/2)|0⟩ + sin(θ/2)|1⟩'], ['|1⟩', '−sin(θ/2)|0⟩ + cos(θ/2)|1⟩']]),
+  },
+  RZ: {
+    how: 'RZ rotates about the z-axis by θ. Related to PHASE by a global phase factor.',
+    target: singleWireTarget,
+    syntax: ['RZ=pi/4 -I Q -O Q', 'RZ=45d -I Q -O Q'],
+    table: ketTable(['t', "t'"], [['|0⟩', 'e^{−iθ/2}|0⟩'], ['|1⟩', 'e^{iθ/2}|1⟩']]),
+  },
   MEASURE: {
     how: 'M reads the wire. A definite 0 or 1 is read as itself; a superposition is read as 0 or 1 at random, weighted by its amplitudes, and becomes that bit.',
     target: 'The measured wire is the target, and the meter stays on that qubit wire. A double stroke, not an arrow, drops to the c lane and numbers the bit read at that time. c is a clock for measurements, the only double line, and it cannot take a gate. Later gates can still run on the qubit. Measuring one half of an entangled pair also fixes the other half.',
@@ -155,6 +173,12 @@ export const gateDocs: Record<string, GateDoc> = {
     target: 'Only t changes, and only when A is 1. A is only read.',
     syntax: ['CY -I A -O Target'],
     table: ketTable(['A t', 'result'], [['|00⟩', '|00⟩'], ['|01⟩', '|01⟩'], ['|10⟩', 'i|11⟩'], ['|11⟩', '−i|10⟩']], undefined, ['A t', 'A t']),
+  },
+  CPHASE: {
+    how: 'CPHASE multiplies |11⟩ by e^{iθ}. CZ is the special case θ = π. Set θ with the Phase angle slider.',
+    target: 'Only the joint |11⟩ amplitude changes phase. Control A is read; Target particle is the boxed phase.',
+    syntax: ['CPHASE=pi/2 -I Control -O Target', 'CPHASE=90d -I Control -O Target'],
+    table: ketTable(['A t', 'result'], [['|00⟩', '|00⟩'], ['|01⟩', '|01⟩'], ['|10⟩', '|10⟩'], ['|11⟩', 'e^{iθ}|11⟩']], undefined, ['A t', 'A t']),
   },
   SWAP: {
     how: 'SWAP exchanges the complete states of two wires, including any superposition. Nothing is copied; the two wires trade places.',
