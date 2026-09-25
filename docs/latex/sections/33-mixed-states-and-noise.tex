@@ -1,0 +1,208 @@
+\section{Mixed states, entanglement measures, and noise}
+\hypertarget{mixed-states}{}
+
+Every simulation in QPU passes through one \emph{physics engine}. The compiler
+turns source into gates and the simulator decides the order in which they run,
+but the physics engine alone changes the quantum state and computes the
+quantities in this chapter. The particle cards in the Circuit builder show
+several of them.
+
+\subsection{Density matrices}
+
+A pure state $\ket\psi$ can also be written as the \emph{density matrix}
+\[
+\rho=\ket\psi\bra\psi,\qquad \rho_{ij}=a_i\,\overline{a_j}.
+\]
+The diagonal entries are the basis probabilities. The off-diagonal entries,
+called \emph{coherences}, carry the relative phases that make interference
+possible. A \emph{mixed state} is a weighted mixture of pure states,
+\[
+\rho=\sum_k p_k\ket{\psi_k}\bra{\psi_k},\qquad p_k\ge0,\quad \sum_k p_k=1,
+\]
+and describes either classical uncertainty about which state was prepared or a
+part of a larger entangled system. Every density matrix is Hermitian, has
+trace 1, and has no negative eigenvalues. Global phase cancels in
+$\ket\psi\bra\psi$, so a density matrix records exactly the physically
+observable part of a state.
+
+\subsection{Reduced states and the partial trace}
+
+A single wire of an entangled register has no state vector of its own, but it
+always has a density matrix. For a system $AB$ the state of $A$ alone is the
+\emph{partial trace}
+\[
+\rho_A=\operatorname{Tr}_B(\rho_{AB}),\qquad
+(\rho_A)_{ij}=\sum_{k}(\rho_{AB})_{(i,k),(j,k)}.
+\]
+It gives the correct statistics for every measurement made on $A$ alone. For
+one qubit it fixes a \emph{Bloch vector} $(x,y,z)$ through
+\[
+\rho=\tfrac12\left(I+xX+yY+zZ\right),\qquad
+x=\langle X\rangle,\quad y=\langle Y\rangle,\quad z=\langle Z\rangle.
+\]
+Pure states lie on the Bloch sphere ($r=1$); mixed states lie inside the
+Bloch ball ($r<1$). The particle cards draw each wire from its reduced state,
+which is why an entangled wire's arrow shrinks toward the centre.
+
+\subsection{Purity and mixedness}
+
+The purity of a state is
+\[
+P=\operatorname{Tr}(\rho^2)=\sum_{ij}|\rho_{ij}|^2 .
+\]
+$P=1$ exactly for pure states. For one qubit $P=(1+r^2)/2$, which ranges from
+1 on the sphere to $\tfrac12$ at the centre (the maximally mixed state $I/2$).
+The particle card's \emph{mixedness} is the normalized linear entropy
+$M=2(1-P)$: 0 for a pure wire and 1 for a maximally mixed one.
+
+\begin{beginnerbox}[Mixed does not mean noisy]
+Without noise, the whole register is always in a pure state. A wire can still
+look mixed because it is entangled with other wires: its information lives in
+the correlations, not in the wire alone. When the register is pure and a wire
+is mixed, the card shows \textbf{Entangled with register}.
+\end{beginnerbox}
+
+\subsection{Entropy and entanglement}
+
+The \emph{von Neumann entropy} measures how mixed a state is, in bits:
+\[
+S(\rho)=-\operatorname{Tr}(\rho\log_2\rho)=-\sum_k\lambda_k\log_2\lambda_k,
+\]
+where $\lambda_k$ are the eigenvalues of $\rho$. A pure state has $S=0$; a
+maximally mixed qubit has $S=1$.
+
+If the whole register is pure, a subsystem $A$ is entangled with the rest
+exactly when $\rho_A$ is mixed, and $S(\rho_A)$ is the \emph{entanglement
+entropy}: how many bits of entanglement join $A$ to the rest.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{l X X X}
+\toprule
+State & One qubit & Two qubits together & Whole register\\
+\midrule
+$\ket{00}$ & $P=1$, $S=0$ & $P=1$ & pure\\
+Bell $(\ket{00}+\ket{11})/\sqrt2$ & $P=\tfrac12$, $S=1$ & $P=1$ & pure\\
+GHZ $(\ket{000}+\ket{111})/\sqrt2$ & $P=\tfrac12$, $S=1$ & $P=\tfrac12$, $S=1$ & pure\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+The GHZ row shows why entanglement cannot be reduced to pairwise links. Any
+two GHZ qubits are only classically correlated (00 or 11 with equal chance),
+yet all three together form a single pure, entangled state. Questions about
+entanglement are therefore always about a chosen split of the register into a
+subsystem and the rest.
+
+When the whole register is mixed, for example after noise, local mixedness no
+longer proves entanglement. The physics engine then uses the \emph{partial
+transpose} test: transpose only $B$'s indices of $\rho_{AB}$. If the result
+has a negative eigenvalue the state is entangled, and the sum of the negative
+eigenvalues' magnitudes is the \emph{negativity} ($\tfrac12$ for a Bell pair).
+For two qubits, or a qubit and a qutrit, the test is exact.
+
+QPU has no \code{ENTANGLE} instruction. Entanglement always comes from
+ordinary gates such as \code{H} followed by \code{CNOT}; the physics engine
+only detects and measures it.
+
+\subsection{Measurement in other bases}
+
+\code{MEASURE} measures in the computational (Z) basis. The physics engine can
+also measure the X and Y observables by rotating the wire's eigenbasis onto Z,
+measuring, and rotating back:
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+Basis & Outcome 0 & Outcome 1 & Rotation onto Z\\
+\midrule
+Z & $\ket0$ & $\ket1$ & none\\
+X & $\ket+$ & $\ket-$ & $H$\\
+Y & $\ket{+i}$ & $\ket{-i}$ & $HS^\dagger$\\
+\bottomrule
+\end{tabular}
+\end{center}
+The state $\ket+$ gives a random result in the Z basis but always gives 0 in
+the X basis: what a measurement reveals depends on the observable. QPU source
+does not yet have syntax for choosing a basis, so written \code{MEASURE}
+commands are always Z measurements.
+
+\subsection{Fidelity}
+
+\emph{Fidelity} measures how close a simulated state $\rho$ is to an intended
+state $\sigma$:
+\[
+F(\rho,\sigma)=\left(\operatorname{Tr}\sqrt{\sqrt\rho\,\sigma\sqrt\rho}\right)^2,
+\qquad
+F(\ket\psi,\ket\phi)=|\langle\psi|\phi\rangle|^2 .
+\]
+$F=1$ means the states are identical (up to global phase) and $F=0$ means they
+are perfectly distinguishable. For example, $F(\ket+,\ket0)=\tfrac12$.
+
+\subsection{Reset as a physical operation}
+
+RESET forces a wire to $\ket0$. As a density-matrix operation it is the
+\emph{reset channel}: the wire ends in $\ket0$ and whatever it shared with the
+other wires is traced out,
+\[
+\rho\;\longmapsto\;\ket0\bra0\otimes\operatorname{Tr}_q(\rho).
+\]
+A state vector cannot hold the mixed result of resetting an entangled wire,
+so a state-vector simulation follows one run of this channel the way real
+hardware does: measure the wire in Z, then apply X if the result was 1.
+Averaged over many runs this gives exactly the reset channel. The
+\hyperlink{reset-semantics}{Reset} chapter describes what this means for
+circuits.
+
+\subsection{Noise and decoherence}
+
+Real qubits are not isolated. Their interaction with the environment is
+described by \emph{quantum channels}
+\[
+\rho\;\longmapsto\;\sum_k K_k\,\rho\,K_k^\dagger,
+\qquad \sum_k K_k^\dagger K_k=I,
+\]
+which turn pure states into mixed ones. The physics engine provides these
+single-qubit channels:
+\begin{center}
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+Channel & Effect\\
+\midrule
+Bit flip ($p$) & $\rho\mapsto(1-p)\rho+pX\rho X$: $\ket0$ and $\ket1$ swap with probability $p$.\\
+Phase flip ($p$) & $\rho\mapsto(1-p)\rho+pZ\rho Z$: coherences shrink by $1-2p$.\\
+Depolarizing ($p$) & $\rho\mapsto(1-p)\rho+p\,I/2$: the Bloch vector shrinks by $1-p$.\\
+Amplitude damping ($\gamma$) & Energy loss: $\ket1$ decays to $\ket0$ with probability $\gamma$.\\
+Phase damping ($\lambda$) & Coherences shrink by $\sqrt{1-\lambda}$; populations are unchanged.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\emph{Decoherence} is usually quoted as two times. $T_1$ is the relaxation
+time: after time $t$ an excited qubit remains in $\ket1$ with probability
+$e^{-t/T_1}$. $T_2$ is the coherence time: off-diagonal entries decay as
+$e^{-t/T_2}$. Physics requires $T_2\le2T_1$.
+
+\begin{cautionbox}[Cycles are not time]
+QPU cycles (\code{INCREASECYCLE}) are logical program stages, not elapsed
+physical time. Decoherence uses a separate timing model that assigns a
+duration to each gate. Noise is always optional: ordinary runs are ideal and
+use the cheaper state vector ($2^n$ amplitudes) rather than a density matrix
+($4^n$ entries). Noisy simulation is available in the physics engine but is
+not yet exposed in the Circuit builder.
+\end{cautionbox}
+
+\subsection{No cloning and teleportation}
+
+CNOT copies a known basis value onto a $\ket0$ target, but applied to
+$\ket+\ket0$ it produces a Bell pair, not $\ket+\ket+$. The two results have
+fidelity $\tfrac12$ and the target becomes entangled rather than a copy. This
+is the \emph{no-cloning theorem}: no operation can copy an unknown quantum
+state.
+
+Quantum state can still be \emph{moved}. SWAP exchanges two wires' states, and
+teleportation transfers a state using only ordinary operations: share a Bell
+pair (\code{H}, \code{CNOT}), entangle the message with one half (\code{CNOT},
+\code{H}), measure two wires, and apply \code{X} and \code{Z} to the
+destination under classical \code{-IF} conditions. The destination then holds
+the original state with fidelity 1 and the source wire has been measured, so
+the state was never in two places at once. QPU has no \code{CLONE} or
+\code{TELEPORT} instruction.

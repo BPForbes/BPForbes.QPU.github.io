@@ -363,7 +363,13 @@ its compiled circuit visually.
 \UiTable{
 Qubit states and execution progress & One card per displayed wire: a sphere
 while unmeasured, the measured bit afterwards, plus its ket, $r,\theta,\phi$,
-and Bloch $x,y,z$. $\Delta$ values show the change caused by the last step.\\
+and Bloch $x,y,z$. $\Delta$ values show the change caused by the last step.
+\emph{purity} is $\operatorname{Tr}(\rho^2)$ of the wire's reduced state and
+\emph{mixedness} is $2(1-\text{purity})$; below purity 1 the card also shows
+$\langle\rho\rangle$, a display-only Bloch-ball estimate. \textbf{Entangled
+with register} appears when the wire is mixed only because it is entangled
+with other wires (Theory Guide: \emph{Mixed states, entanglement measures,
+and noise}).\\
 Circuit execution timeline & One tile per gate, with its \code{-I} and
 \code{-O} wires.\\
 Final state vector & Every nonzero amplitude with its basis label.\\
