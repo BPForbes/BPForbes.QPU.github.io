@@ -48,6 +48,33 @@ physics/
 3. **Visualization estimates** — `numerics/blochQuadrature.ts`
    (`rhoExpectation`). Display-only; never feeds state evolution.
 
+## Engine-native execution
+
+`executeCircuit` / `applyGateToState` (in `engine.ts`) keep the register as a
+`QuantumState` from preparation to result and return `QuantumExecutionResult`.
+Pass `noise` to run as an open system; the state becomes a density matrix only
+when a channel can change it. `runCircuit`, `applyGate`, `stepCircuitGate`, and
+`runNoisyCircuit` are `Complex[]` compatibility adapters over this path.
+
+## Validation
+
+`validation/Validation.ts` checks states (dimension, normalization; density
+matrices Hermitian, trace 1, positive semidefinite), operators (shape,
+U†U ≈ I), channels (ΣK†K ≈ I), and qubit indices (in range, distinct). Every
+public engine method validates its inputs in development and tests
+(`import.meta.env.DEV`); production skips it. The outermost call validates the
+input state once, so gate kernels running on unnormalized density-matrix
+columns inside the engine are not rejected. `physics.setValidation()` toggles
+the automatic checks; `physics.validateState/validateUnitary/validateChannel`
+always run.
+
+## Exposure
+
+Physics reaches users deliberately, not automatically: `MEASURE -BASIS X|Y|Z`
+is the only language addition, and the Physics inspector (Particle
+visualization page) offers subsystem diagnostics and a noisy run. Partial
+traces, Hamiltonians, and Kraus operators stay API-only.
+
 ## Representations and cost
 
 - Pure circuits stay on the O(2^n) state vector (`runCircuit`).
@@ -70,15 +97,24 @@ physics/
   PPT: negative is conclusive for any split, zero is conclusive only for 2×2;
   larger zero-negativity splits and registers past the PPT size limit are
   `inconclusive`. UI must not render `inconclusive` as "not entangled".
-- Logical `CYCLE`/`INCREASECYCLE` stages are not physical time; decoherence
-  uses `PhysicalTimingModel` gate durations.
+- `CYCLE`/`INCREASECYCLE` are *logical* cycles (program stages), never physical
+  time; decoherence uses `PhysicalTimingModel` gate durations.
 - `RESET` is physical. Density matrices get the reset channel
   ρ → |0⟩⟨0| ⊗ Tr_q ρ; state vectors follow one measure-and-flip trajectory
   of it (random only when the wire is uncertain), which averages to the channel.
 
-## Not yet done
+## Tests
 
-- QPU source syntax for measurement bases and noise models (compiler work).
-- Density-matrix mode rejects gate-expression IF predicates and custom gates
-  that add wires or measure internally.
-- The UI does not yet expose a physics inspector or noisy runs.
+- `tests/properties.test.ts`: seeded random checks of normalization, U†U
+  reversibility, channel trace/positivity, density/state-vector agreement,
+  measurement, reduced states, and Hamiltonian unitarity.
+- `../tests/legacyRegression.test.ts`: generated circuits compared against a
+  frozen copy of the pre-engine simulator (`../tests/support/legacyReference.ts`).
+- `tests/engineBoundary.test.ts`: code outside `physics/` only uses the engine.
+
+## Limits
+
+- Density-matrix execution rejects gate-expression IF predicates and custom
+  gates that add wires or measure internally.
+- Noise models are configured in the Physics inspector or the API, not in QPU
+  source.
