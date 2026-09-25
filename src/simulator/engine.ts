@@ -7,7 +7,9 @@ import { applyInverseAwareDefinition } from './gates/inverse';
 import { customGateReadsAmplitudes } from './gates/customGateEngine';
 import { buildStateTransition, snapshotStateParticles } from './physics/particleTracking';
 import { physics } from './physics/PhysicsEngine';
-import type { NoiseModel } from './physics/noise/NoiseModel';
+import type { NoiseModel, PhysicalTimingModel } from './physics/noise/NoiseModel';
+import type { PhysicalSystem } from './physics/frequency/PhysicalEvolution';
+import type { ControlPulse, PulseEnvelope } from './physics/frequency/Pulses';
 import type { DensityMatrixState, QuantumState } from './physics/state/QuantumState';
 import { CircuitGate, ExecutionResult, MeasurementBasisMap, MeasurementMap, ParticleStartState, StateCheckpoint } from './types';
 
@@ -137,6 +139,27 @@ export type QuantumCheckpoint = { state: QuantumState; measurements: Measurement
 export type QuantumExecutionResult = Omit<ExecutionResult, 'state' | 'checkpoints'> & {
   state: QuantumState;
   checkpoints: Record<string, QuantumCheckpoint>;
+  /** Physical clock after the run or step (physical simulation mode only). */
+  physicalTime?: number;
+};
+
+/**
+ * Opt-in physical simulation: every scheduled operation lasts its physical
+ * duration, during which each wire evolves under its idle Hamiltonian (and
+ * couplings), then relaxes with its profile's T1/T2. The ideal path is untouched.
+ */
+export type PhysicalRunOptions = {
+  system: PhysicalSystem;
+  /** Physical duration of each operation; logical CYCLE markers take no time. */
+  timing?: PhysicalTimingModel;
+  /**
+   * 'matrix' (default) applies gate matrices instantly at the start of their slot.
+   * 'drive' replaces uncontrolled X, Y, NOT, RX, and RY with calibrated resonant pulses.
+   */
+  gates?: 'matrix' | 'drive';
+  envelope?: PulseEnvelope;
+  /** Apply each profile's T1/T2 (and temperature) over every duration (default true). */
+  decoherence?: boolean;
 };
 
 export type ExecuteOptions = {
@@ -154,6 +177,37 @@ export type ExecuteOptions = {
   measurementBases?: MeasurementBasisMap;
   /** Sampler for MEASURE and RESET outcomes (defaults to Math.random). */
   random?: () => number;
+  physical?: PhysicalRunOptions;
+  /** Physical clock at the start of this step (carry `physicalTime` from the previous result). */
+  physicalTime?: number;
+};
+
+// Single-qubit rotations a resonant drive implements directly: rotation angle and XY-plane axis phase.
+const driveRotation = (gate: CircuitGate): { angle: number; axisPhase: number } | undefined => {
+  if (gate.controls.length > 0 || gate.targets.length !== 1) return undefined;
+  switch (gate.type) {
+    case 'X':
+    case 'NOT':
+      return { angle: Math.PI, axisPhase: 0 };
+    case 'Y':
+      return { angle: Math.PI, axisPhase: Math.PI / 2 };
+    case 'RX':
+      return { angle: gate.phase ?? 0, axisPhase: 0 };
+    case 'RY':
+      return { angle: gate.phase ?? 0, axisPhase: Math.PI / 2 };
+    default:
+      return undefined;
+  }
+};
+
+const calibratedGatePulse = (physicalOptions: PhysicalRunOptions, gate: CircuitGate, duration: number): ControlPulse | undefined => {
+  if (physicalOptions.gates !== 'drive' || duration <= 0) return undefined;
+  const rotation = driveRotation(gate);
+  if (!rotation) return undefined;
+  const target = gate.targets[0];
+  const profile = physicalOptions.system.profiles?.[target] ?? physicalOptions.system.defaultProfile;
+  if (!profile) return undefined;
+  return physics.frequency.calibratedPulse({ target, profile, ...rotation, duration, envelope: physicalOptions.envelope });
 };
 
 const runRegisteredGate = (
@@ -326,8 +380,20 @@ export const applyGateToState = (
         conditionOutcomes,
       };
     } else {
-      const applied = applyPhysicalOperation(widened, gate, measurements, measurementBases, librarySources, options.random ?? Math.random);
-      const noisy = options.noise
+      const pulse = options.physical
+        ? calibratedGatePulse(options.physical, gate, physics.frequency.operationDuration(options.physical.timing, String(gate.type)))
+        : undefined;
+      const applied = pulse
+        ? {
+          // The drive itself is the operation: the coherent evolution below implements the rotation.
+          state: widened,
+          measurements,
+          measurementBases,
+          log: [`${gate.type} on q${pulse.target} as a ${pulse.envelope.kind} drive pulse (f = ${pulse.carrierFrequency}, Ω/2π = ${pulse.amplitude.toPrecision(4)}, ${pulse.duration} time units).`],
+        }
+        : applyPhysicalOperation(widened, gate, measurements, measurementBases, librarySources, options.random ?? Math.random);
+      // In physical mode gate noise follows the operation's physical evolution instead (below).
+      const noisy = options.noise && !options.physical
         ? physics.applyNoise(applied.state, options.noise, {
           touched: [...new Set([...gate.targets, ...gate.controls])],
           operation: String(gate.type),
@@ -337,11 +403,34 @@ export const applyGateToState = (
     }
   }
 
-  if (!options.trackParticles) return { ...result, checkpoints };
+  let physicalTime: number | undefined;
+  if (options.physical) {
+    const start = options.physicalTime ?? 0;
+    // Markers are logical; a skipped conditional gate still occupies its scheduled slot.
+    const duration = marker ? 0 : physics.frequency.operationDuration(options.physical.timing, String(gate.type));
+    const executed = !marker && result.conditionOutcomes?.[gate.id] !== false;
+    const pulse = executed ? calibratedGatePulse(options.physical, gate, duration) : undefined;
+    let evolved = physics.evolvePhysical(result.state, options.physical.system, { start, duration, ...(pulse ? { pulses: [pulse] } : {}) });
+    if (options.noise && executed) {
+      evolved = physics.applyNoise(evolved, options.noise, {
+        touched: [...new Set([...gate.targets, ...gate.controls])],
+        operation: String(gate.type),
+      });
+    }
+    if (options.physical.decoherence !== false && duration > 0) {
+      evolved = physics.applyPhysicalDecoherence(evolved, options.physical.system, start, duration);
+    }
+    result = { ...result, state: evolved };
+    physicalTime = start + duration;
+  }
+  const timing = physicalTime === undefined ? {} : { physicalTime };
+
+  if (!options.trackParticles) return { ...result, checkpoints, ...timing };
   // Particle tracking snapshots before/after one gate so the Bloch view can animate a single transition.
   return {
     ...result,
     checkpoints,
+    ...timing,
     particles: snapshotStateParticles(result.state, result.measurements, result.state.qubitCount, result.measurementBases),
     transitions: [buildStateTransition(
       gate,
@@ -382,11 +471,13 @@ export const executeCircuit = (
           ...options,
           checkpoints,
           measurementBases: result.measurementBases,
+          physicalTime: result.physicalTime,
         });
         return {
           state: next.state,
           measurements: next.measurements,
           measurementBases: next.measurementBases,
+          ...(next.physicalTime === undefined ? {} : { physicalTime: next.physicalTime }),
           log: [...result.log, ...next.log],
           particles: next.particles ?? result.particles,
           transitions: [...(result.transitions ?? []), ...(next.transitions ?? [])],
@@ -400,6 +491,7 @@ export const executeCircuit = (
         state: initial,
         measurements: {},
         measurementBases: {},
+        ...(options.physical ? { physicalTime: options.physicalTime ?? 0 } : {}),
         log: [`Initialized ${initializationSummary(qubitCount, startStates, paramQubitIndices)}.`],
         particles: options.trackParticles ? snapshotStateParticles(initial, {}) : undefined,
         transitions: [],

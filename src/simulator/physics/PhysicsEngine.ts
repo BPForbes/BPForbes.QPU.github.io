@@ -228,6 +228,8 @@ export class PhysicsEngine {
     driveDiagnostics,
     startClock,
     advanceClock,
+    /** Physical duration of an operation under a timing model (default 1 time unit). */
+    operationDuration,
   } as const;
 
   // ── Validation ─────────────────────────────────────────────────────────
