@@ -11,6 +11,7 @@ import type { BlochVector, MixedStateMetrics, PsiKet, SphericalCoordinates } fro
 import type { EntanglementAssessment } from './analysis/Entanglement';
 import { sphericalFromBlochCartesian } from './analysis/Bloch';
 import { physics } from './PhysicsEngine';
+import type { QuantumState } from './state/QuantumState';
 
 export {
   blochBallRhoExpectation,
@@ -70,15 +71,20 @@ export const blochVectorForQubit = (
 /** @deprecated Use sphericalFromBlochCartesian */
 export const sphericalFromBloch = sphericalFromBlochCartesian;
 
+// Raw amplitudes are read at their true width; display wires past it are fresh |0⟩ wires.
+const quantumView = (state: Complex[], qubitCount: number): QuantumState => {
+  const view = physics.fromAmplitudes(state, physics.resolveQubitCount(state, 0));
+  return qubitCount > view.qubitCount ? physics.expandRegister(view, qubitCount) : view;
+};
+
 // Snapshot extraction classifies each displayed qubit from its Bloch vector plus any recorded measurement.
-export const snapshotParticle = (
-  state: Complex[],
-  qubitCount: number,
+export const snapshotStateParticle = (
+  state: QuantumState,
   qubit: number,
   measurements: MeasurementMap = {},
 ): ParticleSnapshot => {
   const measured = measurements[qubit];
-  const inspection = measured === undefined ? physics.inspectQubit(physics.fromAmplitudes(state, qubitCount), qubit) : undefined;
+  const inspection = measured === undefined ? physics.inspectQubit(state, qubit) : undefined;
   const { bloch, spherical, ket, mixed } = inspection
     ? physics.describeBlochVector(inspection.bloch)
     : physics.measuredBlochGeometry(measured!);
@@ -95,12 +101,28 @@ export const snapshotParticle = (
   };
 };
 
+/** One snapshot per wire of a state vector or density matrix. */
+export const snapshotStateParticles = (
+  state: QuantumState,
+  measurements: MeasurementMap = {},
+  qubitCount = state.qubitCount,
+): ParticleSnapshot[] =>
+  Array.from({ length: qubitCount }, (_, qubit) => snapshotStateParticle(state, qubit, measurements));
+
+/** Compatibility wrapper for raw amplitude arrays. */
+export const snapshotParticle = (
+  state: Complex[],
+  qubitCount: number,
+  qubit: number,
+  measurements: MeasurementMap = {},
+): ParticleSnapshot => snapshotStateParticle(quantumView(state, qubitCount), qubit, measurements);
+
+/** Compatibility wrapper for raw amplitude arrays. */
 export const snapshotAllParticles = (
   state: Complex[],
   qubitCount: number,
   measurements: MeasurementMap = {},
-): ParticleSnapshot[] =>
-  Array.from({ length: qubitCount }, (_, qubit) => snapshotParticle(state, qubitCount, qubit, measurements));
+): ParticleSnapshot[] => snapshotStateParticles(quantumView(state, qubitCount), measurements, qubitCount);
 
 const normalizeAngleDelta = (delta: number) => {
   let value = delta;
@@ -126,16 +148,18 @@ export const computeParticleDeltas = (before: ParticleSnapshot[], after: Particl
   before.map((snapshot, index) => particleDelta(snapshot, after[index] ?? snapshot));
 
 // Transition records compare pre/post snapshots so the visualizer can explain what each gate changed.
-export const buildOperationTransition = (
+// A gate that added workspace wires is compared against the earlier state padded to the same width.
+export const buildStateTransition = (
   gate: CircuitGate,
-  stateBefore: Complex[],
-  stateAfter: Complex[],
-  qubitCount: number,
+  stateBefore: QuantumState,
+  stateAfter: QuantumState,
   measurementsBefore: MeasurementMap,
   measurementsAfter: MeasurementMap,
+  qubitCount = stateAfter.qubitCount,
 ): OperationTransition => {
-  const before = snapshotAllParticles(stateBefore, qubitCount, measurementsBefore);
-  const after = snapshotAllParticles(stateAfter, qubitCount, measurementsAfter);
+  const width = Math.max(qubitCount, stateBefore.qubitCount, stateAfter.qubitCount);
+  const before = snapshotStateParticles(physics.expandRegister(stateBefore, width), measurementsBefore, qubitCount);
+  const after = snapshotStateParticles(physics.expandRegister(stateAfter, width), measurementsAfter, qubitCount);
   const inputQubits = gate.type === 'SWAP'
     ? gate.targets
     : gate.controls.length > 0
@@ -152,3 +176,20 @@ export const buildOperationTransition = (
     deltas: computeParticleDeltas(before, after),
   };
 };
+
+/** Compatibility wrapper for raw amplitude arrays. */
+export const buildOperationTransition = (
+  gate: CircuitGate,
+  stateBefore: Complex[],
+  stateAfter: Complex[],
+  qubitCount: number,
+  measurementsBefore: MeasurementMap,
+  measurementsAfter: MeasurementMap,
+): OperationTransition => buildStateTransition(
+  gate,
+  quantumView(stateBefore, qubitCount),
+  quantumView(stateAfter, qubitCount),
+  measurementsBefore,
+  measurementsAfter,
+  qubitCount,
+);

@@ -241,6 +241,8 @@ export type {
 } from './physics/particleTracking';
 
 // Execution results may include optional particle snapshots and per-gate transitions when tracing is enabled.
+// This is the Complex[] compatibility view; engine-native runs (executeCircuit) return QuantumExecutionResult,
+// whose state is a QuantumState and may be a density matrix.
 export type ExecutionResult = {
   state: Complex[];
   measurements: MeasurementMap;
