@@ -1,6 +1,6 @@
 import type { GateDefinition } from '../types';
 import { gateIoArity } from '../types';
-import { measureStateVector } from '../../physics/measurement/Measurement';
+import { physics } from '../../physics/PhysicsEngine';
 // MEASURE gate palette entry and apply hook for the shared registry.
 
 export const measureGate: GateDefinition = {
@@ -20,10 +20,10 @@ export const measureGate: GateDefinition = {
   apply: ({ state, qubitCount, gate, measurements }) => {
     const target = gate.targets[0];
     const basis = gate.basis ?? 'Z';
-    const measured = measureStateVector(state, qubitCount, target, basis);
+    const measured = physics.measure(physics.fromAmplitudes(state, qubitCount), target, basis);
     const basisNote = basis === 'Z' ? '' : ` in ${basis} basis`;
     return {
-      state: measured.state,
+      state: measured.state.amplitudes,
       measurements: { ...measurements, [target]: measured.outcome },
       log: [`Measured q${target}${basisNote} = ${measured.outcome} (P(1)=${measured.probabilityOne.toFixed(3)}).`],
     };

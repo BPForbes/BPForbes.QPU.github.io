@@ -16,8 +16,6 @@ import {
 } from '../../simulator/compiler';
 import { runCircuit } from '../../simulator/engine';
 import { physics } from '../../simulator/physics/PhysicsEngine';
-import { stateVector } from '../../simulator/physics/state/QuantumState';
-import { resolveStateQubitCount } from '../../simulator/physics/state/StateVector';
 import type { ParticleStartState } from '../../simulator/types';
 import { getCustomGateRecord, type CustomGateRecord } from '../../simulator/gates/customGateEngine';
 import { docTargets, gateDocTarget, gateHelp, type DocTarget } from './learningHelp';
@@ -339,7 +337,7 @@ const simulateDocTable = (source: string, library: Record<string, string>): DocT
       startStates,
       compiled.processParams.map((param) => param.qubitIndex),
     );
-    const qubitCount = resolveStateQubitCount(executed.state, 0);
+    const qubitCount = physics.resolveQubitCount(executed.state, 0);
     const outputs = outputColumns.map((name) => {
       const qubit = registerQubit(compiled.tokenMap, name);
       const logged = executed.log.reduce<number | undefined>((found, line) => {
@@ -347,7 +345,7 @@ const simulateDocTable = (source: string, library: Record<string, string>): DocT
         return match ? Number(match[1]) : found;
       }, undefined);
       if (logged !== undefined) return bitFromProbability(logged, 5e-3);
-      const probabilityOne = physics.measurementDiagnostics(stateVector(executed.state, qubitCount), qubit).probabilities[1];
+      const probabilityOne = physics.probabilityOfOne(physics.fromAmplitudes(executed.state, qubitCount), qubit);
       return bitFromProbability(probabilityOne, 1e-6);
     });
     return [...inputs.map((value) => (value === '1p' ? '1' : '0')), ...outputs];

@@ -1,7 +1,5 @@
 import type { Complex } from '../complex';
 import { physics } from '../physics/PhysicsEngine';
-import { stateVector } from '../physics/state/QuantumState';
-import { resolveStateQubitCount } from '../physics/state/StateVector';
 import type { CircuitGate, ConditionPredicate, ConditionValue, ExecutionResult, GateType, MeasurementMap } from '../types';
 import { applyInverseAwareDefinition } from './inverse';
 import { preconfiguredGateMap } from './preconfigured';
@@ -47,7 +45,7 @@ export const buildConditionPredicate = (params: {
 };
 
 export const classifyWire = (state: Complex[], qubitCount: number, qubit: number): ConditionValue => {
-  const probabilityOne = physics.measurementDiagnostics(stateVector(state, qubitCount), qubit, 'Z').probabilities[1];
+  const probabilityOne = physics.probabilityOfOne(physics.fromAmplitudes(state, qubitCount), qubit);
   if (probabilityOne <= DEFINITE_TOLERANCE) return 0;
   if (probabilityOne >= 1 - DEFINITE_TOLERANCE) return 1;
   return 's';
@@ -90,7 +88,7 @@ export const evaluatePredicate = (
   let target = predicate.output;
   let controls = isCustom ? predicate.inputs : predicate.inputs.filter((qubit) => qubit !== predicate.output);
   if (predicate.scratch) {
-    scratchState = physics.expandRegister(stateVector(state, qubitCount), qubitCount + 1).amplitudes;
+    scratchState = physics.expandRegister(physics.fromAmplitudes(state, qubitCount), qubitCount + 1).amplitudes;
     scratchCount = qubitCount + 1;
     target = qubitCount;
     controls = predicate.inputs;
@@ -106,7 +104,7 @@ export const evaluatePredicate = (
   };
   const result = runGate(probe, scratchState, scratchCount, measurements);
   // Custom gates may add workspace wires, so read the width from the result.
-  const resultCount = resolveStateQubitCount(result.state, scratchCount);
+  const resultCount = physics.resolveQubitCount(result.state, scratchCount);
   return classifyWire(result.state, resultCount, target);
 };
 

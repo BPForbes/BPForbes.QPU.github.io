@@ -13,8 +13,8 @@
  * classical conditions.
  */
 import type { compileQpuProtocol } from '../compiler/qpuAst';
-import { type Complex, ONE, ZERO } from '../complex';
-import { basisProbabilities, innerProduct, marginalProbabilities, resolveStateQubitCount, truncateStateVector } from '../physics/state/StateVector';
+import type { Complex } from '../complex';
+import { physics } from '../physics/PhysicsEngine';
 import type { CircuitGate, ExecutionResult, MeasurementMap } from '../types';
 import { getCustomGateRecord } from './customGateStore';
 import { applyInverseAwareDefinition, invertCircuitGate } from './inverse';
@@ -48,7 +48,8 @@ const MAX_VISIBLE_WIRES = 8;
 const MAX_TOTAL_WIRES = 16;
 const EPSILON = 1e-6;
 
-const conjugateDot = (left: Complex[], right: Complex[]): Complex => innerProduct(left, right);
+const conjugateDot = (left: Complex[], right: Complex[]): Complex =>
+  physics.overlap(physics.fromAmplitudes(left), physics.fromAmplitudes(right));
 
 const isClose = (value: Complex, re: number) => Math.hypot(value.re - re, value.im) < EPSILON;
 
@@ -104,19 +105,18 @@ const sizeIssue = ({ visible, qubitCount }: WireLayout) => (
 
 /** Full-register basis index for visible bit pattern `bits`, with workspace at |0⟩. */
 const basisIndex = ({ visible, qubitCount }: WireLayout, bits: number) => visible.reduce(
-  (index, qubit, position) => (bits & (1 << position) ? index | (1 << (qubitCount - qubit - 1)) : index),
+  (index, qubit, position) => (bits & (1 << position) ? index | physics.qubitMask(qubit, qubitCount) : index),
   0,
 );
 
 const inputLabel = ({ visible }: WireLayout, bits: number) => visible.map((_, position) => (bits >> position) & 1).join('');
 
-const basisState = (index: number, qubitCount: number) =>
-  Array.from({ length: 2 ** qubitCount }, (_, entry) => (entry === index ? ONE : ZERO));
+const basisState = (index: number, qubitCount: number) => physics.basisState(index, qubitCount).amplitudes;
 
 /** A nested gate appends its workspace as the lowest bits; its own check proved that workspace returns to |0⟩. */
 // Any amplitude dropped here shows up in the recovery and norm checks.
 const trimNestedWorkspace = (expanded: Complex[], qubitCount: number) =>
-  truncateStateVector(expanded, resolveStateQubitCount(expanded, qubitCount), qubitCount);
+  physics.truncateRegister(physics.fromAmplitudes(expanded, physics.resolveQubitCount(expanded, qubitCount)), qubitCount).amplitudes;
 
 const runStep = (state: Complex[], qubitCount: number, gate: CircuitGate, runNested: NestedCustomGateRunner) => {
   if (gate.type === 'CYCLE') return state;
@@ -131,7 +131,7 @@ const runSteps = (state: Complex[], qubitCount: number, steps: CircuitGate[], ru
 // --- Criterion 2: the dagger, on fresh workspace, recovers each basis input ---
 
 const leavesWorkspaceDirty = (output: Complex[], { workspace, qubitCount }: WireLayout) =>
-  workspace.length > 0 && marginalProbabilities(output, qubitCount, workspace).some((probability, index) => index > 0 && probability > EPSILON);
+  workspace.length > 0 && physics.marginalProbabilities(physics.fromAmplitudes(output, qubitCount), workspace).some((probability, index) => index > 0 && probability > EPSILON);
 
 /** True when `state` equals `phase`·|index⟩ in every amplitude, not just in probability. */
 const matchesBasisUpToPhase = (state: Complex[], index: number, phase: Complex) => state.every((amplitude, entry) => (
@@ -148,7 +148,7 @@ const recoveryIssue = (layout: WireLayout, bits: number, output: Complex[], reco
     return `Input ${label} leaves an internal wire away from |0⟩, so the dagger (which starts internal wires at |0⟩) cannot recover it (criterion 2).`;
   }
   const index = basisIndex(layout, bits);
-  if (basisProbabilities(recovered)[index] < 1 - EPSILON) {
+  if (physics.probabilities(physics.fromAmplitudes(recovered))[index] < 1 - EPSILON) {
     return `Running the dagger after the gate does not return input ${label} (criterion 2).`;
   }
   return matchesBasisUpToPhase(recovered, index, globalPhase)

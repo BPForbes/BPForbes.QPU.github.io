@@ -7,18 +7,9 @@
  */
 import type { Complex } from '../complex';
 import type { CircuitGate, MeasurementMap } from '../types';
-import {
-  blochCartesianFromSpherical,
-  type BlochVector,
-  ketFromSpherical,
-  mixedStateMetrics,
-  type MixedStateMetrics,
-  type PsiKet,
-  sphericalFromBlochCartesian,
-  type SphericalCoordinates,
-} from './analysis/Bloch';
+import type { BlochVector, MixedStateMetrics, PsiKet, SphericalCoordinates } from './analysis/Bloch';
+import { sphericalFromBlochCartesian } from './analysis/Bloch';
 import { physics } from './PhysicsEngine';
-import { stateVector } from './state/QuantumState';
 
 export {
   blochBallRhoExpectation,
@@ -62,9 +53,6 @@ export type OperationTransition = {
 };
 
 // A recorded classical outcome pins the displayed particle to its pole, whatever later gates did.
-const measuredBloch = (measured: 0 | 1): BlochVector =>
-  blochCartesianFromSpherical(1, measured === 1 ? Math.PI : 0, 0);
-
 export const blochVectorForQubit = (
   state: Complex[],
   qubitCount: number,
@@ -72,8 +60,8 @@ export const blochVectorForQubit = (
   measurements: MeasurementMap = {},
 ): BlochVector => {
   const measured = measurements[qubit];
-  if (measured !== undefined) return measuredBloch(measured);
-  return physics.blochVector(stateVector(state, qubitCount), qubit);
+  if (measured !== undefined) return physics.measuredBlochGeometry(measured).bloch;
+  return physics.blochVector(physics.fromAmplitudes(state, qubitCount), qubit);
 };
 
 /** @deprecated Use sphericalFromBlochCartesian */
@@ -87,15 +75,15 @@ export const snapshotParticle = (
   measurements: MeasurementMap = {},
 ): ParticleSnapshot => {
   const measured = measurements[qubit];
-  const inspection = measured === undefined ? physics.inspectQubit(stateVector(state, qubitCount), qubit) : undefined;
-  const bloch = inspection ? inspection.bloch : measuredBloch(measured!);
-  const spherical = sphericalFromBlochCartesian(bloch);
-  const mixed = mixedStateMetrics(spherical);
+  const inspection = measured === undefined ? physics.inspectQubit(physics.fromAmplitudes(state, qubitCount), qubit) : undefined;
+  const { bloch, spherical, ket, mixed } = inspection
+    ? physics.describeBlochVector(inspection.bloch)
+    : physics.measuredBlochGeometry(measured!);
   return {
     qubit,
     bloch,
     spherical,
-    ket: ketFromSpherical(spherical.theta, spherical.phi),
+    ket,
     mixed,
     entangledWithRegister: inspection?.entangledWithRest === true,
     probOne: (1 - bloch.z) / 2,

@@ -1,7 +1,6 @@
 import type { GateDefinition } from '../types';
 import { gateIoArity } from '../types';
 import { physics } from '../../physics/PhysicsEngine';
-import { stateVector } from '../../physics/state/QuantumState';
 
 export const resetGate: GateDefinition = {
   id: 'RESET',
@@ -18,7 +17,7 @@ export const resetGate: GateDefinition = {
   cssClass: 'gate-reset',
   apply: ({ state, qubitCount, gate, measurements }) => {
     // The Physics Engine decides how a wire is forced to |0⟩ (see physics/measurement/Reset.ts).
-    const reset = gate.targets.reduce((current, qubit) => physics.reset(current, qubit), stateVector(state, qubitCount));
+    const reset = gate.targets.reduce((current, qubit) => physics.reset(current, qubit), physics.fromAmplitudes(state, qubitCount));
     return {
       state: reset.amplitudes,
       measurements,

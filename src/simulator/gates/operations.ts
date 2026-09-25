@@ -8,14 +8,32 @@
  */
 import type { Complex } from '../complex';
 import { physics } from '../physics/PhysicsEngine';
-import { resetStateVector } from '../physics/measurement/Reset';
 import type { ComplexMatrix } from '../physics/numerics/linearAlgebra';
-import { stateVector } from '../physics/state/QuantumState';
-import { bitMask, controlsAreActive, hasBit } from '../physics/state/StateVector';
 import { MATRIX_SWAP, MATRIX_Z, permutationMatrix, phaseMatrix } from './matrices';
 
-export { applyStartState, controlsAreActive, hasBit, padStateVector } from '../physics/state/StateVector';
-export { measureQubit } from '../physics/measurement/Measurement';
+// Legacy helper names kept for existing callers; each delegates to the PhysicsEngine class.
+export const hasBit = (basisIndex: number, qubit: number, qubitCount: number) =>
+  physics.hasBit(basisIndex, qubit, qubitCount);
+
+export const controlsAreActive = (basisIndex: number, qubitCount: number, controls: number[]) =>
+  physics.controlsActive(basisIndex, qubitCount, controls);
+
+export const padStateVector = (state: Complex[], fromCount: number, toCount: number): Complex[] =>
+  physics.expandRegister(physics.fromAmplitudes(state, fromCount), toCount).amplitudes;
+
+export const applyStartState = (state: Complex[], qubitCount: number, qubit: number, startState: '1p' | 'sp'): Complex[] =>
+  physics.prepare(physics.fromAmplitudes(state, qubitCount), qubit, startState).amplitudes;
+
+/** Z-basis collapse in the legacy result shape. */
+export const measureQubit = (
+  state: Complex[],
+  qubitCount: number,
+  qubit: number,
+  random = Math.random(),
+): { state: Complex[]; value: 0 | 1; probabilityOne: number } => {
+  const measured = physics.measure(physics.fromAmplitudes(state, qubitCount), qubit, 'Z', random);
+  return { state: measured.state.amplitudes, value: measured.outcome, probabilityOne: measured.probabilityOne };
+};
 
 /** Apply operator `matrix` on `targets`, gated on `controls`, through the Physics Engine. */
 export const evolveState = (
@@ -24,7 +42,7 @@ export const evolveState = (
   targets: number[],
   matrix: ComplexMatrix,
   controls: number[] = [],
-): Complex[] => physics.applyControlledUnitary(stateVector(state, qubitCount), controls, targets, matrix).amplitudes;
+): Complex[] => physics.applyControlledUnitary(physics.fromAmplitudes(state, qubitCount), controls, targets, matrix).amplitudes;
 
 export const applySingleQubitGate = (
   state: Complex[],
@@ -65,7 +83,7 @@ export const predicateXOperator = (
   const permutation = Array.from({ length: 2 ** wires.length }, (_, local) => local);
   for (let local = 0; local < permutation.length; local += 2) {
     const basisIndex = wires.reduce(
-      (index, wire, position) => ((local >> (wires.length - position - 1)) & 1 ? index | bitMask(wire, qubitCount) : index),
+      (index, wire, position) => ((local >> (wires.length - position - 1)) & 1 ? index | physics.qubitMask(wire, qubitCount) : index),
       0,
     );
     if (predicate(basisIndex, qubitCount, controls)) {
@@ -112,4 +130,4 @@ export const prepareZeroQubit = (
   qubitCount: number,
   qubit: number,
   random: () => number = Math.random,
-): Complex[] => resetStateVector(state, qubitCount, qubit, random);
+): Complex[] => physics.reset(physics.fromAmplitudes(state, qubitCount), qubit, random).amplitudes;

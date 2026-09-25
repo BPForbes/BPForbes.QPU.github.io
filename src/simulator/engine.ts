@@ -7,8 +7,7 @@ import { applyInverseAwareDefinition } from './gates/inverse';
 import { buildOperationTransition, snapshotAllParticles } from './physics/particleTracking';
 import { physics } from './physics/PhysicsEngine';
 import type { NoiseModel } from './physics/noise/NoiseModel';
-import { type DensityMatrixState, type QuantumState, stateVector } from './physics/state/QuantumState';
-import { createRegister, resolveStateQubitCount } from './physics/state/StateVector';
+import type { DensityMatrixState, QuantumState } from './physics/state/QuantumState';
 import { CircuitGate, ExecutionResult, MeasurementMap, ParticleStartState, StateCheckpoint } from './types';
 
 export {
@@ -28,7 +27,7 @@ export const projectStateOntoQubits = (
   sourceQubitCount: number,
   qubits: number[],
 ): Complex[] =>
-  physics.marginalProbabilities(stateVector(state, sourceQubitCount), qubits)
+  physics.marginalProbabilities(physics.fromAmplitudes(state, sourceQubitCount), qubits)
     .map((probability) => (probability > 0 ? { re: Math.sqrt(probability), im: 0 } : ZERO));
 
 export { conditionSatisfied };
@@ -49,7 +48,7 @@ export const createInitialState = (
   startStates: ParticleStartState[] = [],
   paramQubitIndices?: number[],
 ): Complex[] => {
-  let state = stateVector(createRegister(qubitCount), qubitCount);
+  let state = physics.createState(qubitCount);
 
   const indices = resolveParamQubitIndices(qubitCount, startStates, paramQubitIndices);
   const invalid = indices.filter((qubit) => qubit < 0 || qubit >= qubitCount);
@@ -63,7 +62,9 @@ export const createInitialState = (
   return state.amplitudes;
 };
 
-export { resolveStateQubitCount };
+// Custom/child gates may pad the state vector beyond the UI qubit count; trust vector width when it is larger.
+export const resolveStateQubitCount = (state: Complex[], qubitCount: number): number =>
+  physics.resolveQubitCount(state, qubitCount);
 
 // The engine decides WHEN a register must grow (a gate names a higher wire); the physics layer pads it.
 const requiredWidth = (qubitCount: number, gate: CircuitGate) => {
@@ -75,7 +76,7 @@ const requiredWidth = (qubitCount: number, gate: CircuitGate) => {
 const ensureStateWidth = (state: Complex[], qubitCount: number, gate: CircuitGate) => {
   const nextCount = requiredWidth(qubitCount, gate);
   if (nextCount === qubitCount) return { state, qubitCount };
-  return { state: physics.expandRegister(stateVector(state, qubitCount), nextCount).amplitudes, qubitCount: nextCount };
+  return { state: physics.expandRegister(physics.fromAmplitudes(state, qubitCount), nextCount).amplitudes, qubitCount: nextCount };
 };
 
 export type ApplyGateOptions = {
@@ -321,7 +322,7 @@ export const measureAll = (state: Complex[], qubitCount: number, measurements: M
 
   for (let qubit = 0; qubit < qubitCount; qubit += 1) {
     if (nextMeasurements[qubit] === undefined) {
-      const measured = physics.measure(stateVector(current, qubitCount), qubit);
+      const measured = physics.measure(physics.fromAmplitudes(current, qubitCount), qubit);
       current = measured.state.amplitudes;
       nextMeasurements[qubit] = measured.outcome;
       log.push(`Measured q${qubit} = ${measured.outcome} (P(1)=${measured.probabilityOne.toFixed(3)}).`);
@@ -386,7 +387,7 @@ export const runNoisyCircuit = (
   const random = options.random ?? Math.random;
   const checkpoints: Record<string, { state: QuantumState; measurements: MeasurementMap }> = {};
   let state: QuantumState = physics.toDensityMatrix(
-    stateVector(createInitialState(qubitCount, startStates, paramQubitIndices), qubitCount),
+    physics.fromAmplitudes(createInitialState(qubitCount, startStates, paramQubitIndices), qubitCount),
   );
   let measurements: MeasurementMap = {};
   const log: string[] = [`Initialized ${qubitCount} qubit(s) as a density matrix with noise.`];

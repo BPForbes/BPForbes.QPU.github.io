@@ -11,11 +11,15 @@
  * - Diagnostics (purity, entropy, fidelity, entanglement, Bloch) are exact derived quantities.
  * - Visualization estimates (Bloch-ball quadrature) live in numerics/ and are labelled as such.
  */
-import type { Complex } from '../complex';
+import { type Complex, ONE, ZERO } from '../complex';
 import type { ParticleStartState } from '../types';
 import {
   blochVectorFromDensity,
   type BlochVector,
+  ketFromSpherical,
+  mixedStateMetrics,
+  type MixedStateMetrics,
+  type PsiKet,
   sphericalFromBlochCartesian,
   type SphericalCoordinates,
 } from './analysis/Bloch';
@@ -35,7 +39,12 @@ import {
   stateVectorMeasurementDiagnostics,
 } from './measurement/Measurement';
 import type { MeasurementBasis } from './measurement/MeasurementBasis';
+import { amplitudeDamping } from './noise/AmplitudeDamping';
+import { bitFlip } from './noise/BitFlip';
 import { decoherenceChannels, operationDuration } from './noise/Decoherence';
+import { phaseDamping } from './noise/Dephasing';
+import { depolarizing } from './noise/Depolarizing';
+import { phaseFlip } from './noise/PhaseFlip';
 import { isIdentityChannel, type NoiseChannel, type NoiseModel } from './noise/NoiseModel';
 import type { ComplexMatrix } from './numerics/linearAlgebra';
 import {
@@ -52,6 +61,7 @@ import {
   type DensityMatrix,
   type DensityMatrixState,
   densityState,
+  type StateVectorState,
   type QuantumState,
   stateVector,
 } from './state/QuantumState';
@@ -60,9 +70,15 @@ import {
   applyMultiQubitUnitary,
   applyStartState,
   basisProbabilities,
+  bitMask,
+  controlsAreActive,
   createRegister,
+  hasBit,
+  innerProduct,
   marginalProbabilities,
   padStateVector,
+  resolveStateQubitCount,
+  truncateStateVector,
 } from './state/StateVector';
 import { resetStateVector } from './measurement/Reset';
 import { MATRIX_H, MATRIX_X } from '../gates/matrices';
@@ -108,6 +124,14 @@ export type GlobalInspection = {
   normalization: number;
 };
 
+/** Display geometry of a Bloch vector, shared by inspected and measured wires. */
+export type BlochGeometry = {
+  bloch: BlochVector;
+  spherical: SphericalCoordinates;
+  ket: PsiKet;
+  mixed: MixedStateMetrics;
+};
+
 export type NoiseContext = {
   /** Qubits the preceding operation touched (targets and controls). */
   touched?: number[];
@@ -124,13 +148,71 @@ const complement = (qubitCount: number, subsystem: number[]) =>
   allQubits(qubitCount).filter((qubit) => !subsystem.includes(qubit));
 
 export class PhysicsEngine {
+  /** Single-qubit noise channel constructors for building a NoiseModel. */
+  readonly channels = {
+    bitFlip,
+    phaseFlip,
+    depolarizing,
+    amplitudeDamping,
+    phaseDamping,
+    /** T1/T2 channels for a physical duration (same unit as T1/T2). */
+    decoherence: decoherenceChannels,
+  } as const;
+
   // ── State creation and preparation ─────────────────────────────────────
 
+  createState(qubitCount: number): StateVectorState;
+  createState(qubitCount: number, representation: 'stateVector'): StateVectorState;
+  createState(qubitCount: number, representation: 'densityMatrix'): DensityMatrixState;
+  createState(qubitCount: number, representation?: QuantumState['kind']): QuantumState;
   createState(qubitCount: number, representation: QuantumState['kind'] = 'stateVector'): QuantumState {
     const amplitudes = createRegister(qubitCount);
     return representation === 'stateVector'
       ? stateVector(amplitudes, qubitCount)
       : densityState(densityFromStateVector(amplitudes), qubitCount);
+  }
+
+  /**
+   * View raw simulator amplitudes as a state without copying. `qubitCount`
+   * defaults to the vector width; callers pass it when a gate addresses the
+   * register with an explicit width.
+   */
+  fromAmplitudes(amplitudes: Complex[], qubitCount = this.resolveQubitCount(amplitudes, 0)): StateVectorState {
+    return stateVector(amplitudes, qubitCount);
+  }
+
+  /** The computational basis state |index⟩. */
+  basisState(index: number, qubitCount: number): StateVectorState {
+    const amplitudes = Array.from({ length: 2 ** qubitCount }, (_, entry) => (entry === index ? ONE : ZERO));
+    return stateVector(amplitudes, qubitCount);
+  }
+
+  /** Register width, trusting the vector when custom/child gates have padded it past `qubitCount`. */
+  resolveQubitCount(amplitudes: Complex[], qubitCount: number): number {
+    return resolveStateQubitCount(amplitudes, qubitCount);
+  }
+
+  /**
+   * Drop trailing wires that are known to be |0⟩ (the inverse of expandRegister).
+   * Amplitude elsewhere is discarded, so callers must check the result's norm.
+   */
+  truncateRegister(state: StateVectorState, qubitCount: number): StateVectorState {
+    if (qubitCount >= state.qubitCount) return state;
+    return stateVector(truncateStateVector(state.amplitudes, state.qubitCount, qubitCount), qubitCount);
+  }
+
+  // ── Basis-index conventions (qubit 0 is the most significant bit) ──────
+
+  qubitMask(qubit: number, qubitCount: number): number {
+    return bitMask(qubit, qubitCount);
+  }
+
+  hasBit(basisIndex: number, qubit: number, qubitCount: number): boolean {
+    return hasBit(basisIndex, qubit, qubitCount);
+  }
+
+  controlsActive(basisIndex: number, qubitCount: number, controls: number[]): boolean {
+    return controlsAreActive(basisIndex, qubitCount, controls);
   }
 
   /** Prepare a fresh |0⟩ wire as 0p, 1p (|1⟩), or sp (|+⟩). */
@@ -212,6 +294,11 @@ export class PhysicsEngine {
       : densityState(resetQubitDensity(state.rho, state.qubitCount, qubit), state.qubitCount)) as S;
   }
 
+  /** P(qubit = 1) in the computational basis. */
+  probabilityOfOne(state: QuantumState, qubit: number): number {
+    return this.measurementDiagnostics(state, qubit, 'Z').probabilities[1];
+  }
+
   probabilities(state: QuantumState): number[] {
     return state.kind === 'stateVector' ? basisProbabilities(state.amplitudes) : densityProbabilities(state.rho);
   }
@@ -236,6 +323,17 @@ export class PhysicsEngine {
 
   blochVector(state: QuantumState, qubit: number): BlochVector {
     return blochVectorFromDensity(this.reducedState(state, [qubit]));
+  }
+
+  /** Spherical angles, display ket, and mixed-state metrics for a Bloch vector. */
+  describeBlochVector(bloch: BlochVector): BlochGeometry {
+    const spherical = sphericalFromBlochCartesian(bloch);
+    return { bloch, spherical, ket: ketFromSpherical(spherical.theta, spherical.phi), mixed: mixedStateMetrics(spherical) };
+  }
+
+  /** Bloch geometry of a wire whose Z outcome has been recorded: the matching pole. */
+  measuredBlochGeometry(outcome: 0 | 1): BlochGeometry {
+    return this.describeBlochVector({ x: 0, y: 0, z: outcome === 1 ? -1 : 1 });
   }
 
   inspectQubit(state: QuantumState, qubit: number): QubitInspection {
@@ -361,6 +459,11 @@ export class PhysicsEngine {
   analyzeInterference(state: QuantumState, operation: InterferenceOperation): InterferenceAnalysis {
     if (state.kind !== 'stateVector') throw new RangeError('Amplitude interference analysis needs a pure state vector.');
     return analyzeInterference(state.amplitudes, state.qubitCount, operation);
+  }
+
+  /** ⟨a|b⟩ for pure states. */
+  overlap(a: StateVectorState, b: StateVectorState): Complex {
+    return innerProduct(a.amplitudes, b.amplitudes);
   }
 
   comparePhase(a: QuantumState, b: QuantumState): PhaseComparison {

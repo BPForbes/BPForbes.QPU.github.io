@@ -19,8 +19,11 @@ Every state change goes through this engine by default. Gate definitions build
 operators (`gates/operations.ts` turns CNOT/CCNOT/AND/OR/XOR into permutation
 operators) and hand them to `physics.applyControlledUnitary`; MEASURE, RESET,
 start-state preparation, register growth, IF-predicate classification, and the
-UI's single-wire measure all call the engine. Code outside `physics/` should
-not compute amplitudes, probabilities, or reduced states itself.
+UI's single-wire measure all call the engine. Code outside `physics/` calls
+the `physics` instance (`import { physics } from '.../physics/PhysicsEngine'`)
+and never imports the kernels under `state/`, `measurement/`, `analysis/`,
+`noise/`, `dynamics/`, or `numerics/`; raw amplitude arrays are wrapped with
+`physics.fromAmplitudes`. `tests/engineBoundary.test.ts` enforces this.
 
 ## Layout
 

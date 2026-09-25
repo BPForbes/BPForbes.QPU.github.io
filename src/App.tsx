@@ -75,7 +75,6 @@ import {
 } from './data/formats';
 import { createInitialState, measureAll, projectStateOntoQubits, resolveStateQubitCount, runCircuit, stepCircuitGate } from './simulator/engine';
 import { physics } from './simulator/physics/PhysicsEngine';
-import { stateVector } from './simulator/physics/state/QuantumState';
 import {
   analyzeQpuProtocol,
   compileQpuProtocol,
@@ -661,7 +660,7 @@ function App() {
     }
 
     const result = physics.measure(
-      stateVector(state, simulationQubitCount),
+      physics.fromAmplitudes(state, simulationQubitCount),
       controllableParams[selectedTarget]?.qubitIndex ?? selectedTarget,
     );
     setState(result.state.amplitudes);
