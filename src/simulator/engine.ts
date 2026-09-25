@@ -4,7 +4,7 @@ import { Complex, ZERO } from './complex';
 import { applyGate as applyRegisteredGate, getGateDefinition } from './gates/registry';
 import { conditionSatisfied } from './gates/conditions';
 import { applyInverseAwareDefinition } from './gates/inverse';
-import { customGateReadsAmplitudes } from './gates/customGateEngine';
+import { customGateNeedsStateVector } from './gates/customGateEngine';
 import { buildStateTransition, snapshotStateParticles } from './physics/particleTracking';
 import { physics } from './physics/PhysicsEngine';
 import type { NoiseModel, PhysicalTimingModel } from './physics/noise/NoiseModel';
@@ -277,7 +277,7 @@ const sameMeasurements = (a: MeasurementMap, b: MeasurementMap) => {
 };
 
 // Registered gate kernels are linear on state vectors, so the physics layer can lift them to ρ → UρU†.
-// A custom gate whose body reads amplitudes (a gate-expression IF) is not one linear map, so it is refused.
+// A custom gate whose body reads amplitudes (gate-expression IF) or resets a wire is not one linear map, so it is refused.
 const densityGateKernel = (
   gate: CircuitGate,
   qubitCount: number,
@@ -285,8 +285,10 @@ const densityGateKernel = (
   librarySources: Record<string, string>,
   log: string[],
 ) => {
-  if (customGateReadsAmplitudes(String(gate.type), librarySources)) {
-    throw new Error(`${gate.type} contains a gate-expression IF, which reads amplitudes and is not supported on a density matrix.`);
+  if (customGateNeedsStateVector(String(gate.type), librarySources)) {
+    throw new Error(
+      `${gate.type} contains a gate-expression IF or a RESET (SET … 0p), which is not supported inside a custom gate on a density matrix.`,
+    );
   }
   return (column: Complex[]): Complex[] => {
     const result = runRegisteredGate(column, qubitCount, gate, measurements, librarySources);

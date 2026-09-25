@@ -305,12 +305,13 @@ export class PhysicsEngine {
   }
 
   /**
-   * View raw simulator amplitudes as a state without copying. `qubitCount`
-   * defaults to the vector width; callers pass it when a gate addresses the
-   * register with an explicit width.
+   * View raw simulator amplitudes as a state without copying. The width is the
+   * larger of `qubitCount` and the vector's own width: custom gates append |0⟩
+   * workspace wires as low-order bits, so callers holding the logical width keep
+   * the same qubit indices.
    */
-  fromAmplitudes(amplitudes: Complex[], qubitCount = this.resolveQubitCount(amplitudes, 0)): StateVectorState {
-    return stateVector(amplitudes, qubitCount);
+  fromAmplitudes(amplitudes: Complex[], qubitCount = 0): StateVectorState {
+    return stateVector(amplitudes, this.resolveQubitCount(amplitudes, qubitCount));
   }
 
   /** The computational basis state |index⟩. */
@@ -582,7 +583,7 @@ export class PhysicsEngine {
 
   inspectGlobal(state: QuantumState): GlobalInspection {
     // Diagnoses the state as given, so it deliberately skips input validation.
-    const probabilities = this.probabilities(state);
+    const probabilities = state.kind === 'stateVector' ? basisProbabilities(state.amplitudes) : densityProbabilities(state.rho);
     const globalPurity = this.globalPurity(state);
     return {
       qubitCount: state.qubitCount,

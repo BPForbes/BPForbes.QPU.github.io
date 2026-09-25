@@ -341,7 +341,8 @@ const simulateDocTable = (source: string, library: Record<string, string>): DocT
     const outputs = outputColumns.map((name) => {
       const qubit = registerQubit(compiled.tokenMap, name);
       const logged = executed.log.reduce<number | undefined>((found, line) => {
-        const match = line.match(new RegExp(`Measured q${qubit} = [01] \\(P\\(1\\)=([0-9.]+)\\)`));
+        // X/Y measurements log their basis; P(1) is then the probability of reading 1 in that basis.
+        const match = line.match(new RegExp(`Measured q${qubit}(?: in [XY] basis)? = [01] \\(P\\(1\\)=([0-9.]+)\\)`));
         return match ? Number(match[1]) : found;
       }, undefined);
       if (logged !== undefined) return bitFromProbability(logged, 5e-3);

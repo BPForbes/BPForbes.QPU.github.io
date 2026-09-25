@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { compileQpuProtocol } from '../compiler/qpuAst';
-import { applyGate, executeCircuit, runCircuit, stepCircuitGate } from '../engine';
+import { complex } from '../complex';
+import { protocolDocEntry } from '../../data/learning/docEntries';
+import { applyGate, executeCircuit, measureAll, projectStateOntoQubits, runCircuit, stepCircuitGate } from '../engine';
 import { registerCustomGate } from '../gates/customGateEngine';
 import { refreshCustomGateRegistry } from '../gates/registry';
 import { physics } from '../physics/PhysicsEngine';
@@ -114,5 +116,62 @@ describe('gate noise on overlapping wires', () => {
     const aliased = gate('cx', 'CNOT', 0, [0], [0]);
     const run = executeCircuit(1, [aliased], [], undefined, { noise: { gate: [physics.channels.bitFlip(1)] } });
     expect(physics.probabilities(run.state)[1]).toBeCloseTo(1, 12);
+  });
+});
+
+describe('CodeRabbit findings on 152a6bb', () => {
+  beforeEach(() => {
+    vi.stubGlobal('sessionStorage', {
+      storage: {} as Record<string, string>,
+      setItem(key: string, value: string) { this.storage[key] = value; },
+      getItem(key: string) { return this.storage[key] ?? null; },
+      removeItem(key: string) { delete this.storage[key]; },
+    });
+    // SET O 0p compiles to a RESET inside the custom gate.
+    registerCustomGate({
+      id: 'FreshCopy',
+      source: 'PARAMS: A:1\nMAIN-PROCESS FreshCopy\nCREATETOKEN -I O\nSET O 0p\nCNOT -I A -O O\nRETURNVALS O',
+    });
+    refreshCustomGateRegistry();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    refreshCustomGateRegistry();
+  });
+
+  it('doc tables read X-basis measurement logs instead of falling back to Z', () => {
+    // Out is |+⟩, which reads 0 with certainty in X (in Z it would be a 50/50 "sp").
+    const entry = protocolDocEntry(`PARAMS: A:state
+MAIN-PROCESS PlusInX
+CREATETOKEN -I Out
+SET Out 0p
+H -I Out -O Out
+MEASURE -I Out -BASIS X
+RETURNVALS A Out`);
+    expect(entry?.table?.rows.map((row) => row.at(-1))).toEqual(['0', '0']);
+  });
+
+  it('refuses a custom gate containing RESET on a density matrix, but runs it on a state vector', () => {
+    const compiled = compileQpuProtocol('PARAMS: A:1\nMAIN-PROCESS UseCopy\nCREATETOKEN -I B\nFreshCopy -I A -O B\nRETURNVALS A B');
+    const params = compiled.processParams.map((param) => param.qubitIndex);
+    expect(compiled.gates.some((entry) => entry.type === 'FreshCopy')).toBe(true);
+    expect(() => executeCircuit(compiled.qubitCount, compiled.gates, ['1p'], params, { representation: 'densityMatrix' }))
+      .toThrow(/RESET/);
+    expect(() => executeCircuit(compiled.qubitCount, compiled.gates, ['1p'], params)).not.toThrow();
+  });
+
+  it('fromAmplitudes keeps workspace wires a custom gate appended', () => {
+    // q0 = |1⟩ with one appended |0⟩ workspace wire: index 0b10.
+    const widened = [complex(), complex(), complex(1), complex()];
+    expect(physics.fromAmplitudes(widened, 1).qubitCount).toBe(2);
+    const measured = measureAll(widened, 1, {});
+    expect(measured.measurements).toEqual({ 0: 1 });
+    expect(projectStateOntoQubits(widened, 1, [0])[1].re).toBeCloseTo(1, 12);
+  });
+
+  it('inspectGlobal diagnoses an unnormalized state instead of throwing', () => {
+    const unnormalized = physics.fromAmplitudes([complex(1), complex(1)]);
+    expect(physics.inspectGlobal(unnormalized).normalization).toBeCloseTo(2, 12);
   });
 });
