@@ -7,6 +7,7 @@
  * √(1 − λ) = e^{−t/T2 + t/(2T1)}. Physical models require T2 ≤ 2·T1.
  */
 import { amplitudeDamping } from './AmplitudeDamping';
+import { generalizedAmplitudeDamping } from './GeneralizedAmplitudeDamping';
 import { phaseDamping } from './Dephasing';
 import type { DecoherenceModel, NoiseChannel, PhysicalTimingModel } from './NoiseModel';
 
@@ -24,13 +25,20 @@ export const validateDecoherence = ({ t1, t2 }: DecoherenceModel) => {
   }
 };
 
-export const decoherenceChannels = (model: DecoherenceModel, duration: number): NoiseChannel[] => {
+/**
+ * `excitedPopulation` (from physics.frequency.thermalExcitedPopulation) makes T1
+ * relax toward a thermal state instead of |0⟩.
+ */
+export const decoherenceChannels = (model: DecoherenceModel, duration: number, excitedPopulation = 0): NoiseChannel[] => {
   validateDecoherence(model);
   if (!Number.isFinite(duration) || duration < 0) throw new RangeError(`Duration must be non-negative (got ${duration}).`);
   if (duration === 0) return [];
   const { t1, t2 } = model;
   const channels: NoiseChannel[] = [];
-  if (t1 !== undefined) channels.push(amplitudeDamping(1 - Math.exp(-duration / t1)));
+  if (t1 !== undefined) {
+    const gamma = 1 - Math.exp(-duration / t1);
+    channels.push(excitedPopulation > 0 ? generalizedAmplitudeDamping(gamma, excitedPopulation) : amplitudeDamping(gamma));
+  }
   if (t2 !== undefined) {
     const coherenceExponent = -2 * duration / t2 + (t1 !== undefined ? duration / t1 : 0);
     const lambda = Math.min(1, Math.max(0, 1 - Math.exp(coherenceExponent)));

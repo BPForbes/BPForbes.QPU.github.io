@@ -147,3 +147,28 @@ export const unitaryFromHermitian = (hamiltonian: ComplexMatrix, time: number): 
   return cosPart.map((row, i) =>
     row.map((value, j) => complex(value.re + sinPart[i][j].im, value.im - sinPart[i][j].re)));
 };
+
+/**
+ * exp(−i H t) for a 2×2 Hermitian H in closed form. Writing H = c₀I + h·σ,
+ * U = e^{−ic₀t}[cos(|h|t) I − i sin(|h|t) ĥ·σ]; used for the many short steps
+ * of single-qubit pulse evolution, where an eigensolver per step would dominate.
+ */
+export const qubitUnitary = (hamiltonian: ComplexMatrix, time: number): Complex[][] => {
+  const a = hamiltonian[0][0].re;
+  const d = hamiltonian[1][1].re;
+  const b = hamiltonian[0][1];
+  const c0 = (a + d) / 2;
+  const hz = (a - d) / 2;
+  const hx = b.re;
+  const hy = -b.im;
+  const norm = Math.hypot(hx, hy, hz);
+  const cos = Math.cos(norm * time);
+  const sinc = norm < 1e-300 ? time : Math.sin(norm * time) / norm;
+  const global = complex(Math.cos(c0 * time), -Math.sin(c0 * time));
+  // cos·I − i·sinc·(hx X + hy Y + hz Z)
+  const m00 = complex(cos, -sinc * hz);
+  const m11 = complex(cos, sinc * hz);
+  const m01 = complex(-sinc * hy, -sinc * hx);
+  const m10 = complex(sinc * hy, -sinc * hx);
+  return [[mul(global, m00), mul(global, m01)], [mul(global, m10), mul(global, m11)]];
+};

@@ -34,7 +34,35 @@ import { densityFidelity, pureMixedFidelity, pureStateFidelity } from './analysi
 import { analyzeInterference, type InterferenceAnalysis, type InterferenceOperation } from './analysis/Interference';
 import { comparePhase, type PhaseComparison, relativePhases, type RelativePhase } from './analysis/Phase';
 import { isPure, linearEntropy, normalizedMixedness, PURE_TOLERANCE, purity } from './analysis/Purity';
-import { propagator, type Hamiltonian } from './dynamics/Hamiltonian';
+import { propagator, timeDependentPropagator, type Hamiltonian, type TimeDependentHamiltonian } from './dynamics/Hamiltonian';
+import { driveDiagnostics } from './frequency/DriveDiagnostics';
+import {
+  segmentPropagators,
+  profileFor,
+  transitionFrequencies,
+  type PhysicalSegment,
+  type PhysicalSystem,
+} from './frequency/PhysicalEvolution';
+import {
+  deBroglieWavelength,
+  deBroglieWavelengthForMass,
+  energyGap,
+  joulesToElectronVolts,
+  photonEnergy,
+  photonWavelength,
+  thermalExcitedPopulation,
+  transitionFrequency,
+} from './frequency/PlanckEinstein';
+import { calibratedPulse, envelopeArea, envelopeAt } from './frequency/Pulses';
+import {
+  actualTransitionFrequency,
+  freePrecessionPhase,
+  idleHamiltonian,
+  profileFromEnergies,
+} from './frequency/QubitProfile';
+import { advanceClock, startClock } from './frequency/PhysicalClock';
+import { angularFrequency, DEFAULT_UNITS, fromHertz, toHertz } from './frequency/Units';
+import { generalizedAmplitudeDamping } from './noise/GeneralizedAmplitudeDamping';
 import {
   densityMeasurementDiagnostics,
   measureDensityMatrix,
@@ -166,8 +194,40 @@ export class PhysicsEngine {
     depolarizing,
     amplitudeDamping,
     phaseDamping,
+    generalizedAmplitudeDamping,
     /** T1/T2 channels for a physical duration (same unit as T1/T2). */
     decoherence: decoherenceChannels,
+  } as const;
+
+  /**
+   * Energy/frequency physics: Planck–Einstein relations (SI), qubit profiles,
+   * the physical clock, calibrated drive pulses, and resonance diagnostics.
+   * Simulation frequencies are cycles per time unit (GHz for ns).
+   */
+  readonly frequency = {
+    photonEnergy,
+    energyGap,
+    transitionFrequency,
+    joulesToElectronVolts,
+    photonWavelength,
+    thermalExcitedPopulation,
+    deBroglieWavelength,
+    deBroglieWavelengthForMass,
+    toHertz,
+    fromHertz,
+    angularFrequency,
+    defaultUnits: DEFAULT_UNITS,
+    profileFromEnergies,
+    actualTransitionFrequency,
+    idleHamiltonian,
+    freePrecessionPhase,
+    transitionFrequencies,
+    calibratedPulse,
+    envelopeAt,
+    envelopeArea,
+    driveDiagnostics,
+    startClock,
+    advanceClock,
   } as const;
 
   // ── Validation ─────────────────────────────────────────────────────────
@@ -342,6 +402,45 @@ export class PhysicsEngine {
       if (state.kind === 'stateVector') return stateVector(kernel(state.amplitudes), state.qubitCount) as S;
       return densityState(conjugateByLinearMap(state.rho, kernel), state.qubitCount) as S;
     });
+  }
+
+  /** Evolution under H(t) from `start` for `duration` (piecewise-constant midpoint steps). */
+  evolveTimeDependent<S extends QuantumState>(
+    state: S,
+    hamiltonian: TimeDependentHamiltonian,
+    start: number,
+    duration: number,
+    hbar = 1,
+  ): S {
+    return this.applyUnitary(state, hamiltonian.targets, timeDependentPropagator(hamiltonian, start, duration, hbar));
+  }
+
+  /**
+   * Coherent physical evolution for one time segment: every wire evolves under
+   * its idle Hamiltonian (so idle qubits precess), plus couplings and any drive
+   * pulses, in the system's frame and approximation.
+   */
+  evolvePhysical<S extends QuantumState>(state: S, system: PhysicalSystem, segment: PhysicalSegment): S {
+    return this.guard(state, () => segmentPropagators(system, state.qubitCount, segment)
+      .reduce((current, { wires, unitary }) => this.applyUnitary(current, wires, unitary), state));
+  }
+
+  /**
+   * T1/T2 decoherence from each wire's profile over the same physical duration
+   * as coherent evolution; a profile temperature relaxes toward the Boltzmann
+   * population of its transition instead of |0⟩.
+   */
+  applyPhysicalDecoherence(state: QuantumState, system: PhysicalSystem, start: number, duration: number): QuantumState {
+    const units = system.units ?? DEFAULT_UNITS;
+    return this.guard(state, () => Array.from({ length: state.qubitCount }, (_, wire) => wire).reduce((current, wire) => {
+      const profile = profileFor(system, wire);
+      if (profile.t1 === undefined && profile.t2 === undefined) return current;
+      const excited = profile.temperature
+        ? thermalExcitedPopulation(toHertz(actualTransitionFrequency(profile, start), units), profile.temperature)
+        : 0;
+      return decoherenceChannels({ t1: profile.t1, t2: profile.t2 }, duration, excited)
+        .reduce((next, channel) => this.applyChannel(next, channel, [wire]), current);
+    }, state));
   }
 
   /** Continuous evolution under a time-independent Hamiltonian: U = e^{−iHt/ħ}. */

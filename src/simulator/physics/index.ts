@@ -13,7 +13,19 @@ export type { EntanglementAssessment, EntanglementMethod, EntanglementStatus } f
 export type { InterferenceAnalysis, InterferenceOperation, InterferenceTerm } from './analysis/Interference';
 export type { PhaseComparison, PhaseRelation, RelativePhase } from './analysis/Phase';
 export type { DecoherenceModel, NoiseChannel, NoiseModel, PhysicalTimingModel } from './noise/NoiseModel';
-export type { Hamiltonian } from './dynamics/Hamiltonian';
+export type { Hamiltonian, TimeDependentHamiltonian } from './dynamics/Hamiltonian';
+export type { DriveDiagnostics, DriveRegime } from './frequency/DriveDiagnostics';
+export type {
+  CouplingKind,
+  DriveApproximation,
+  PhysicalSegment,
+  PhysicalSystem,
+  QubitCoupling,
+} from './frequency/PhysicalEvolution';
+export type { PhysicalClock } from './frequency/PhysicalClock';
+export type { ControlPulse, PulseEnvelope } from './frequency/Pulses';
+export type { PhysicalFrame, QubitPhysicsProfile } from './frequency/QubitProfile';
+export type { PhysicalUnits } from './frequency/Units';
 export type { ComplexMatrix } from './numerics/linearAlgebra';
 export { PhysicsValidationError } from './validation/Validation';
 export type { StateValidationOptions, ValidationTolerances } from './validation/Validation';
