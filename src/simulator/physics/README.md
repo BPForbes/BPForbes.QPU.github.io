@@ -111,7 +111,8 @@ only).
 
 Physics reaches users deliberately, not automatically: `MEASURE -BASIS X|Y|Z`
 is the only language addition, and the Physics inspector (Particle
-visualization page) offers subsystem diagnostics and a noisy run. Partial
+visualization page) offers subsystem diagnostics and a noisy run with
+per-qubit profiles and a gate-by-gate trace (`executeCircuit`'s `onStep`). Partial
 traces, Hamiltonians, and Kraus operators stay API-only.
 
 ## Representations and cost

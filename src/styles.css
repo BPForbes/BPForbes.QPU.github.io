@@ -999,3 +999,17 @@ html.embed-mode .controls {
 .physics-toggle input { width: auto !important; }
 .physics-frequency { display: grid; gap: .5rem; }
 .physics-frequency h4 { margin: .25rem 0 0; font-size: .85rem; }
+.physics-table-wrap { overflow-x: auto; }
+.physics-table { border-collapse: collapse; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.physics-table th, .physics-table td { padding: .2rem .5rem; text-align: left; border-bottom: 1px solid rgba(148, 163, 184, .18); }
+.physics-table thead th { color: #94a3b8; font-weight: 500; }
+.physics-profile-table input { width: 6rem; }
+.physics-profiles summary { cursor: pointer; font-size: .85rem; color: #cbd5e1; }
+.physics-profiles { display: grid; gap: .4rem; }
+.physics-trace { display: grid; gap: .5rem; }
+.physics-trace-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.physics-trace-controls input[type="range"] { flex: 1 1 10rem; }
+.physics-strip { width: 100%; height: 2.5rem; background: rgba(148, 163, 184, .06); border-radius: .4rem; }
+.physics-strip polyline { fill: none; stroke: #67e8f9; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.physics-strip line { stroke: #c4b5fd; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.physics-strip-figure { margin: 0; display: grid; gap: .2rem; }

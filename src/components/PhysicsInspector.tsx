@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import type { Complex } from '../simulator/complex';
 import { executeCircuit, type PhysicalRunOptions } from '../simulator/engine';
 import { FrequencyPanel } from './FrequencyPanel';
+import { PhysicalTrace, type TraceStep } from './PhysicalTrace';
+import { buildProfile, hasOverride, type ProfileField, type ProfileOverrides, QubitProfileTable } from './QubitProfileTable';
 import { physics } from '../simulator/physics/PhysicsEngine';
 import type {
   EntanglementAssessment,
@@ -50,6 +52,8 @@ type NoisyRun = {
   idealMeasurements: MeasurementMap;
   physicalTime?: number;
   leakage?: Record<number, number>;
+  trace: TraceStep[];
+  id: number;
 };
 
 // Deterministic draws so the ideal and noisy runs sample MEASURE with the same random numbers.
@@ -144,6 +148,9 @@ export function PhysicsInspector({
   const [temperatureMK, setTemperatureMK] = useState('');
   // Blank keeps the ideal two-level qubit; a value adds the |2⟩ level so pulses can leak.
   const [anharmonicityMHz, setAnharmonicityMHz] = useState('');
+  // Per-qubit overrides of the shared profile, keyed by simulator wire.
+  const [overrides, setOverrides] = useState<ProfileOverrides>({});
+  const [frequencyWire, setFrequencyWire] = useState<number | 'shared'>('shared');
   const [physicalMode, setPhysicalMode] = useState(false);
   const [frame, setFrame] = useState<PhysicalFrame>('rotating');
   const [gateMode, setGateMode] = useState<'matrix' | 'drive'>('matrix');
@@ -159,14 +166,31 @@ export function PhysicsInspector({
     [selected, qubitCount, physicalQubitIndices, current.qubitCount],
   );
 
-  const profile = useMemo<QubitPhysicsProfile>(() => ({
-    transitionFrequency: f01,
-    ...(offsetMHz ? { frequencyOffset: offsetMHz / 1000 } : {}),
-    ...(t1.trim() && physicalMode ? { t1: Number(t1) } : {}),
-    ...(t2.trim() && physicalMode ? { t2: Number(t2) } : {}),
-    ...(temperatureMK.trim() ? { temperature: Number(temperatureMK) / 1000 } : {}),
-    ...(anharmonicityMHz.trim() ? { anharmonicity: Number(anharmonicityMHz) / 1000 } : {}),
+  const wires = useMemo(
+    () => Array.from({ length: qubitCount }, (_, display) => ({
+      wire: physicalQubitIndices[display] ?? display,
+      label: qubitLabels[display] ?? `q${display}`,
+    })),
+    [qubitCount, physicalQubitIndices, qubitLabels],
+  );
+  const wireLabel = (wire: number) => wires.find((entry) => entry.wire === wire)?.label ?? `w${wire}`;
+
+  // T1/T2 belong to the qubit profile only on the physical clock; otherwise they feed the noise model.
+  const shared = useMemo(() => ({
+    f01: String(f01),
+    offsetMHz: String(offsetMHz),
+    t1: physicalMode ? t1 : '',
+    t2: physicalMode ? t2 : '',
+    temperatureMK,
+    anharmonicityMHz,
   }), [f01, offsetMHz, t1, t2, temperatureMK, anharmonicityMHz, physicalMode]);
+  const profile = useMemo<QubitPhysicsProfile>(() => buildProfile(shared), [shared]);
+  const profiles = useMemo(() => Object.fromEntries(Object.entries(overrides)
+    .filter(([, override]) => hasOverride(override))
+    .map(([wire, override]) => [Number(wire), buildProfile(shared, override)])), [shared, overrides]);
+  const frequencyProfile = frequencyWire === 'shared' ? profile : profiles[frequencyWire] ?? profile;
+  const setOverride = (wire: number, field: ProfileField, value: string) =>
+    setOverrides((current) => ({ ...current, [wire]: { ...current[wire], [field]: value } }));
 
   const toggle = (display: number) => setSelected((wires) => (
     wires.includes(display) ? wires.filter((wire) => wire !== display) : [...wires, display].sort((a, b) => a - b)
@@ -179,7 +203,7 @@ export function PhysicsInspector({
       const noise = buildNoiseModel(channel, strength, physicalMode ? '' : t1, physicalMode ? '' : t2, duration);
       const physical: PhysicalRunOptions | undefined = physicalMode
         ? {
-          system: { defaultProfile: profile, frame, approximation: 'rwa' },
+          system: { defaultProfile: profile, profiles, frame, approximation: 'rwa' },
           timing: { defaultGateDuration: Number(duration) || 1 },
           gates: gateMode,
         }
@@ -187,13 +211,43 @@ export function PhysicsInspector({
       const seed = Date.now();
       const common = { librarySources: librarySources() };
       const params = paramQubitIndices?.length ? paramQubitIndices : undefined;
+      // The ideal run keeps its (pure) register after every gate so each noisy step can be compared with it.
+      const idealSteps: QuantumState[] = [];
+      const ideal = executeCircuit(simulationQubitCount, gates, startStates, params, {
+        ...common,
+        random: seededRandom(seed),
+        onStep: (step) => {
+          idealSteps[step.index] = step.state;
+        },
+      });
+      const trace: TraceStep[] = [];
       const noisy = executeCircuit(simulationQubitCount, gates, startStates, params, {
         ...common,
         noise,
         random: seededRandom(seed),
         ...(physical ? { physical } : {}),
+        onStep: (step) => {
+          const reference = idealSteps[step.index];
+          const stepWidth = Math.max(step.state.qubitCount, reference.qubitCount);
+          const frequencies = physical && step.physicalTime !== undefined
+            ? physics.frequency.transitionFrequencies(physical.system, step.state.qubitCount, step.physicalTime)
+            : undefined;
+          const targets = [...step.gate.controls, ...step.gate.targets].map(wireLabel).join(' ');
+          trace.push({
+            label: `${String(step.gate.type)}${targets ? ` ${targets}` : ''}`,
+            ...(step.physicalTime === undefined ? {} : { physicalTime: step.physicalTime }),
+            fidelity: physics.fidelity(physics.expandRegister(step.state, stepWidth), physics.expandRegister(reference, stepWidth)),
+            qubits: wires.filter(({ wire }) => wire < step.state.qubitCount).map(({ wire, label }) => ({
+              wire,
+              label,
+              ...(frequencies ? { frequency: frequencies[wire] } : {}),
+              pOne: physics.probabilityOfOne(step.state, wire),
+              purity: physics.purity(physics.reducedState(step.state, [wire])),
+              ...(step.leakage?.[wire] !== undefined ? { leakage: step.leakage[wire] } : {}),
+            })),
+          });
+        },
       });
-      const ideal = executeCircuit(simulationQubitCount, gates, startStates, params, { ...common, random: seededRandom(seed) });
       const width = Math.max(noisy.state.qubitCount, ideal.state.qubitCount);
       setNoisyRun({
         noisy: physics.expandRegister(noisy.state, width),
@@ -202,6 +256,8 @@ export function PhysicsInspector({
         idealMeasurements: ideal.measurements,
         physicalTime: noisy.physicalTime,
         leakage: noisy.leakage,
+        trace,
+        id: seed,
       });
     } catch (caught) {
       setNoisyRun(null);
@@ -314,6 +370,16 @@ export function PhysicsInspector({
         </label>
         <button disabled={gates.length === 0} onClick={runWithNoise} type="button">Run with noise</button>
       </div>
+      {physicalMode && (
+        <details className="physics-profiles">
+          <summary>Per-qubit profiles{Object.keys(profiles).length > 0 ? ` (${Object.keys(profiles).length} customized)` : ''}</summary>
+          <p className="physics-note">
+            Real qubits differ: each has its own frequency, coherence times, and anharmonicity. A blank cell uses the
+            shared value above (shown greyed).
+          </p>
+          <QubitProfileTable onChange={setOverride} overrides={overrides} shared={shared} wires={wires} />
+        </details>
+      )}
 
       {error && <p className="physics-error" role="alert">{error}</p>}
 
@@ -341,6 +407,12 @@ export function PhysicsInspector({
           </dl>
           <h3>Noisy subsystem</h3>
           <SubsystemReport state={noisyRun.noisy} subsystem={noisySubsystem} />
+          <h3>Step through the run</h3>
+          <p className="physics-note">
+            The noisy run after each gate, compared with the ideal run after the same gate. The strip plots fidelity
+            with the ideal run across the circuit.
+          </p>
+          <PhysicalTrace key={noisyRun.id} steps={noisyRun.trace} />
         </div>
       )}
 
@@ -349,7 +421,21 @@ export function PhysicsInspector({
         The qubit above as a physical two-level system: its transition frequency fixes the energy gap (E = hf), and a
         microwave drive rotates it fastest on resonance. Frequencies are in GHz and times in ns.
       </p>
-      <FrequencyPanel profile={profile} />
+      {physicalMode && Object.keys(profiles).length > 0 && (
+        <div className="physics-noise-form">
+          <label>
+            Qubit
+            <select
+              onChange={(event) => setFrequencyWire(event.target.value === 'shared' ? 'shared' : Number(event.target.value))}
+              value={String(frequencyWire)}
+            >
+              <option value="shared">Shared profile</option>
+              {wires.map(({ wire, label }) => <option key={wire} value={wire}>{label}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
+      <FrequencyPanel profile={physicalMode ? frequencyProfile : profile} />
     </section>
   );
 }

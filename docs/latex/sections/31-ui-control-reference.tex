@@ -394,8 +394,18 @@ act over that time. Choose the rotating or lab frame, and ideal matrices or
 calibrated microwave pulses for X, Y, RX, and RY. An anharmonicity (MHz, blank
 for an ideal two-level qubit) adds the $\ket2$ level, so pulses can leak.
 Shows the elapsed physical time and, per wire, the leaked population.\\
+Physics inspector: Per-qubit profiles & In physical timing, a table with one
+row per qubit for $f_{01}$, offset, $T_1$, $T_2$, temperature, and
+anharmonicity. A blank cell uses the shared value above it, so each qubit can
+have its own frequency and coherence while the rest stay uniform.\\
+Physics inspector: Step through the run & After a noisy run, moves gate by
+gate through it (slider or Previous/Next). Each step shows the physical time,
+the fidelity with the ideal run after the same gate, and per qubit its current
+$f_{01}$, $P(1)$, purity, and leakage so far. A strip plots fidelity across the
+whole circuit.\\
 Physics inspector: Frequency and resonance & Energy gap, photon wavelength,
-and thermal population for the qubit profile; for a drive (offset from the
+and thermal population for the qubit profile (with per-qubit profiles, a
+Qubit menu picks which one); for a drive (offset from the
 nominal $f_{01}$, Rabi frequency, duration, envelope) the detuning,
 generalized Rabi frequency, rotation angle, maximum transfer, AC Stark shift
 when far off resonance, and the simulated $P(1)$; with an anharmonicity, also

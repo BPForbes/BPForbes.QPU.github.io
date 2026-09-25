@@ -114,6 +114,36 @@ describe('physical simulation mode', () => {
     expect(second.physicalTime).toBe(40);
   });
 
+  it('per-qubit profiles give each wire its own frequency error', () => {
+    // Only q1 is mistuned: its |+⟩ picks up phase, q0 stays ideal.
+    const gates = [gate('h0', 'H', 0, [0]), gate('h1', 'H', 1, [1]), gate('wait', 'Z', 2, [2]), gate('h0b', 'H', 3, [0]), gate('h1b', 'H', 4, [1])];
+    const run = executeCircuit(3, gates, [], undefined, {
+      physical: physical({}, { profiles: { 1: { transitionFrequency: 5.2, frequencyOffset: 0.002 } } }),
+    });
+    expect(physics.probabilityOfOne(run.state, 0)).toBeCloseTo(0, 9);
+    // q1 precesses for the 60 ns between its two H gates: P(1) = sin²(φ/2), φ = 2π·δf·60.
+    expect(physics.probabilityOfOne(run.state, 1)).toBeCloseTo(Math.sin((2 * Math.PI * 0.002 * 60) / 2) ** 2, 9);
+    expect(physics.frequency.transitionFrequencies(physical({}, { profiles: { 1: { transitionFrequency: 5.2 } } }).system, 3))
+      .toEqual([5, 5.2, 5]);
+  });
+
+  it('onStep reports the register, clock, and cumulative leakage after every gate', () => {
+    const steps: { index: number; time?: number; leak?: number; pOne: number }[] = [];
+    const transmon = { transitionFrequency: 5, anharmonicity: -0.2 };
+    const gates = [gate('x', 'X', 0, [0]), gate('x2', 'X', 1, [0]), gate('m', 'MEASURE', 2, [0])];
+    const run = executeCircuit(1, gates, [], undefined, {
+      physical: physical({ gates: 'drive', envelope: { kind: 'gaussian', sigma: 1.5 }, timing: { defaultGateDuration: 6 }, decoherence: false }, { defaultProfile: transmon }),
+      random: () => 0.5,
+      onStep: (step) => steps.push({ index: step.index, time: step.physicalTime, leak: step.leakage?.[0], pOne: physics.probabilityOfOne(step.state, 0) }),
+    });
+    expect(steps.map((step) => step.index)).toEqual([0, 1, 2]);
+    expect(steps.map((step) => step.time)).toEqual([6, 12, 18]);
+    expect(steps[1].leak).toBeGreaterThan(steps[0].leak ?? Infinity);
+    expect(steps[2].leak).toBe(steps[1].leak);
+    expect(run.leakage?.[0]).toBe(steps[2].leak);
+    expect(steps[2].pOne).toBe(physics.probabilityOfOne(run.state, 0));
+  });
+
   it('leaves the ideal path untouched when physical mode is off', () => {
     const run = executeCircuit(1, [gate('h', 'H', 0, [0])]);
     expect(run.physicalTime).toBeUndefined();

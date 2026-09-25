@@ -183,6 +183,8 @@ export type ExecuteOptions = {
   /** Sampler for MEASURE and RESET outcomes (defaults to Math.random). */
   random?: () => number;
   physical?: PhysicalRunOptions;
+  /** Called by executeCircuit after every gate with the register at that point (for step-by-step traces). */
+  onStep?: (step: ExecutionStep) => void;
   /** Physical clock at the start of this step (carry `physicalTime` from the previous result). */
   physicalTime?: number;
 };
@@ -465,6 +467,16 @@ const initializationSummary = (qubitCount: number, startStates: ParticleStartSta
     ? paramQubitIndices.map((qubit) => startStates[qubit] ?? '0p').join(' ') || '(no mapped params)'
     : Array.from({ length: qubitCount }, (_, index) => startStates[index] ?? '0p').join(' '));
 
+/** One gate of an executeCircuit run; `leakage` is cumulative up to and including this gate. */
+export type ExecutionStep = {
+  index: number;
+  gate: CircuitGate;
+  state: QuantumState;
+  measurements: MeasurementMap;
+  physicalTime?: number;
+  leakage?: Record<number, number>;
+};
+
 const sumLeakage = (total: Record<number, number> = {}, step: Record<number, number> = {}) =>
   Object.entries(step).reduce<Record<number, number>>((sum, [wire, population]) => ({
     ...sum,
@@ -487,19 +499,28 @@ export const executeCircuit = (
     .slice()
     .sort((a, b) => a.step - b.step)
     .reduce<QuantumExecutionResult>(
-      (result, gate) => {
+      (result, gate, index) => {
         const next = applyGateToState(result.state, gate, result.measurements, {
           ...options,
           checkpoints,
           measurementBases: result.measurementBases,
           physicalTime: result.physicalTime,
         });
+        const leakage = next.leakage || result.leakage ? sumLeakage(result.leakage, next.leakage) : undefined;
+        options.onStep?.({
+          index,
+          gate,
+          state: next.state,
+          measurements: next.measurements,
+          ...(next.physicalTime === undefined ? {} : { physicalTime: next.physicalTime }),
+          ...(leakage ? { leakage } : {}),
+        });
         return {
           state: next.state,
           measurements: next.measurements,
           measurementBases: next.measurementBases,
           ...(next.physicalTime === undefined ? {} : { physicalTime: next.physicalTime }),
-          ...(next.leakage || result.leakage ? { leakage: sumLeakage(result.leakage, next.leakage) } : {}),
+          ...(leakage ? { leakage } : {}),
           log: [...result.log, ...next.log],
           particles: next.particles ?? result.particles,
           transitions: [...(result.transitions ?? []), ...(next.transitions ?? [])],
