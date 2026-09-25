@@ -981,3 +981,17 @@ html.embed-mode .controls {
 .recursion-frame-region.cycle { border-top: 0; color: #64748b; font-size: .5rem; }
 .recursion-frame-inspect summary { cursor: pointer; color: #67e8f9; font-weight: 800; }
 .recursion-frame-inspect[open] summary { margin-bottom: .5rem; }
+.physics-inspector { grid-column: 1 / -1; display: grid; gap: .6rem; }
+.physics-wires { display: flex; flex-wrap: wrap; gap: .5rem .9rem; border: 1px solid rgba(148, 163, 184, .25); border-radius: .75rem; padding: .5rem .75rem; }
+.physics-wires label { display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; }
+.physics-metrics { display: grid; grid-template-columns: minmax(9rem, max-content) 1fr; gap: .3rem .9rem; margin: 0; font-size: .85rem; }
+.physics-metrics dt { color: #94a3b8; }
+.physics-metrics dd { margin: 0; font-variant-numeric: tabular-nums; }
+.physics-entanglement.entangled { color: #c4b5fd; }
+.physics-entanglement.inconclusive { color: #94a3b8; font-style: italic; }
+.physics-note { margin: 0; color: #94a3b8; font-size: .8rem; }
+.physics-noise-form { display: flex; flex-wrap: wrap; gap: .6rem; align-items: end; }
+.physics-noise-form label { display: grid; gap: .2rem; font-size: .78rem; color: #cbd5e1; }
+.physics-noise-form input, .physics-noise-form select { min-width: 0; width: 8rem; }
+.physics-error { margin: 0; color: #fda4af; font-size: .85rem; }
+.physics-noisy-result { display: grid; gap: .5rem; }

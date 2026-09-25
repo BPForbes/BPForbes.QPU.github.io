@@ -29,6 +29,7 @@ import { WorkbenchDocs } from './components/docs/WorkbenchDocs';
 import { CustomGatePanel, GatePalette, SelectorMapDiagram } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
 import { OutputPanel } from './components/OutputPanel';
+import { PhysicsInspector } from './components/PhysicsInspector';
 import { ParticleView } from './components/ParticleView';
 import {
   playgroundPageDomId,
@@ -1761,6 +1762,17 @@ function App() {
             qubitCount={displayQubitCount}
             qubitLabels={displayQubitLabels}
             state={displayState}
+          />
+          <PhysicsInspector
+            gates={orderedGates}
+            librarySources={getCatalogLibrarySources}
+            paramQubitIndices={paramQubitIndices}
+            physicalQubitIndices={displayQubitIndices}
+            qubitCount={displayQubitCount}
+            qubitLabels={displayQubitLabels}
+            simulationQubitCount={simulationQubitCount}
+            startStates={startStates}
+            state={state}
           />
         </div>
       </PlaygroundPage>}
