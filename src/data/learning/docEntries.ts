@@ -14,8 +14,8 @@ import {
   getReturnValTokens,
   type TruthTable,
 } from '../../simulator/compiler';
-import { magnitudeSquared } from '../../simulator/complex';
-import { hasBit, runCircuit } from '../../simulator/engine';
+import { runCircuit } from '../../simulator/engine';
+import { physics } from '../../simulator/physics/PhysicsEngine';
 import type { ParticleStartState } from '../../simulator/types';
 import { getCustomGateRecord, type CustomGateRecord } from '../../simulator/gates/customGateEngine';
 import { docTargets, gateDocTarget, gateHelp, type DocTarget } from './learningHelp';
@@ -139,10 +139,10 @@ export const gateDocs: Record<string, GateDoc> = {
     table: ketTable(['t', "t'"], [['|0⟩', 'e^{−iθ/2}|0⟩'], ['|1⟩', 'e^{iθ/2}|1⟩']]),
   },
   MEASURE: {
-    how: 'M reads the wire. A definite 0 or 1 is read as itself; a superposition is read as 0 or 1 at random, weighted by its amplitudes, and becomes that bit.',
+    how: 'M reads the wire. A definite 0 or 1 is read as itself; a superposition is read as 0 or 1 at random, weighted by its amplitudes, and becomes that bit. -BASIS X or -BASIS Y reads a different observable instead: 0 means |+⟩ (or |+i⟩) and 1 means |−⟩ (or |−i⟩), and the wire is left in that state.',
     target: 'The measured wire is the target, and the meter stays on that qubit wire. A double stroke, not an arrow, drops to the c lane and numbers the bit read at that time. c is a clock for measurements, the only double line, and it cannot take a gate. Later gates can still run on the qubit. Measuring one half of an entangled pair also fixes the other half.',
-    syntax: ['MEASURE -I Q'],
-    table: ketTable(['t before', 'reading'], [['|0⟩', '0 always'], ['|1⟩', '1 always'], ['|+⟩', '0 or 1 (50% each)']], undefined, ['t', 't']),
+    syntax: ['MEASURE -I Q', 'MEASURE -I Q -BASIS X'],
+    table: ketTable(['t before', 'reading'], [['|0⟩', '0 always'], ['|1⟩', '1 always'], ['|+⟩', '0 or 1 (50% each)'], ['|+⟩, -BASIS X', '0 always']], undefined, ['t', 't']),
   },
   NOT: {
     how: 'NOT is the logic spelling of X: it flips the target.',
@@ -337,18 +337,16 @@ const simulateDocTable = (source: string, library: Record<string, string>): DocT
       startStates,
       compiled.processParams.map((param) => param.qubitIndex),
     );
-    const qubitCount = Math.round(Math.log2(executed.state.length));
+    const qubitCount = physics.resolveQubitCount(executed.state, 0);
     const outputs = outputColumns.map((name) => {
       const qubit = registerQubit(compiled.tokenMap, name);
       const logged = executed.log.reduce<number | undefined>((found, line) => {
-        const match = line.match(new RegExp(`Measured q${qubit} = [01] \\(P\\(1\\)=([0-9.]+)\\)`));
+        // X/Y measurements log their basis; P(1) is then the probability of reading 1 in that basis.
+        const match = line.match(new RegExp(`Measured q${qubit}(?: in [XY] basis)? = [01] \\(P\\(1\\)=([0-9.]+)\\)`));
         return match ? Number(match[1]) : found;
       }, undefined);
       if (logged !== undefined) return bitFromProbability(logged, 5e-3);
-      const probabilityOne = executed.state.reduce(
-        (sum, amplitude, basis) => sum + (hasBit(basis, qubit, qubitCount) ? magnitudeSquared(amplitude) : 0),
-        0,
-      );
+      const probabilityOne = physics.probabilityOfOne(physics.fromAmplitudes(executed.state, qubitCount), qubit);
       return bitFromProbability(probabilityOne, 1e-6);
     });
     return [...inputs.map((value) => (value === '1p' ? '1' : '0')), ...outputs];

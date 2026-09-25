@@ -2,7 +2,7 @@ import { compileQpuProtocol } from '../compiler/qpuAst';
 import type { CircuitGate, ExecutionResult, MeasurementMap } from '../types';
 import type { GateDefinition } from './types';
 import { gateIoArity } from './types';
-import { padStateVector } from './operations';
+import { physics } from '../physics/PhysicsEngine';
 import { checkCustomGateReversibility, REVERSIBILITY_CHECK_VERSION, type NestedCustomGateRunner } from './customGateReversibility';
 import { preconfiguredGateMap } from './preconfigured';
 import { conditionSatisfied, remapConditionWires } from './conditions';
@@ -170,6 +170,25 @@ const remapInnerGate = (gate: CircuitGate, remap: Map<number, number>): CircuitG
     : {}),
 });
 
+/**
+ * True when a custom gate (or any custom gate it uses) is not one fixed linear map on its
+ * wires: a gate-expression IF reads amplitudes, and RESET (also what SET … 0p compiles to)
+ * renormalizes and samples. Neither can be lifted to a density matrix column by column.
+ */
+export const customGateNeedsStateVector = (
+  id: string,
+  librarySources: Record<string, string> = {},
+  visiting: Set<string> = new Set(),
+): boolean => {
+  const record = getCustomGateRecord(id);
+  if (!record || visiting.has(record.id)) return false;
+  visiting.add(record.id);
+  const compiled = compileQpuProtocol(record.source, { ...record.librarySources, ...librarySources });
+  return compiled.gates.some((inner) => Boolean(inner.condition?.predicate)
+    || inner.type === 'RESET'
+    || customGateNeedsStateVector(String(inner.type), librarySources, visiting));
+};
+
 // Applying a custom gate expands the saved protocol into ordinary registered gates at runtime.
 /** Custom gates currently expanding, so a gate whose source uses itself fails instead of looping. */
 const expandingCustomGates = new Set<string>();
@@ -206,7 +225,7 @@ const expandCustomGate = (
   const { remap, expandedQubitCount: baseQubitCount } = buildQubitRemap(compiled, gate, qubitCount);
   let expandedQubitCount = baseQubitCount;
 
-  let nextState = padStateVector(state, qubitCount, expandedQubitCount);
+  let nextState = physics.expandRegister(physics.fromAmplitudes(state, qubitCount), expandedQubitCount).amplitudes;
   let nextMeasurements = { ...measurements };
   const forwardSteps = compiled.gates;
   if (gate.inverse && !record.reversible) {
@@ -247,7 +266,7 @@ const expandCustomGate = (
     const result = runInnerGate(remapped, nextState, expandedQubitCount, nextMeasurements);
     nextState = result.state;
     // A nested custom gate may add its own workspace wires.
-    expandedQubitCount = Math.max(expandedQubitCount, Math.round(Math.log2(nextState.length)));
+    expandedQubitCount = physics.resolveQubitCount(nextState, expandedQubitCount);
     nextMeasurements = result.measurements;
     log.push(...result.log);
   }

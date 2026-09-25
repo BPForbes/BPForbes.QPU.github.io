@@ -1,39 +1,27 @@
-import { blochBallRhoExpectationFast } from './blochQuadrature';
-import { complex, formatComplex, magnitudeSquared, type Complex } from '../complex';
-import { hasBit } from '../gates/operations';
-import type { CircuitGate, MeasurementMap } from '../types';
-/** Bloch-vector Cartesian components: x = r sinθ cosφ, y = r sinθ sinφ, z = r cosθ. */
-export type BlochVector = {
-  x: number;
-  y: number;
-  z: number;
-};
+/**
+ * Particle tracking: turns Physics Engine inspections into per-wire snapshots
+ * and before/after transitions for the Bloch view.
+ *
+ * The tracker observes physics; it does not derive reduced states, purity, or
+ * entanglement itself. Those come from `physics.inspectQubit`.
+ */
+import type { Complex } from '../complex';
+import type { CircuitGate, MeasurementBasisMap, MeasurementMap } from '../types';
+import type { BlochVector, MixedStateMetrics, PsiKet, SphericalCoordinates } from './analysis/Bloch';
+import type { EntanglementAssessment } from './analysis/Entanglement';
+import { sphericalFromBlochCartesian } from './analysis/Bloch';
+import { physics } from './PhysicsEngine';
+import type { QuantumState } from './state/QuantumState';
 
-// Spherical coordinates on the Bloch ball: r is radial, θ is polar from +Z, and φ is azimuthal.
-export type SphericalCoordinates = {
-  r: number;
-  theta: number;
-  phi: number;
-};
-
-/** |ψ⟩ = cos(θ/2)|0⟩ + e^{iφ} sin(θ/2)|1⟩ */
-export type PsiKet = {
-  alpha: Complex;
-  beta: Complex;
-  theta: number;
-  phi: number;
-  formatted: string;
-};
-
-// Mixed-state metrics from the Bloch radius: purity = Tr(ρ²), mixedness = normalized linear entropy.
-// Local mixedness can come from entanglement with the rest of the register, not physical noise.
-export type MixedStateMetrics = {
-  blochRadius: number;
-  purity: number;
-  mixedness: number;
-  rhoExpectation: number;
-  isPure: boolean;
-};
+export {
+  blochBallRhoExpectation,
+  blochCartesianFromSpherical,
+  formatPsiKet,
+  ketFromSpherical,
+  mixedStateMetrics,
+  sphericalFromBlochCartesian,
+} from './analysis/Bloch';
+export type { BlochVector, MixedStateMetrics, PsiKet, SphericalCoordinates } from './analysis/Bloch';
 
 export type ParticleSnapshot = {
   qubit: number;
@@ -41,10 +29,14 @@ export type ParticleSnapshot = {
   spherical: SphericalCoordinates;
   ket: PsiKet;
   mixed: MixedStateMetrics;
-  /** True when this reduced qubit is mixed while the global state-vector remains pure. */
+  /** Shorthand for `entanglement.status === 'entangled'`. */
   entangledWithRegister?: boolean;
+  /** Engine assessment for an unmeasured wire; absent once the wire is measured. */
+  entanglement?: EntanglementAssessment;
   probOne: number;
   measured?: 0 | 1;
+  /** Observable of a recorded non-Z measurement; the particle is pinned to that axis. */
+  measuredBasis?: 'X' | 'Y';
 };
 
 export type ParticleDelta = {
@@ -66,141 +58,80 @@ export type OperationTransition = {
   deltas: ParticleDelta[];
 };
 
-const PURE_TOLERANCE = 1e-6;
-
-const bitMask = (qubit: number, qubitCount: number) => 1 << (qubitCount - qubit - 1);
-
-// Per-qubit reduced density matrices drive particle labels even when the full state is entangled.
-const marginalRho = (state: Complex[], qubitCount: number, qubit: number) => {
-  const mask = bitMask(qubit, qubitCount);
-  let rho00 = 0;
-  let rho11 = 0;
-  let rho01re = 0;
-  let rho01im = 0;
-
-  for (let index = 0; index < state.length; index += 1) {
-    if ((index & mask) !== 0) continue;
-    const amp0 = state[index];
-    const amp1 = state[index | mask];
-    rho00 += magnitudeSquared(amp0);
-    rho11 += magnitudeSquared(amp1);
-    rho01re += amp0.re * amp1.re + amp0.im * amp1.im;
-    rho01im += amp0.im * amp1.re - amp0.re * amp1.im;
-  }
-
-  return { rho00, rho11, rho01: complex(rho01re, rho01im) };
-};
-
-/** Pauli Bloch coordinates from spherical angles. */
-export const blochCartesianFromSpherical = (r: number, theta: number, phi: number): BlochVector => ({
-  x: r * Math.sin(theta) * Math.cos(phi),
-  y: r * Math.sin(theta) * Math.sin(phi),
-  z: r * Math.cos(theta),
-});
-
-export const sphericalFromBlochCartesian = ({ x, y, z }: BlochVector): SphericalCoordinates => {
-  const r = Math.sqrt(x * x + y * y + z * z);
-  if (r < 1e-12) return { r: 0, theta: 0, phi: 0 };
-  return {
-    r,
-    theta: Math.acos(Math.min(1, Math.max(-1, z / r))),
-    phi: Math.atan2(y, x),
-  };
-};
-
-/** |ψ⟩ = cos(θ/2)|0⟩ + e^{iφ} sin(θ/2)|1⟩ */
-export const ketFromSpherical = (theta: number, phi: number): PsiKet => {
-  const half = theta / 2;
-  const alpha = complex(Math.cos(half), 0);
-  const beta = complex(Math.cos(phi) * Math.sin(half), Math.sin(phi) * Math.sin(half));
-  return {
-    alpha,
-    beta,
-    theta,
-    phi,
-    formatted: formatPsiKet(alpha, beta),
-  };
-};
-
-export const formatPsiKet = (alpha: Complex, beta: Complex): string => {
-  const alphaText = formatComplex(alpha);
-  const betaText = formatComplex(beta);
-  if (magnitudeSquared(beta) < 1e-12) return `|ψ⟩ = ${alphaText}|0⟩`;
-  if (magnitudeSquared(alpha) < 1e-12) return `|ψ⟩ = ${betaText}|1⟩`;
-  return `|ψ⟩ = ${alphaText}|0⟩ + ${betaText}|1⟩`;
-};
-
-/** ⟨ρ⟩ via separable O(1) quadrature (see blochQuadrature.ts). */
-export const blochBallRhoExpectation = blochBallRhoExpectationFast;
-
-export const mixedStateMetrics = (spherical: SphericalCoordinates): MixedStateMetrics => {
-  const blochRadius = spherical.r;
-  const purity = (1 + blochRadius * blochRadius) / 2;
-  // Normalized linear entropy: 0 = pure, 1 = maximally mixed one-qubit state.
-  const mixedness = 2 * (1 - purity);
-  return {
-    blochRadius,
-    purity,
-    mixedness,
-    rhoExpectation: blochBallRhoExpectation(spherical.r, spherical.theta, spherical.phi, mixedness),
-    isPure: purity >= 1 - PURE_TOLERANCE,
-  };
-};
-
+// A recorded classical outcome pins the displayed particle to the eigenstate it read, whatever later gates did.
 export const blochVectorForQubit = (
   state: Complex[],
   qubitCount: number,
   qubit: number,
   measurements: MeasurementMap = {},
+  bases: MeasurementBasisMap = {},
 ): BlochVector => {
   const measured = measurements[qubit];
-  if (measured !== undefined) {
-    return blochCartesianFromSpherical(1, measured === 1 ? Math.PI : 0, 0);
-  }
-
-  const { rho00, rho11, rho01 } = marginalRho(state, qubitCount, qubit);
-  return {
-    x: 2 * rho01.re,
-    y: 2 * rho01.im,
-    z: rho00 - rho11,
-  };
+  if (measured !== undefined) return physics.measuredBlochGeometry(measured, bases[qubit]).bloch;
+  return physics.blochVector(physics.fromAmplitudes(state, qubitCount), qubit);
 };
 
 /** @deprecated Use sphericalFromBlochCartesian */
 export const sphericalFromBloch = sphericalFromBlochCartesian;
 
+// Raw amplitudes are read at their true width; display wires past it are fresh |0⟩ wires.
+const quantumView = (state: Complex[], qubitCount: number): QuantumState => {
+  const view = physics.fromAmplitudes(state, physics.resolveQubitCount(state, 0));
+  return qubitCount > view.qubitCount ? physics.expandRegister(view, qubitCount) : view;
+};
+
 // Snapshot extraction classifies each displayed qubit from its Bloch vector plus any recorded measurement.
-export const snapshotParticle = (
-  state: Complex[],
-  qubitCount: number,
+export const snapshotStateParticle = (
+  state: QuantumState,
   qubit: number,
   measurements: MeasurementMap = {},
+  bases: MeasurementBasisMap = {},
 ): ParticleSnapshot => {
-  const bloch = blochVectorForQubit(state, qubitCount, qubit, measurements);
-  const spherical = sphericalFromBlochCartesian(bloch);
-  const ket = ketFromSpherical(spherical.theta, spherical.phi);
-  const mixed = mixedStateMetrics(spherical);
   const measured = measurements[qubit];
-  const entangledWithRegister =
-    measured === undefined && qubitCount > 1 && mixed.purity < 1 - PURE_TOLERANCE;
+  const basis = measured === undefined ? undefined : bases[qubit];
+  const inspection = measured === undefined ? physics.inspectQubit(state, qubit) : undefined;
+  const { bloch, spherical, ket, mixed } = inspection
+    ? physics.describeBlochVector(inspection.bloch)
+    : physics.measuredBlochGeometry(measured!, basis);
   return {
     qubit,
     bloch,
     spherical,
     ket,
     mixed,
-    entangledWithRegister,
+    entangledWithRegister: inspection?.entanglement.status === 'entangled',
+    entanglement: inspection?.entanglement,
     probOne: (1 - bloch.z) / 2,
     measured,
+    ...(basis === 'X' || basis === 'Y' ? { measuredBasis: basis } : {}),
   };
 };
 
+/** One snapshot per wire of a state vector or density matrix. */
+export const snapshotStateParticles = (
+  state: QuantumState,
+  measurements: MeasurementMap = {},
+  qubitCount = state.qubitCount,
+  bases: MeasurementBasisMap = {},
+): ParticleSnapshot[] =>
+  Array.from({ length: qubitCount }, (_, qubit) => snapshotStateParticle(state, qubit, measurements, bases));
+
+/** Compatibility wrapper for raw amplitude arrays. */
+export const snapshotParticle = (
+  state: Complex[],
+  qubitCount: number,
+  qubit: number,
+  measurements: MeasurementMap = {},
+  bases: MeasurementBasisMap = {},
+): ParticleSnapshot => snapshotStateParticle(quantumView(state, qubitCount), qubit, measurements, bases);
+
+/** Compatibility wrapper for raw amplitude arrays. */
 export const snapshotAllParticles = (
   state: Complex[],
   qubitCount: number,
   measurements: MeasurementMap = {},
-): ParticleSnapshot[] =>
-  Array.from({ length: qubitCount }, (_, qubit) => snapshotParticle(state, qubitCount, qubit, measurements));
+  bases: MeasurementBasisMap = {},
+): ParticleSnapshot[] => snapshotStateParticles(quantumView(state, qubitCount), measurements, qubitCount, bases);
 
 const normalizeAngleDelta = (delta: number) => {
   let value = delta;
@@ -226,16 +157,20 @@ export const computeParticleDeltas = (before: ParticleSnapshot[], after: Particl
   before.map((snapshot, index) => particleDelta(snapshot, after[index] ?? snapshot));
 
 // Transition records compare pre/post snapshots so the visualizer can explain what each gate changed.
-export const buildOperationTransition = (
+// A gate that added workspace wires is compared against the earlier state padded to the same width.
+export const buildStateTransition = (
   gate: CircuitGate,
-  stateBefore: Complex[],
-  stateAfter: Complex[],
-  qubitCount: number,
+  stateBefore: QuantumState,
+  stateAfter: QuantumState,
   measurementsBefore: MeasurementMap,
   measurementsAfter: MeasurementMap,
+  qubitCount = stateAfter.qubitCount,
+  basesBefore: MeasurementBasisMap = {},
+  basesAfter: MeasurementBasisMap = basesBefore,
 ): OperationTransition => {
-  const before = snapshotAllParticles(stateBefore, qubitCount, measurementsBefore);
-  const after = snapshotAllParticles(stateAfter, qubitCount, measurementsAfter);
+  const width = Math.max(qubitCount, stateBefore.qubitCount, stateAfter.qubitCount);
+  const before = snapshotStateParticles(physics.expandRegister(stateBefore, width), measurementsBefore, qubitCount, basesBefore);
+  const after = snapshotStateParticles(physics.expandRegister(stateAfter, width), measurementsAfter, qubitCount, basesAfter);
   const inputQubits = gate.type === 'SWAP'
     ? gate.targets
     : gate.controls.length > 0
@@ -252,3 +187,24 @@ export const buildOperationTransition = (
     deltas: computeParticleDeltas(before, after),
   };
 };
+
+/** Compatibility wrapper for raw amplitude arrays. */
+export const buildOperationTransition = (
+  gate: CircuitGate,
+  stateBefore: Complex[],
+  stateAfter: Complex[],
+  qubitCount: number,
+  measurementsBefore: MeasurementMap,
+  measurementsAfter: MeasurementMap,
+  basesBefore: MeasurementBasisMap = {},
+  basesAfter: MeasurementBasisMap = basesBefore,
+): OperationTransition => buildStateTransition(
+  gate,
+  quantumView(stateBefore, qubitCount),
+  quantumView(stateAfter, qubitCount),
+  measurementsBefore,
+  measurementsAfter,
+  qubitCount,
+  basesBefore,
+  basesAfter,
+);

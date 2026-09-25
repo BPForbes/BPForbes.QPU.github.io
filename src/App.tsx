@@ -29,6 +29,7 @@ import { WorkbenchDocs } from './components/docs/WorkbenchDocs';
 import { CustomGatePanel, GatePalette, SelectorMapDiagram } from './components/gate';
 import { ModuleLab } from './components/ModuleLab';
 import { OutputPanel } from './components/OutputPanel';
+import { PhysicsInspector } from './components/PhysicsInspector';
 import { ParticleView } from './components/ParticleView';
 import {
   playgroundPageDomId,
@@ -73,7 +74,16 @@ import {
   QPU_FILE_UPLOAD_ACCEPT,
   validateUploadFileName,
 } from './data/formats';
-import { createInitialState, measureAll, measureQubit, projectStateOntoQubits, resolveStateQubitCount, runCircuit, stepCircuitGate } from './simulator/engine';
+import {
+  createInitialState,
+  measureAll,
+  projectStateOntoQubits,
+  resolveStateQubitCount,
+  runCircuit,
+  stepCircuitGate,
+  WORKSPACE_RESET_LOG_PREFIX,
+} from './simulator/engine';
+import { physics } from './simulator/physics/PhysicsEngine';
 import {
   analyzeQpuProtocol,
   compileQpuProtocol,
@@ -91,7 +101,7 @@ import {
 import { controlsForGateType, getGateDefinition, paletteGateIds } from './simulator/gates/registry';
 import type { OperationTransition, ParticleSnapshot } from './simulator/physics';
 import { snapshotAllParticles } from './simulator/physics';
-import { CircuitGate, GateType, MeasurementMap, ParticleStartState, StateCheckpoint } from './simulator/types';
+import { CircuitGate, GateType, MeasurementBasisMap, MeasurementMap, ParticleStartState, StateCheckpoint } from './simulator/types';
 import { Complex } from './simulator/complex';
 import './styles.css';
 
@@ -235,6 +245,8 @@ function App() {
   const [docFocus, setDocFocus] = useState<'selection' | 'circuit'>('selection');
   const [preStep, setPreStep] = useState<{ cursor: number; state: Complex[]; qubitCount: number } | null>(null);
   const checkpointsRef = useRef<Record<string, StateCheckpoint>>({});
+  // Observable behind each X/Y measurement so stepped particle cards pin to the right axis.
+  const measurementBasesRef = useRef<MeasurementBasisMap>({});
   const [particleSnapshots, setParticleSnapshots] = useState<ParticleSnapshot[]>([]);
   const [particleTransitions, setParticleTransitions] = useState<OperationTransition[]>([]);
   // Palette refresh bumps when custom gates register so GateBlock picks up new definitions.
@@ -408,6 +420,7 @@ function App() {
       ? activeControllable.map((param) => param.qubitIndex)
       : undefined;
     checkpointsRef.current = {};
+    measurementBasesRef.current = {};
     const initialState = createInitialState(nextSimulationQubitCount, nextStartStates, activeParamIndices);
     setState(initialState);
     setRuntimeQubitCount(nextSimulationQubitCount);
@@ -510,6 +523,7 @@ function App() {
   const run = () => {
     setPlaying(false);
     checkpointsRef.current = {};
+    measurementBasesRef.current = {};
     const result = runCircuit(
       simulationQubitCount,
       orderedGates,
@@ -520,10 +534,11 @@ function App() {
     setState(result.state);
     setRuntimeQubitCount(resolveStateQubitCount(result.state, simulationQubitCount));
     setMeasurements(result.measurements);
+    measurementBasesRef.current = result.measurementBases ?? {};
     setConditionOutcomes(result.conditionOutcomes ?? {});
     setParticleSnapshots(result.particles ?? []);
     setParticleTransitions(result.transitions ?? []);
-    setLog(result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared')));
+    setLog(result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith(WORKSPACE_RESET_LOG_PREFIX)));
     setPreStep(null);
     setDocFocus('circuit');
     setCursor(orderedGates.length);
@@ -538,14 +553,16 @@ function App() {
       librarySources: getCatalogLibrarySources(),
       trackParticles: true,
       checkpoints: checkpointsRef.current,
+      measurementBases: measurementBasesRef.current,
     });
+    measurementBasesRef.current = result.measurementBases ?? {};
     setRuntimeQubitCount(nextQubitCount);
     setState(result.state);
     setMeasurements(result.measurements);
     if (result.conditionOutcomes) setConditionOutcomes((current) => ({ ...current, ...result.conditionOutcomes }));
     setParticleSnapshots(result.particles ?? []);
     setParticleTransitions((current) => [...current, ...(result.transitions ?? [])]);
-    setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'))]);
+    setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith(WORKSPACE_RESET_LOG_PREFIX))]);
     setPreStep({ cursor: cursor + 1, state, qubitCount: workingQubitCount });
     setDocFocus('circuit');
     setCursor((current) => current + 1);
@@ -648,7 +665,7 @@ function App() {
     const result = measureAll(state, simulationQubitCount, measurements);
     setState(result.state);
     setMeasurements(result.measurements);
-    setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'))]);
+    setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith(WORKSPACE_RESET_LOG_PREFIX))]);
   };
 
   // The UI measures display qubits, then maps that choice back onto compiled PARAM qubits when needed.
@@ -658,10 +675,13 @@ function App() {
       return;
     }
 
-    const result = measureQubit(state, simulationQubitCount, controllableParams[selectedTarget]?.qubitIndex ?? selectedTarget);
-    setState(result.state);
-    setMeasurements((current) => ({ ...current, [selectedTarget]: result.value }));
-    setLog((current) => [...current, `Measured q${selectedTarget} = ${result.value} (P(1)=${result.probabilityOne.toFixed(3)}).`]);
+    const result = physics.measure(
+      physics.fromAmplitudes(state, simulationQubitCount),
+      controllableParams[selectedTarget]?.qubitIndex ?? selectedTarget,
+    );
+    setState(result.state.amplitudes);
+    setMeasurements((current) => ({ ...current, [selectedTarget]: result.outcome }));
+    setLog((current) => [...current, `Measured q${selectedTarget} = ${result.outcome} (P(1)=${result.probabilityOne.toFixed(3)}).`]);
   };
 
   // Workbench adds override controls computed from the selected target and control dropdowns.
@@ -697,7 +717,7 @@ function App() {
     resetRuntime();
     setLog((current) => [
       ...current,
-      `Added INCREASECYCLE boundary (cycle ${previousCycle + 1}). This advances the logical stage; it does not loop.`,
+      `Added INCREASECYCLE boundary (logical cycle ${previousCycle + 1}). This advances the logical stage; it does not loop.`,
     ]);
   };
 
@@ -848,7 +868,7 @@ function App() {
       setCompileSummary(`Compiled ${result.parsed.length} QPU instruction(s) into ${result.gates.length} runnable gate(s) over ${registerSummary} with ${paramSummary}.`);
       resetRuntime(result.qubitCount, `Compiled ${label}. ${result.log[0] ?? ''}`, nextStartStates, result.processParams);
       const compileLog = result.log.filter(
-        (entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'),
+        (entry) => !entry.startsWith('RESET') && !entry.startsWith(WORKSPACE_RESET_LOG_PREFIX),
       );
       const recursionLog = compileLog.filter((entry) => /TCO|DEPTH=|RECUR|REC |TREC /i.test(entry));
       const otherLog = compileLog.filter((entry) => !/TCO|DEPTH=|RECUR|REC |TREC /i.test(entry));
@@ -1308,7 +1328,7 @@ function App() {
             ) : null}
             <div className="workbench-actions">
               <button onClick={addGateFromWorkbench} title={uiTips.addGate} type="button">Add gate to target</button>
-              <button onClick={addCycleBoundary} title={uiTips.increaseCycle} type="button">Add cycle boundary</button>
+              <button onClick={addCycleBoundary} title={uiTips.increaseCycle} type="button">Add logical cycle boundary</button>
               <button onClick={addParticle} title={uiTips.addParticle} type="button">Add particle</button>
               <button onClick={removeParticle} title={uiTips.removeParticle} type="button">Remove particle</button>
               <button onClick={measureSelectedQubit} title={uiTips.measureTarget} type="button">Measure target</button>
@@ -1757,6 +1777,17 @@ function App() {
             qubitCount={displayQubitCount}
             qubitLabels={displayQubitLabels}
             state={displayState}
+          />
+          <PhysicsInspector
+            gates={orderedGates}
+            librarySources={getCatalogLibrarySources}
+            paramQubitIndices={paramQubitIndices}
+            physicalQubitIndices={displayQubitIndices}
+            qubitCount={displayQubitCount}
+            qubitLabels={displayQubitLabels}
+            simulationQubitCount={simulationQubitCount}
+            startStates={startStates}
+            state={state}
           />
         </div>
       </PlaygroundPage>}

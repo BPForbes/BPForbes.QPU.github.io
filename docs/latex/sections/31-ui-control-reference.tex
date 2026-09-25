@@ -277,7 +277,7 @@ AND, NAND, OR, XOR) and custom gates with two or more inputs. SWAP also uses
 it as the wire to exchange with the target.\\
 Phase angle & Appears for PHASE, RX, RY, RZ, and CPHASE. Sets $\theta$ in degrees.\\
 Add gate to target & Appends the selected gate as the next column.\\
-Add cycle boundary & Inserts an \code{INCREASECYCLE} marker. Advances the
+Add logical cycle boundary & Inserts an \code{INCREASECYCLE} marker. Advances the
 logical stage; does not loop or repeat earlier gates.\\
 Add particle / Remove particle & Adds or removes the last wire (up to six on
 the canvas). After a compiled protocol, adds or removes a \code{PARAMS}
@@ -363,13 +363,55 @@ its compiled circuit visually.
 \UiTable{
 Qubit states and execution progress & One card per displayed wire: a sphere
 while unmeasured, the measured bit afterwards, plus its ket, $r,\theta,\phi$,
-and Bloch $x,y,z$. $\Delta$ values show the change caused by the last step.\\
+and Bloch $x,y,z$. $\Delta$ values show the change caused by the last step.
+\emph{purity} is $\operatorname{Tr}(\rho^2)$ of the wire's reduced state and
+\emph{mixedness} is $2(1-\text{purity})$; below purity 1 the card also shows
+$\langle\rho\rangle$, a display-only Bloch-ball estimate. \textbf{Entangled
+with register} appears when the wire is mixed only because it is entangled
+with other wires (Theory Guide: \emph{Mixed states, entanglement measures,
+and noise}); \textbf{Entanglement undetermined} appears when the test could
+not decide.\\
 Circuit execution timeline & One tile per gate, with its \code{-I} and
 \code{-O} wires.\\
 Final state vector & Every nonzero amplitude with its basis label.\\
 Outcome truth table / probabilities & Expands to list every basis outcome
 with its amplitude and probability.\\
 Execution log & A sentence for every step, compile, and measurement.\\
+Physics inspector: Subsystem & Tick one or more wires to inspect them
+together: purity, linear and von Neumann entropy, negativity (up to 6 qubits),
+and whether they are entangled with the rest. The answer is
+\emph{entangled}, \emph{not entangled}, or \emph{undetermined}, each with the
+test used; undetermined is never shown as ``not entangled''.\\
+Physics inspector: Run with noise & Pick a gate-noise channel and strength,
+optionally $T_1$, $T_2$ and a gate duration, then rerun the circuit as an open
+system (up to 10 qubits). Shows register purity, fidelity with the ideal run,
+and the same subsystem report for the noisy state. The ideal and noisy runs
+use the same random draws for MEASURE.\\
+Physics inspector: Physical timing & Runs on a physical clock instead: every
+gate lasts the gate duration (ns) while each qubit precesses at its $f_{01}$
+(GHz) with an optional offset (MHz), and $T_1$/$T_2$ (ns) and temperature (mK)
+act over that time. Choose the rotating or lab frame, and ideal matrices or
+calibrated microwave pulses for X, Y, RX, and RY. An anharmonicity (MHz, blank
+for an ideal two-level qubit) adds the $\ket2$ level, so pulses can leak.
+Shows the elapsed physical time and, per wire, the leaked population.\\
+Physics inspector: Per-qubit profiles & In physical timing, a table with one
+row per qubit for $f_{01}$, offset, $T_1$, $T_2$, temperature, and
+anharmonicity. A blank cell uses the shared value above it, so each qubit can
+have its own frequency and coherence while the rest stay uniform.\\
+Physics inspector: Step through the run & After a noisy run, moves gate by
+gate through it (slider or Previous/Next). Each step shows the physical time,
+the fidelity with the ideal run after the same gate, and per qubit its current
+$f_{01}$, $P(1)$, purity, and leakage so far. A strip plots fidelity across the
+whole circuit.\\
+Physics inspector: Frequency and resonance & Energy gap, photon wavelength,
+and thermal population for the qubit profile (with per-qubit profiles, a
+Qubit menu picks which one); for a drive (offset from the
+nominal $f_{01}$, Rabi frequency, duration, envelope) the detuning,
+generalized Rabi frequency, rotation angle, maximum transfer, AC Stark shift
+when far off resonance, and the simulated $P(1)$; with an anharmonicity, also
+$f_{12}$, the leakage from $\ket0$ and $\ket1$, and the leakage-cancelling DRAG
+$\beta$ (which the DRAG envelope then uses); plus an electron's de Broglie
+wavelength for teaching.\\
 }
 
 \subsection{File upload and download}

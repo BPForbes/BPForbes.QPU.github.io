@@ -322,6 +322,7 @@ button { font: inherit; }
 }
 .glyph-meter { width: 1.15rem; height: 1.15rem; }
 .glyph-dagger { font-size: .62rem; font-weight: 800; line-height: 1; }
+.glyph-basis { font-size: .56rem; font-weight: 800; line-height: 1; letter-spacing: .02em; }
 .circuit-glyph.glyph-wide { min-width: 2rem; font-size: .58rem; }
 .circuit-glyph.active {
   outline: 2px solid #dc2626;
@@ -482,6 +483,7 @@ button { font: inherit; }
 .particle-delta { display: flex; flex-wrap: wrap; gap: .35rem; justify-content: center; font-size: .68rem; font-weight: 800; color: #cbd5e1; }
 .particle-mixed { color: #fda4af; }
 .particle-entangled { color: #c4b5fd; font-size: .66rem; }
+.particle-entangled-inconclusive { color: #94a3b8; font-style: italic; }
 .particle-delta { color: #fde68a; }
 .learning-progress { display: grid; gap: .45rem; margin: .75rem 0; }
 .learning-progress-step { display: flex; align-items: center; gap: .5rem; font-size: .85rem; color: #cbd5e1; }
@@ -979,3 +981,35 @@ html.embed-mode .controls {
 .recursion-frame-region.cycle { border-top: 0; color: #64748b; font-size: .5rem; }
 .recursion-frame-inspect summary { cursor: pointer; color: #67e8f9; font-weight: 800; }
 .recursion-frame-inspect[open] summary { margin-bottom: .5rem; }
+.physics-inspector { grid-column: 1 / -1; display: grid; gap: .6rem; }
+.physics-wires { display: flex; flex-wrap: wrap; gap: .5rem .9rem; border: 1px solid rgba(148, 163, 184, .25); border-radius: .75rem; padding: .5rem .75rem; }
+.physics-wires label { display: inline-flex; align-items: center; gap: .3rem; font-size: .85rem; }
+.physics-metrics { display: grid; grid-template-columns: minmax(9rem, max-content) 1fr; gap: .3rem .9rem; margin: 0; font-size: .85rem; }
+.physics-metrics dt { color: #94a3b8; }
+.physics-metrics dd { margin: 0; font-variant-numeric: tabular-nums; }
+.physics-entanglement.entangled { color: #c4b5fd; }
+.physics-entanglement.inconclusive { color: #94a3b8; font-style: italic; }
+.physics-note { margin: 0; color: #94a3b8; font-size: .8rem; }
+.physics-noise-form { display: flex; flex-wrap: wrap; gap: .6rem; align-items: end; }
+.physics-noise-form label { display: grid; gap: .2rem; font-size: .78rem; color: #cbd5e1; }
+.physics-noise-form input, .physics-noise-form select { min-width: 0; width: 8rem; }
+.physics-error { margin: 0; color: #fda4af; font-size: .85rem; }
+.physics-noisy-result { display: grid; gap: .5rem; }
+.physics-toggle { display: inline-flex !important; grid-auto-flow: column; align-items: center; gap: .35rem !important; }
+.physics-toggle input { width: auto !important; }
+.physics-frequency { display: grid; gap: .5rem; }
+.physics-frequency h4 { margin: .25rem 0 0; font-size: .85rem; }
+.physics-table-wrap { overflow-x: auto; }
+.physics-table { border-collapse: collapse; font-size: .8rem; font-variant-numeric: tabular-nums; }
+.physics-table th, .physics-table td { padding: .2rem .5rem; text-align: left; border-bottom: 1px solid rgba(148, 163, 184, .18); }
+.physics-table thead th { color: #94a3b8; font-weight: 500; }
+.physics-profile-table input { width: 6rem; }
+.physics-profiles summary { cursor: pointer; font-size: .85rem; color: #cbd5e1; }
+.physics-profiles { display: grid; gap: .4rem; }
+.physics-trace { display: grid; gap: .5rem; }
+.physics-trace-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.physics-trace-controls input[type="range"] { flex: 1 1 10rem; }
+.physics-strip { width: 100%; height: 2.5rem; background: rgba(148, 163, 184, .06); border-radius: .4rem; }
+.physics-strip polyline { fill: none; stroke: #67e8f9; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.physics-strip line { stroke: #c4b5fd; stroke-width: 1; vector-effect: non-scaling-stroke; }
+.physics-strip-figure { margin: 0; display: grid; gap: .2rem; }

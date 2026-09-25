@@ -1,7 +1,7 @@
-import { magnitudeSquared, type Complex } from '../complex';
+import type { Complex } from '../complex';
+import { physics } from '../physics/PhysicsEngine';
 import type { CircuitGate, ConditionPredicate, ConditionValue, ExecutionResult, GateType, MeasurementMap } from '../types';
 import { applyInverseAwareDefinition } from './inverse';
-import { hasBit, padStateVector } from './operations';
 import { preconfiguredGateMap } from './preconfigured';
 
 /** P(1) within this tolerance of 0 or 1 reads as a definite bit; anything else is S. */
@@ -45,10 +45,7 @@ export const buildConditionPredicate = (params: {
 };
 
 export const classifyWire = (state: Complex[], qubitCount: number, qubit: number): ConditionValue => {
-  const probabilityOne = state.reduce(
-    (sum, amplitude, basis) => sum + (hasBit(basis, qubit, qubitCount) ? magnitudeSquared(amplitude) : 0),
-    0,
-  );
+  const probabilityOne = physics.probabilityOfOne(physics.fromAmplitudes(state, qubitCount), qubit);
   if (probabilityOne <= DEFINITE_TOLERANCE) return 0;
   if (probabilityOne >= 1 - DEFINITE_TOLERANCE) return 1;
   return 's';
@@ -91,7 +88,7 @@ export const evaluatePredicate = (
   let target = predicate.output;
   let controls = isCustom ? predicate.inputs : predicate.inputs.filter((qubit) => qubit !== predicate.output);
   if (predicate.scratch) {
-    scratchState = padStateVector(state, qubitCount, qubitCount + 1);
+    scratchState = physics.expandRegister(physics.fromAmplitudes(state, qubitCount), qubitCount + 1).amplitudes;
     scratchCount = qubitCount + 1;
     target = qubitCount;
     controls = predicate.inputs;
@@ -107,7 +104,7 @@ export const evaluatePredicate = (
   };
   const result = runGate(probe, scratchState, scratchCount, measurements);
   // Custom gates may add workspace wires, so read the width from the result.
-  const resultCount = Math.max(scratchCount, Math.round(Math.log2(result.state.length)));
+  const resultCount = physics.resolveQubitCount(result.state, scratchCount);
   return classifyWire(result.state, resultCount, target);
 };
 

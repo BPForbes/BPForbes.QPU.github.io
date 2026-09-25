@@ -6,6 +6,7 @@
   \item Every QPU gate except MEASURE requires \code{-I} and \code{-O}, then
   exact registry arity is checked.
   \item PHASE requires a valid nonzero-denominator angle after \code{=}.
+  \item \code{-BASIS} is accepted only on MEASURE and must be X, Y, or Z.
   \item SWAP requires two matching input/output wires.
   \item RUNCHILD/CALL fails if the named process is absent from the library.
   Unknown DECLARECHILD names fail on the declaration line.

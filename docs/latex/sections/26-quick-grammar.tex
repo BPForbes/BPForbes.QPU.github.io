@@ -19,7 +19,7 @@ angle-gate   := "PHASE" | "RX" | "RY" | "RZ" | "CPHASE"
 
 gate-row     := opcode "-I" input+ "-O" output+ ["-$R"]
                 ["-IF" name "=" ("0" | "1")]
-measure-row  := "MEASURE" ["-I" input]
+measure-row  := "MEASURE" ["-I" input] ["-BASIS" ("X" | "Y" | "Z")]
 set-row      := "SET" target value
 process-row  := "MAIN-PROCESS" name
 child-row    := ("RUNCHILD" | "CALL") name ["-DEPTH" integer]

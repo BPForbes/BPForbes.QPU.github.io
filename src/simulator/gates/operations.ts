@@ -1,80 +1,116 @@
-import { add, Complex, complex, magnitudeSquared, mul, ONE, scale, ZERO } from '../complex';
-import { MATRIX_H, MATRIX_X } from './matrices';
-const bitMask = (qubit: number, qubitCount: number) => 1 << (qubitCount - qubit - 1);
+/**
+ * Gate → Physics Engine bridge.
+ *
+ * Gates decide WHAT operator runs on which wires; every state change is applied
+ * by the Physics Engine. Classical reversible logic (CNOT, CCNOT, AND/OR/XOR…)
+ * is expressed as a permutation operator so it takes the same path as any
+ * other unitary.
+ */
+import type { Complex } from '../complex';
+import { physics } from '../physics/PhysicsEngine';
+import type { ComplexMatrix } from '../physics/numerics/linearAlgebra';
+import { MATRIX_SWAP, MATRIX_Z, permutationMatrix, phaseMatrix } from './matrices';
 
+// Legacy helper names kept for existing callers; each delegates to the PhysicsEngine class.
 export const hasBit = (basisIndex: number, qubit: number, qubitCount: number) =>
-  (basisIndex & bitMask(qubit, qubitCount)) !== 0;
+  physics.hasBit(basisIndex, qubit, qubitCount);
 
-// Matrix application walks zero/one basis pairs once, preserving amplitudes outside the target pair.
+export const controlsAreActive = (basisIndex: number, qubitCount: number, controls: number[]) =>
+  physics.controlsActive(basisIndex, qubitCount, controls);
+
+export const padStateVector = (state: Complex[], fromCount: number, toCount: number): Complex[] =>
+  physics.expandRegister(physics.fromAmplitudes(state, fromCount), toCount).amplitudes;
+
+export const applyStartState = (state: Complex[], qubitCount: number, qubit: number, startState: '1p' | 'sp'): Complex[] =>
+  physics.prepare(physics.fromAmplitudes(state, qubitCount), qubit, startState).amplitudes;
+
+/** Z-basis collapse in the legacy result shape. */
+export const measureQubit = (
+  state: Complex[],
+  qubitCount: number,
+  qubit: number,
+  random = Math.random(),
+): { state: Complex[]; value: 0 | 1; probabilityOne: number } => {
+  const measured = physics.measure(physics.fromAmplitudes(state, qubitCount), qubit, 'Z', random);
+  return { state: measured.state.amplitudes, value: measured.outcome, probabilityOne: measured.probabilityOne };
+};
+
+/** Apply operator `matrix` on `targets`, gated on `controls`, through the Physics Engine. */
+export const evolveState = (
+  state: Complex[],
+  qubitCount: number,
+  targets: number[],
+  matrix: ComplexMatrix,
+  controls: number[] = [],
+): Complex[] => physics.applyControlledUnitary(physics.fromAmplitudes(state, qubitCount), controls, targets, matrix).amplitudes;
+
 export const applySingleQubitGate = (
   state: Complex[],
   qubitCount: number,
   target: number,
-  matrix: readonly (readonly Complex[])[],
-): Complex[] => {
-  const next = [...state];
-  const mask = bitMask(target, qubitCount);
+  matrix: ComplexMatrix,
+): Complex[] => evolveState(state, qubitCount, [target], matrix);
 
-  for (let index = 0; index < state.length; index += 1) {
-    if ((index & mask) === 0) {
-      const zeroIndex = index;
-      const oneIndex = index | mask;
-      const zeroAmplitude = state[zeroIndex];
-      const oneAmplitude = state[oneIndex];
-      next[zeroIndex] = add(mul(matrix[0][0], zeroAmplitude), mul(matrix[0][1], oneAmplitude));
-      next[oneIndex] = add(mul(matrix[1][0], zeroAmplitude), mul(matrix[1][1], oneAmplitude));
-    }
-  }
+export const applyControlledSingleQubit = (
+  state: Complex[],
+  qubitCount: number,
+  controls: number[],
+  target: number,
+  matrix: ComplexMatrix,
+): Complex[] => evolveState(state, qubitCount, [target], matrix, controls);
 
-  return next;
-};
+export type ControlPredicate = (basisIndex: number, qubitCount: number, controls: number[]) => boolean;
 
-export const controlsAreActive = (basisIndex: number, qubitCount: number, controls: number[]) =>
-  controls.every((control) => hasBit(basisIndex, control, qubitCount));
-
-export const controlsHaveParity = (basisIndex: number, qubitCount: number, controls: number[]) =>
+export const controlsHaveParity: ControlPredicate = (basisIndex, qubitCount, controls) =>
   controls.filter((control) => hasBit(basisIndex, control, qubitCount)).length % 2 === 1;
 
-export const anyControlIsActive = (basisIndex: number, qubitCount: number, controls: number[]) =>
+export const anyControlIsActive: ControlPredicate = (basisIndex, qubitCount, controls) =>
   controls.some((control) => hasBit(basisIndex, control, qubitCount));
 
-// Predicate-controlled X is shared by AND/OR/XOR-style derived gates whose controls are not all-active checks.
+/**
+ * Permutation operator on [distinct controls…, target] that flips the target
+ * wherever `predicate` holds for the control bits. The predicate is read with
+ * the target bit at 0, so a target that also appears as a control behaves as
+ * it always has.
+ */
+export const predicateXOperator = (
+  qubitCount: number,
+  controls: number[],
+  target: number,
+  predicate: ControlPredicate,
+): { targets: number[]; matrix: ComplexMatrix } => {
+  const wires = [...new Set(controls.filter((control) => control !== target)), target];
+  const permutation = Array.from({ length: 2 ** wires.length }, (_, local) => local);
+  for (let local = 0; local < permutation.length; local += 2) {
+    const basisIndex = wires.reduce(
+      (index, wire, position) => ((local >> (wires.length - position - 1)) & 1 ? index | physics.qubitMask(wire, qubitCount) : index),
+      0,
+    );
+    if (predicate(basisIndex, qubitCount, controls)) {
+      permutation[local] = local + 1;
+      permutation[local + 1] = local;
+    }
+  }
+  return { targets: wires, matrix: permutationMatrix(permutation) };
+};
+
 export const applyControlledPredicateX = (
   state: Complex[],
   qubitCount: number,
   controls: number[],
   target: number,
-  predicate: (basisIndex: number, qubitCount: number, controls: number[]) => boolean,
+  predicate: ControlPredicate,
 ): Complex[] => {
-  const next = [...state];
-  const mask = bitMask(target, qubitCount);
-
-  for (let index = 0; index < state.length; index += 1) {
-    if ((index & mask) === 0 && predicate(index, qubitCount, controls)) {
-      const pair = index | mask;
-      next[index] = state[pair];
-      next[pair] = state[index];
-    }
-  }
-
-  return next;
+  const { targets, matrix } = predicateXOperator(qubitCount, controls, target, predicate);
+  return evolveState(state, qubitCount, targets, matrix);
 };
 
 export const applyControlledX = (state: Complex[], qubitCount: number, controls: number[], target: number): Complex[] =>
   applyControlledPredicateX(state, qubitCount, controls, target, controlsAreActive);
 
-export const applyControlledZ = (state: Complex[], qubitCount: number, controls: number[], target: number): Complex[] => {
-  const next = [...state];
-  const targetMask = bitMask(target, qubitCount);
-
-  for (let index = 0; index < state.length; index += 1) {
-    if ((index & targetMask) !== 0 && controlsAreActive(index, qubitCount, controls)) {
-      next[index] = scale(state[index], -1);
-    }
-  }
-
-  return next;
-};
+// A target listed among its own controls adds no condition beyond "target is |1⟩", which Z/phase already imply.
+export const applyControlledZ = (state: Complex[], qubitCount: number, controls: number[], target: number): Complex[] =>
+  evolveState(state, qubitCount, [target], MATRIX_Z, controls.filter((control) => control !== target));
 
 export const applyControlledPhase = (
   state: Complex[],
@@ -82,125 +118,16 @@ export const applyControlledPhase = (
   control: number,
   target: number,
   theta: number,
-): Complex[] => {
-  const multiplier = complex(Math.cos(theta), Math.sin(theta));
-  return state.map((amplitude, index) => {
-    if (hasBit(index, control, qubitCount) && hasBit(index, target, qubitCount)) {
-      return mul(amplitude, multiplier);
-    }
-    return amplitude;
-  });
-};
+): Complex[] =>
+  evolveState(state, qubitCount, [target], phaseMatrix(theta), control === target ? [] : [control]);
 
-export const applyControlledSingleQubit = (
-  state: Complex[],
-  qubitCount: number,
-  controls: number[],
-  target: number,
-  matrix: readonly (readonly Complex[])[],
-): Complex[] => {
-  const next = [...state];
-  const mask = bitMask(target, qubitCount);
+export const applySwap = (state: Complex[], qubitCount: number, qubitA: number, qubitB: number): Complex[] =>
+  (qubitA === qubitB ? state : evolveState(state, qubitCount, [qubitA, qubitB], MATRIX_SWAP));
 
-  for (let index = 0; index < state.length; index += 1) {
-    if ((index & mask) === 0 && controlsAreActive(index, qubitCount, controls)) {
-      const zeroIndex = index;
-      const oneIndex = index | mask;
-      const zeroAmplitude = state[zeroIndex];
-      const oneAmplitude = state[oneIndex];
-      next[zeroIndex] = add(mul(matrix[0][0], zeroAmplitude), mul(matrix[0][1], oneAmplitude));
-      next[oneIndex] = add(mul(matrix[1][0], zeroAmplitude), mul(matrix[1][1], oneAmplitude));
-    }
-  }
-
-  return next;
-};
-
-export const applySwap = (state: Complex[], qubitCount: number, qubitA: number, qubitB: number): Complex[] => {
-  if (qubitA === qubitB) return state;
-  const next = [...state];
-  const maskA = bitMask(qubitA, qubitCount);
-  const maskB = bitMask(qubitB, qubitCount);
-
-  for (let index = 0; index < state.length; index += 1) {
-    if (hasBit(index, qubitA, qubitCount) !== hasBit(index, qubitB, qubitCount)) {
-      const partner = index ^ maskA ^ maskB;
-      if (index < partner) {
-        next[index] = state[partner];
-        next[partner] = state[index];
-      }
-    }
-  }
-
-  return next;
-};
-
-// RESET projects onto |0⟩ when possible, but recovers a valid zero state if the branch had no amplitude.
-export const prepareZeroQubit = (state: Complex[], qubitCount: number, qubit: number): Complex[] => {
-  const mask = bitMask(qubit, qubitCount);
-  const next = [...state];
-
-  for (let index = 0; index < state.length; index += 1) {
-    if ((index & mask) !== 0) {
-      next[index] = ZERO;
-    }
-  }
-
-  let keptProbability = next.reduce((sum, amplitude) => sum + magnitudeSquared(amplitude), 0);
-  if (keptProbability < 1e-12) {
-    const recovered = Array.from({ length: state.length }, () => ZERO);
-    for (let index = 0; index < state.length; index += 1) {
-      if ((index & mask) !== 0) {
-        recovered[index & ~mask] = state[index];
-      }
-    }
-    next.splice(0, next.length, ...recovered);
-    keptProbability = next.reduce((sum, amplitude) => sum + magnitudeSquared(amplitude), 0);
-    if (keptProbability < 1e-12) {
-      const zeroState = Array.from({ length: state.length }, () => ZERO);
-      zeroState[0] = ONE;
-      return zeroState;
-    }
-  }
-
-  const normalizer = 1 / Math.sqrt(keptProbability);
-  return next.map((amplitude) => scale(amplitude, normalizer));
-};
-
-// Measurements collapse and renormalize the vector while accepting an injectable random value for deterministic tests.
-export const measureQubit = (
+/** RESET one wire to |0⟩ through the Physics Engine (measure-and-flip trajectory of the reset channel). */
+export const prepareZeroQubit = (
   state: Complex[],
   qubitCount: number,
   qubit: number,
-  random = Math.random(),
-): { state: Complex[]; value: 0 | 1; probabilityOne: number } => {
-  const probabilityOne = state.reduce(
-    (sum, amplitude, index) => sum + (hasBit(index, qubit, qubitCount) ? magnitudeSquared(amplitude) : 0),
-    0,
-  );
-  const sample = Math.min(Math.max(random, 0), 1 - Number.EPSILON);
-  const value: 0 | 1 = sample < probabilityOne ? 1 : 0;
-  const keptProbability = value === 1 ? probabilityOne : 1 - probabilityOne;
-  const normalizer = keptProbability > 0 ? 1 / Math.sqrt(keptProbability) : 0;
-
-  const collapsed = state.map((amplitude, index) =>
-    hasBit(index, qubit, qubitCount) === Boolean(value) ? scale(amplitude, normalizer) : ZERO,
-  );
-
-  return { state: collapsed, value, probabilityOne };
-};
-
-export const padStateVector = (state: Complex[], fromCount: number, toCount: number): Complex[] => {
-  if (toCount <= fromCount) return state;
-  const shift = toCount - fromCount;
-  const next = Array.from({ length: 2 ** toCount }, () => ZERO);
-  state.forEach((amplitude, index) => {
-    next[index << shift] = amplitude;
-  });
-  return next;
-};
-
-export const applyStartState = (state: Complex[], qubitCount: number, qubit: number, startState: '1p' | 'sp'): Complex[] => {
-  if (startState === '1p') return applySingleQubitGate(state, qubitCount, qubit, MATRIX_X);
-  return applySingleQubitGate(state, qubitCount, qubit, MATRIX_H);
-};
+  random: () => number = Math.random,
+): Complex[] => physics.reset(physics.fromAmplitudes(state, qubitCount), qubit, random).amplitudes;

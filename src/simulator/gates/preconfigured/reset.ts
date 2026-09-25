@@ -1,6 +1,6 @@
 import type { GateDefinition } from '../types';
 import { gateIoArity } from '../types';
-import { prepareZeroQubit } from '../operations';
+import { physics } from '../../physics/PhysicsEngine';
 
 export const resetGate: GateDefinition = {
   id: 'RESET',
@@ -16,14 +16,12 @@ export const resetGate: GateDefinition = {
   supportsPhase: false,
   cssClass: 'gate-reset',
   apply: ({ state, qubitCount, gate, measurements }) => {
-    let nextState = state;
-    gate.targets.forEach((qubit) => {
-      nextState = prepareZeroQubit(nextState, qubitCount, qubit);
-    });
+    // The Physics Engine decides how a wire is forced to |0⟩ (see physics/measurement/Reset.ts).
+    const reset = gate.targets.reduce((current, qubit) => physics.reset(current, qubit), physics.fromAmplitudes(state, qubitCount));
     return {
-      state: nextState,
+      state: reset.amplitudes,
       measurements,
-      log: [`Cycle workspace prepared: q${gate.targets.join(', q')} as |0⟩.`],
+      log: [`Logical-cycle workspace prepared: q${gate.targets.join(', q')} as |0⟩.`],
     };
   },
 };

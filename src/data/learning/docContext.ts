@@ -4,6 +4,7 @@
  * values, and a one-line reading of a row.
  */
 import type { Complex } from '../../simulator/complex';
+import { physics } from '../../simulator/physics/PhysicsEngine';
 import type { ParticleStartState } from '../../simulator/types';
 import type { DocEntry, DocTable } from './docEntries';
 
@@ -20,8 +21,7 @@ export const wireValuesFromState = (state: Complex[], qubitCount: number, qubits
   const values = new Map<number, WireValue>();
   qubits.forEach((qubit) => {
     if (qubit < 0 || qubit >= qubitCount) return;
-    const mask = 1 << (qubitCount - qubit - 1);
-    const probabilityOne = state.reduce((sum, amplitude, index) => (index & mask ? sum + amplitude.re ** 2 + amplitude.im ** 2 : sum), 0);
+    const probabilityOne = physics.probabilityOfOne(physics.fromAmplitudes(state, qubitCount), qubit);
     values.set(qubit, probabilityOne < EPSILON ? '0' : probabilityOne > 1 - EPSILON ? '1' : 'sp');
   });
   return values;

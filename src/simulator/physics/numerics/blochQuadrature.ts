@@ -4,6 +4,9 @@
  * The routines collapse noisy angular/radial integrations into deterministic
  * one-dimensional estimates suitable for UI feedback rather than research-grade
  * numerical simulation. Background: https://en.wikipedia.org/wiki/Bloch_sphere
+ *
+ * Accuracy level: visualization estimate. Nothing here feeds authoritative
+ * state evolution; the Physics Engine only surfaces it as `rhoExpectation`.
  */
 // Fixed-order Gauss–Legendre nodes and weights on [-1, 1] (n = 10).
 const GL_NODES = [

@@ -6,6 +6,7 @@
  * measurements, particles, and QPU operations.
  */
 import { Complex } from './complex';
+import type { MeasurementBasis } from './physics/measurement/MeasurementBasis';
 
 export type PreconfiguredGateType =
   | 'X'
@@ -209,10 +210,12 @@ export type CircuitGate = {
   inverse?: boolean;
   source?: string;
   customGateId?: string;
-  /** Timeline cycle that produced this gate. INCREASECYCLE advances it. */
+  /** Logical cycle (program stage) that produced this gate; INCREASECYCLE advances it. Not physical time. */
   cycle?: number;
   /** Named simulator checkpoint for SAVE_STATE and LOAD_STATE. */
   checkpoint?: string;
+  /** MEASURE observable; omitted means the computational (Z) basis. */
+  basis?: MeasurementBasis;
   /** Optional classical condition; evaluated only after the named qubit is measured. */
   condition?: GateCondition;
   /** Structured IF/ELSE origin; absent for bare `-IF` feed-forward. */
@@ -223,9 +226,13 @@ export type CircuitGate = {
 
 export type MeasurementMap = Record<number, 0 | 1>;
 
+/** Observable behind each recorded bit; wires measured in Z (the default) are omitted. */
+export type MeasurementBasisMap = Record<number, MeasurementBasis>;
+
 export type StateCheckpoint = {
   state: Complex[];
   measurements: MeasurementMap;
+  measurementBases?: MeasurementBasisMap;
 };
 
 export type {
@@ -238,9 +245,13 @@ export type {
 } from './physics/particleTracking';
 
 // Execution results may include optional particle snapshots and per-gate transitions when tracing is enabled.
+// This is the Complex[] compatibility view; engine-native runs (executeCircuit) return QuantumExecutionResult,
+// whose state is a QuantumState and may be a density matrix.
 export type ExecutionResult = {
   state: Complex[];
   measurements: MeasurementMap;
+  /** Basis of each non-Z measurement, so displays can place X/Y outcomes on the right axis. */
+  measurementBases?: MeasurementBasisMap;
   log: string[];
   particles?: import('./physics/particleTracking').ParticleSnapshot[];
   transitions?: import('./physics/particleTracking').OperationTransition[];

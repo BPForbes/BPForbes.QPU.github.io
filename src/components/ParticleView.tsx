@@ -133,9 +133,19 @@ export function ParticleView({
                       <span>⟨ρ⟩ {snapshot.mixed.rhoExpectation.toFixed(3)}</span>
                     )}
                   </div>
-                  {snapshot.entangledWithRegister && (
+                  {snapshot.entanglement?.status === 'entangled' && (
                     <div className="particle-entangled" aria-label={`q${physicalQubit} entangled with register`}>
                       Entangled with register
+                    </div>
+                  )}
+                  {/* A failed witness is not evidence of separability, so say so instead of "not entangled". */}
+                  {snapshot.entanglement?.status === 'inconclusive' && (
+                    <div
+                      className="particle-entangled particle-entangled-inconclusive"
+                      aria-label={`q${physicalQubit} entanglement inconclusive`}
+                      title={snapshot.entanglement.reason}
+                    >
+                      Entanglement undetermined
                     </div>
                   )}
                 </>

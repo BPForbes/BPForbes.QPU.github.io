@@ -34,7 +34,7 @@ fail them.
 \midrule
 Unitary? & Yes & No & No\\
 Can be undone? & Yes, by the inverse gate & No & No\\
-Result depends on chance? & No & Yes & No\\
+Result depends on chance? & No & Yes & Only for the other wires of an entangled wire\\
 Written in source? & Yes & Yes & No --- write \code{SET wire 0p}\\
 Shown on canvas? & Yes. Inverse copies add $\dagger$, a blue outline, and purple when active. & Yes, as the meter on the qubit, with a double stroke down to \textbf{c} & No (hidden)\\
 \bottomrule
@@ -58,13 +58,17 @@ RESET steps are hidden from the canvas and filtered from the
 wrote. They still run during simulation.
 
 \begin{cautionbox}[Reset a wire only when it is not entangled]
-In this simulator, RESET keeps the part of the state in which the wire is
-already 0 and rescales it; only if that part is empty does it move the
-$\ket1$ amplitudes to $\ket0$. On a fresh wire this is exactly ``prepare
-$\ket0$''. On a wire entangled with others it also changes the other wires.
-For example, resetting one half of a Bell pair forces the other half to 0 as
-well. In multi-stage circuits, \emph{uncompute} temporary wires back to 0 with
-reversible gates instead of relying on a reset.
+RESET behaves like real hardware: it measures the wire in the Z basis and, if
+the result is 1, flips it back with X. The reset wire always ends at
+$\ket0$. If the wire was already definitely 0 or 1, nothing random happens.
+If it was in a superposition of its own, such as $\ket+$, it still ends at
+$\ket0$ and the other wires are unaffected. But if it was entangled with other
+wires, the hidden measurement collapses them too. For example, resetting one
+half of a Bell pair leaves the other half as 0 or 1 at random, each half the
+time, and no longer entangled. Averaged over many runs this is exactly the
+physical reset described in the Theory Guide's chapter \emph{Mixed states,
+entanglement measures, and noise}. In multi-stage circuits, \emph{uncompute}
+temporary wires back to 0 with reversible gates instead of relying on a reset.
 \end{cautionbox}
 
 \subsection{Reset buttons compared}
