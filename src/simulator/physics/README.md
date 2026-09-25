@@ -90,6 +90,9 @@ helpers (`physics.frequency.*`).
   operations last their durations (logical cycles take none), idle wires
   precess, couplings cause crosstalk, and `gates: 'drive'` turns X/Y/RX/RY
   into calibrated pulses. Off by default; the ideal path is unchanged.
+  With the default `gates: 'matrix'`, a gate acts instantly at the start of
+  its slot and the wires then evolve for the rest of it, so dynamics *during*
+  a gate are modelled only for the drive-pulse gates.
 
 Not modelled yet: multi-level qubits (leakage, anharmonicity), noise spectral
 densities S(ω), and spatial wave packets (de Broglie is educational only).

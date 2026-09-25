@@ -156,5 +156,8 @@ states rather than particles moving through space.
 Qubits here have exactly two levels, so leakage to $\ket2$ and
 anharmonicity are not simulated. Noise is described by channels and
 $T_1$/$T_2$, not by a frequency-dependent noise spectrum $S(\omega)$. Spatial
-wave packets are outside the gate-level simulator.
+wave packets are outside the gate-level simulator. With ideal gate matrices
+(the default), a gate acts instantly at the start of its slot and the qubits
+then evolve for the rest of it; only the X/Y/RX/RY drive pulses model what
+happens \emph{during} a gate.
 \end{cautionbox}
