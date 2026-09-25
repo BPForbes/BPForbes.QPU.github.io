@@ -9,6 +9,7 @@ export type { DensityMatrix, DensityMatrixState, QuantumState, StateVectorState 
 export type { MeasurementDiagnostics, MeasurementResult } from './measurement/Measurement';
 export type { MeasurementBasis } from './measurement/MeasurementBasis';
 export type { BlochVector, MixedStateMetrics, PsiKet, SphericalCoordinates } from './analysis/Bloch';
+export type { EntanglementAssessment, EntanglementMethod, EntanglementStatus } from './analysis/Entanglement';
 export type { InterferenceAnalysis, InterferenceOperation, InterferenceTerm } from './analysis/Interference';
 export type { PhaseComparison, PhaseRelation, RelativePhase } from './analysis/Phase';
 export type { DecoherenceModel, NoiseChannel, NoiseModel, PhysicalTimingModel } from './noise/NoiseModel';

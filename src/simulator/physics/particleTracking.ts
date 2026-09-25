@@ -8,6 +8,7 @@
 import type { Complex } from '../complex';
 import type { CircuitGate, MeasurementMap } from '../types';
 import type { BlochVector, MixedStateMetrics, PsiKet, SphericalCoordinates } from './analysis/Bloch';
+import type { EntanglementAssessment } from './analysis/Entanglement';
 import { sphericalFromBlochCartesian } from './analysis/Bloch';
 import { physics } from './PhysicsEngine';
 
@@ -27,8 +28,10 @@ export type ParticleSnapshot = {
   spherical: SphericalCoordinates;
   ket: PsiKet;
   mixed: MixedStateMetrics;
-  /** True when this reduced qubit is mixed while the global state-vector remains pure. */
+  /** Shorthand for `entanglement.status === 'entangled'`. */
   entangledWithRegister?: boolean;
+  /** Engine assessment for an unmeasured wire; absent once the wire is measured. */
+  entanglement?: EntanglementAssessment;
   probOne: number;
   measured?: 0 | 1;
 };
@@ -85,7 +88,8 @@ export const snapshotParticle = (
     spherical,
     ket,
     mixed,
-    entangledWithRegister: inspection?.entangledWithRest === true,
+    entangledWithRegister: inspection?.entanglement.status === 'entangled',
+    entanglement: inspection?.entanglement,
     probOne: (1 - bloch.z) / 2,
     measured,
   };

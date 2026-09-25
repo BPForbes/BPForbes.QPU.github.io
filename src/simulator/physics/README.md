@@ -64,6 +64,12 @@ physics/
   (|0⟩, |+⟩, |+i⟩). `MEASURE` defaults to Z; `CircuitGate.basis` selects X/Y.
 - Bloch vector is (⟨X⟩, ⟨Y⟩, ⟨Z⟩), so ρ = ½(I + xX + yY + zZ).
 - Fidelity uses the squared convention F = (Tr √(√ρ σ √ρ))².
+- Entanglement is an `EntanglementAssessment` (`entangled` / `separable` /
+  `inconclusive`, with the method and, for PPT, the negativity), never a bare
+  boolean. Pure registers use the exact reduced-state test. Mixed registers use
+  PPT: negative is conclusive for any split, zero is conclusive only for 2×2;
+  larger zero-negativity splits and registers past the PPT size limit are
+  `inconclusive`. UI must not render `inconclusive` as "not entangled".
 - Logical `CYCLE`/`INCREASECYCLE` stages are not physical time; decoherence
   uses `PhysicalTimingModel` gate durations.
 - `RESET` is physical. Density matrices get the reset channel

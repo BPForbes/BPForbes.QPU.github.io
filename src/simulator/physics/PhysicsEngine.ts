@@ -24,7 +24,12 @@ import {
   type SphericalCoordinates,
 } from './analysis/Bloch';
 import { entropyFromEigenvalues, vonNeumannEntropy } from './analysis/Entropy';
-import { negativity, reducedStateIndicatesEntanglement } from './analysis/Entanglement';
+import {
+  assessPptNegativity,
+  assessPureStateReduction,
+  type EntanglementAssessment,
+  negativity,
+} from './analysis/Entanglement';
 import { densityFidelity, pureMixedFidelity, pureStateFidelity } from './analysis/Fidelity';
 import { analyzeInterference, type InterferenceAnalysis, type InterferenceOperation } from './analysis/Interference';
 import { comparePhase, type PhaseComparison, relativePhases, type RelativePhase } from './analysis/Phase';
@@ -94,12 +99,8 @@ export type QubitInspection = {
   /** Von Neumann entropy in bits. */
   entropy: number;
   probabilities: { zero: number; one: number };
-  /**
-   * Pure global state: true when this qubit is entangled with the rest of the
-   * register. Undefined for a mixed global state, where local mixedness alone
-   * cannot separate entanglement from classical noise (use isEntangled).
-   */
-  entangledWithRest: boolean | undefined;
+  /** Is this qubit entangled with the rest of the register? See assessEntanglement. */
+  entanglement: EntanglementAssessment;
 };
 
 export type SubsystemInspection = {
@@ -111,8 +112,8 @@ export type SubsystemInspection = {
   vonNeumannEntropy: number;
   /** Joint computational-basis distribution (subsystem[0] is the most significant bit). */
   probabilities: number[];
-  /** Same semantics as QubitInspection.entangledWithRest, for the whole subsystem. */
-  entangledWithRest: boolean | undefined;
+  /** Is the subsystem entangled with the rest of the register? See assessEntanglement. */
+  entanglement: EntanglementAssessment;
 };
 
 export type GlobalInspection = {
@@ -351,7 +352,7 @@ export class PhysicsEngine {
       mixedness: 2 * (1 - qubitPurity),
       entropy: entropyFromEigenvalues([(1 - r) / 2, (1 + r) / 2]),
       probabilities: { zero: densityMatrix[0][0].re, one: densityMatrix[1][1].re },
-      entangledWithRest: this.entangledWithRest(state, densityMatrix),
+      entanglement: this.assessWithReduced(state, [qubit], densityMatrix),
     };
   }
 
@@ -366,7 +367,7 @@ export class PhysicsEngine {
       mixedness: normalizedMixedness(densityMatrix),
       vonNeumannEntropy: vonNeumannEntropy(densityMatrix),
       probabilities: densityProbabilities(densityMatrix),
-      entangledWithRest: subsystem.length === state.qubitCount ? false : this.entangledWithRest(state, densityMatrix),
+      entanglement: this.assessWithReduced(state, subsystem, densityMatrix),
     };
   }
 
@@ -409,16 +410,14 @@ export class PhysicsEngine {
 
   /**
    * Is `subsystem` entangled with the rest of the register?
-   * Pure global state: exact (reduced state mixed). Mixed global state: PPT
-   * criterion, exact for 2×2 / 2×3 splits and a sufficient witness otherwise.
+   * - Pure global state: exact, from whether the reduced state is mixed.
+   * - Mixed global state: PPT negativity. Positive negativity proves
+   *   entanglement; zero proves separability only for 2×2 / 2×3 splits and is
+   *   'inconclusive' otherwise. Registers past the PPT size limit are also
+   *   'inconclusive' rather than silently treated as separable.
    */
-  isEntangled(state: QuantumState, subsystem: number[]): boolean {
-    const rest = complement(state.qubitCount, subsystem);
-    if (rest.length === 0) return false;
-    if (this.isGloballyPure(state)) {
-      return reducedStateIndicatesEntanglement(this.reducedState(state, subsystem));
-    }
-    return this.negativity(state, subsystem) > PURE_TOLERANCE;
+  assessEntanglement(state: QuantumState, subsystem: number[]): EntanglementAssessment {
+    return this.assessWithReduced(state, subsystem);
   }
 
   /** S(ρ_A) in bits; an entanglement measure only for a pure global state. */
@@ -513,10 +512,24 @@ export class PhysicsEngine {
     return state.kind === 'stateVector' || isPure(state.rho);
   }
 
-  private entangledWithRest(state: QuantumState, reduced: DensityMatrix): boolean | undefined {
-    if (state.qubitCount < 2) return false;
-    if (!this.isGloballyPure(state)) return undefined;
-    return reducedStateIndicatesEntanglement(reduced);
+  // Shares an already computed reduced state with the inspection methods.
+  private assessWithReduced(state: QuantumState, subsystem: number[], reduced?: DensityMatrix): EntanglementAssessment {
+    const rest = complement(state.qubitCount, subsystem);
+    const pure = this.isGloballyPure(state);
+    if (rest.length === 0) {
+      // Nothing outside the subsystem to be entangled with.
+      return { status: 'separable', method: pure ? 'pure-state-reduction' : 'ppt-negativity', conclusive: true };
+    }
+    if (pure) return assessPureStateReduction(reduced ?? this.reducedState(state, subsystem));
+    if (state.qubitCount > MAX_PPT_QUBITS) {
+      return {
+        status: 'inconclusive',
+        method: 'ppt-negativity',
+        conclusive: false,
+        reason: `The PPT test is limited to ${MAX_PPT_QUBITS} qubits (register has ${state.qubitCount}).`,
+      };
+    }
+    return assessPptNegativity(this.negativity(state, subsystem), 2 ** subsystem.length, 2 ** rest.length);
   }
 }
 

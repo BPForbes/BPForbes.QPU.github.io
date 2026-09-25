@@ -114,7 +114,7 @@ describe('runNoisyCircuit', () => {
     expect(fidelity).toBeLessThan(1);
     expect(fidelity).toBeGreaterThan(0.85);
     expect(physics.inspectGlobal(noisy.state).purity).toBeLessThan(1);
-    expect(physics.isEntangled(noisy.state, [0])).toBe(true);
+    expect(physics.assessEntanglement(noisy.state, [0]).status).toBe('entangled');
   });
 
   it('corrects a single injected bit flip with the 3-qubit repetition code', () => {

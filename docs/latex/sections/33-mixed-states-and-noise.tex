@@ -98,7 +98,30 @@ longer proves entanglement. The physics engine then uses the \emph{partial
 transpose} test: transpose only $B$'s indices of $\rho_{AB}$. If the result
 has a negative eigenvalue the state is entangled, and the sum of the negative
 eigenvalues' magnitudes is the \emph{negativity} ($\tfrac12$ for a Bell pair).
-For two qubits, or a qubit and a qutrit, the test is exact.
+A negative eigenvalue is proof for any split. The converse holds only for two
+qubits (or a qubit and a qutrit): for larger splits some entangled states have
+no negative eigenvalue at all. The engine therefore reports one of three
+results, and says which test it used:
+
+\begin{center}
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+Result & Meaning\\
+\midrule
+entangled & Proven: the reduced state of a pure register is mixed, or the
+partial transpose has a negative eigenvalue.\\
+separable & Proven: the reduced state of a pure register is pure, or a
+two-qubit mixed state has no negative eigenvalue.\\
+inconclusive & Not decided: a larger mixed split passed the partial-transpose
+test, or the register is too large to test. This is \emph{not} evidence that
+the wires are unentangled.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+A particle card shows \textbf{Entangled with register} only for a proven
+result and \textbf{Entanglement undetermined} for an inconclusive one; it
+never labels a wire ``not entangled'' because a test failed to find
+entanglement.
 
 QPU has no \code{ENTANGLE} instruction. Entanglement always comes from
 ordinary gates such as \code{H} followed by \code{CNOT}; the physics engine

@@ -49,10 +49,10 @@ describe('physics validation circuits', () => {
       const inspection = physics.inspectQubit(state, qubit);
       expect(inspection.purity).toBeCloseTo(0.5, 12);
       expect(inspection.entropy).toBeCloseTo(1, 9);
-      expect(inspection.entangledWithRest).toBe(true);
+      expect(inspection.entanglement).toEqual({ status: 'entangled', method: 'pure-state-reduction', conclusive: true });
       expect(physics.entanglementEntropy(state, [qubit])).toBeCloseTo(1, 9);
     });
-    expect(physics.isEntangled(state, [0])).toBe(true);
+    expect(physics.assessEntanglement(state, [0]).status).toBe('entangled');
     expect(physics.inspectSubsystem(state, [0, 1]).purity).toBeCloseTo(1, 12);
   });
 
@@ -68,11 +68,11 @@ describe('physics validation circuits', () => {
     const pair = physics.inspectSubsystem(state, [0, 1]);
     expect(pair.purity).toBeCloseTo(0.5, 9);
     expect(pair.vonNeumannEntropy).toBeCloseTo(1, 9);
-    expect(pair.entangledWithRest).toBe(true);
+    expect(pair.entanglement.status).toBe('entangled');
     expect(physics.negativity(densityState(pair.densityMatrix), [0])).toBeCloseTo(0, 9);
     const whole = physics.inspectSubsystem(state, [0, 1, 2]);
     expect(whole.purity).toBeCloseTo(1, 12);
-    expect(whole.entangledWithRest).toBe(false);
+    expect(whole.entanglement).toMatchObject({ status: 'separable', conclusive: true });
   });
 
   it('SWAP moves an arbitrary state between wires without cloning it', () => {
@@ -82,7 +82,7 @@ describe('physics validation circuits', () => {
     const original = densityState(physics.reducedState(before, [0]));
     expect(physics.fidelity(densityState(physics.reducedState(after, [1])), original)).toBeCloseTo(1, 9);
     expect(physics.inspectQubit(after, 0).bloch.z).toBeCloseTo(1, 12);
-    expect(physics.isEntangled(after, [0])).toBe(false);
+    expect(physics.assessEntanglement(after, [0]).status).toBe('separable');
   });
 
   it('measurement collapse: measuring |+⟩ leaves the state that matches the recorded bit', () => {
@@ -100,13 +100,13 @@ describe('physics validation circuits', () => {
     const { state } = run(2, [gate('H', [0]), gate('CNOT', [1], [0])]);
     const plusPlus = stateVector([complex(0.5), complex(0.5), complex(0.5), complex(0.5)]);
     expect(physics.fidelity(state, plusPlus)).toBeCloseTo(0.5, 12);
-    expect(physics.isEntangled(state, [1])).toBe(true);
+    expect(physics.assessEntanglement(state, [1]).status).toBe('entangled');
     expect(physics.measurementDiagnostics(state, 1, 'X').deterministic).toBe(false);
 
     // Basis states copy fine, which is why CNOT looks like a copier classically.
     const { state: copied } = run(2, [gate('X', [0]), gate('CNOT', [1], [0])]);
     expect(physics.probabilities(copied)[3]).toBeCloseTo(1, 12);
-    expect(physics.isEntangled(copied, [1])).toBe(false);
+    expect(physics.assessEntanglement(copied, [1]).status).toBe('separable');
   });
 
   it('teleportation: H, CNOT, MEASURE and classical X/Z feed-forward move an arbitrary state', () => {
@@ -136,7 +136,7 @@ describe('physics validation circuits', () => {
       vi.restoreAllMocks();
       const received = densityState(physics.reducedState(state, [2]));
       expect(physics.fidelity(received, target)).toBeCloseTo(1, 9);
-      expect(physics.isEntangled(state, [2])).toBe(false);
+      expect(physics.assessEntanglement(state, [2]).status).toBe('separable');
       expect(result.measurements[0]).toBe(first < 0.5 ? 1 : 0);
     });
   });

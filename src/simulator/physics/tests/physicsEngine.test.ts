@@ -192,12 +192,12 @@ describe('PhysicsEngine reduced states and diagnostics', () => {
       [complex(), complex(), complex(), complex()],
       [complex(), complex(), complex(), complex(0.5)],
     ]);
-    expect(physics.inspectQubit(classical, 0).entangledWithRest).toBeUndefined();
-    expect(physics.isEntangled(classical, [0])).toBe(false);
+    expect(physics.inspectQubit(classical, 0).entanglement).toMatchObject({ status: 'separable', method: 'ppt-negativity', conclusive: true });
+    expect(physics.assessEntanglement(classical, [0]).status).toBe('separable');
     expect(() => physics.entanglementEntropy(classical, [0])).toThrow(RangeError);
     const bellRho = physics.toDensityMatrix(bell());
     expect(physics.negativity(bellRho, [0])).toBeCloseTo(0.5, 9);
-    expect(physics.isEntangled(bellRho, [0])).toBe(true);
+    expect(physics.assessEntanglement(bellRho, [0]).status).toBe('entangled');
   });
 
   it('computes fidelity across representations', () => {
@@ -294,7 +294,7 @@ describe('RESET through the Physics Engine', () => {
     const channel = physics.reset(physics.toDensityMatrix(bellVector), 0);
     expect(physics.fidelity(averaged, channel)).toBeCloseTo(1, 9);
     expect(physics.inspectQubit(channel, 0).probabilities.zero).toBeCloseTo(1, 12);
-    expect(physics.isEntangled(channel, [0])).toBe(false);
+    expect(physics.assessEntanglement(channel, [0]).status).toBe('separable');
   });
 
   it('consumes no randomness when the wire is already definite', () => {
