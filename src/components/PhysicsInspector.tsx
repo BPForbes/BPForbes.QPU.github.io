@@ -49,6 +49,7 @@ type NoisyRun = {
   measurements: MeasurementMap;
   idealMeasurements: MeasurementMap;
   physicalTime?: number;
+  leakage?: Record<number, number>;
 };
 
 // Deterministic draws so the ideal and noisy runs sample MEASURE with the same random numbers.
@@ -141,6 +142,8 @@ export function PhysicsInspector({
   const [f01, setF01] = useState(5);
   const [offsetMHz, setOffsetMHz] = useState(0);
   const [temperatureMK, setTemperatureMK] = useState('');
+  // Blank keeps the ideal two-level qubit; a value adds the |2⟩ level so pulses can leak.
+  const [anharmonicityMHz, setAnharmonicityMHz] = useState('');
   const [physicalMode, setPhysicalMode] = useState(false);
   const [frame, setFrame] = useState<PhysicalFrame>('rotating');
   const [gateMode, setGateMode] = useState<'matrix' | 'drive'>('matrix');
@@ -162,7 +165,8 @@ export function PhysicsInspector({
     ...(t1.trim() && physicalMode ? { t1: Number(t1) } : {}),
     ...(t2.trim() && physicalMode ? { t2: Number(t2) } : {}),
     ...(temperatureMK.trim() ? { temperature: Number(temperatureMK) / 1000 } : {}),
-  }), [f01, offsetMHz, t1, t2, temperatureMK, physicalMode]);
+    ...(anharmonicityMHz.trim() ? { anharmonicity: Number(anharmonicityMHz) / 1000 } : {}),
+  }), [f01, offsetMHz, t1, t2, temperatureMK, anharmonicityMHz, physicalMode]);
 
   const toggle = (display: number) => setSelected((wires) => (
     wires.includes(display) ? wires.filter((wire) => wire !== display) : [...wires, display].sort((a, b) => a - b)
@@ -197,6 +201,7 @@ export function PhysicsInspector({
         measurements: noisy.measurements,
         idealMeasurements: ideal.measurements,
         physicalTime: noisy.physicalTime,
+        leakage: noisy.leakage,
       });
     } catch (caught) {
       setNoisyRun(null);
@@ -290,6 +295,10 @@ export function PhysicsInspector({
           <input min={0} onChange={(event) => setTemperatureMK(event.target.value)} placeholder="0" type="number" value={temperatureMK} />
         </label>
         <label>
+          Anharmonicity α/2π (MHz)
+          <input onChange={(event) => setAnharmonicityMHz(event.target.value)} placeholder="two-level" step={10} type="number" value={anharmonicityMHz} />
+        </label>
+        <label>
           Frame
           <select disabled={!physicalMode} onChange={(event) => setFrame(event.target.value as PhysicalFrame)} value={frame}>
             <option value="rotating">Rotating at f₀₁</option>
@@ -321,6 +330,12 @@ export function PhysicsInspector({
               <>
                 <dt>Elapsed physical time</dt>
                 <dd>{format(noisyRun.physicalTime, 1)} ns</dd>
+              </>
+            )}
+            {noisyRun.leakage && (
+              <>
+                <dt>Leakage to |2⟩ (returned as |1⟩)</dt>
+                <dd>{Object.entries(noisyRun.leakage).map(([wire, population]) => `q${wire}: ${population.toExponential(2)}`).join(', ')}</dd>
               </>
             )}
           </dl>

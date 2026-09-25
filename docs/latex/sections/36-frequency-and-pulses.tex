@@ -97,10 +97,55 @@ is then detuned from it, which is how calibration error becomes gate error.
 Pulses have an envelope $\varepsilon(t)$ with peak 1. A \emph{square} pulse is
 the simplest. A \emph{Gaussian} pulse has a narrower spectrum, so it disturbs
 neighbouring frequencies less. A \emph{DRAG} pulse adds a derivative
-quadrature component that suppresses leakage into a third level. The engine's
-qubits have only two levels, so DRAG there adds a small error instead of
-removing one. The rotation of a resonant pulse is $\Omega$ times the area
-under $\varepsilon(t)$.
+quadrature component that suppresses leakage into a third level (next
+subsection). On an ideal two-level qubit there is nothing to suppress, so DRAG
+there adds a small error instead. The rotation of a resonant pulse is $\Omega$
+times the area under $\varepsilon(t)$.
+
+\subsection{Leakage and anharmonicity}
+
+A superconducting transmon is not a two-level system. It is an anharmonic
+oscillator with levels
+\[
+E_n=\Bigl(n-\tfrac12\Bigr)\hbar\omega_{01}+\frac{\hbar\alpha}{2}\,n(n-1),
+\qquad \omega_{12}=\omega_{01}+\alpha,
+\]
+with anharmonicity $\alpha<0$ (typically $\alpha/2\pi\approx-200$~MHz). The
+drive couples neighbouring levels through $a+a^\dagger$, whose matrix elements
+are $\sqrt n$, so the $1\leftrightarrow2$ transition is driven $\sqrt2$ times as
+strongly as $0\leftrightarrow1$ and is detuned from it only by $\alpha$. A pulse
+whose spectrum (width about $1/\text{duration}$) reaches $\omega_{12}$ moves
+population into $\ket2$: this is \emph{leakage}. The virtual $1\leftrightarrow2$
+coupling also shifts the phase of $\ket1$, so leakage and phase error come
+together.
+
+Giving a qubit profile an \code{anharmonicity} makes every drive pulse on that
+wire run in the three-level space $\{\ket0,\ket1,\ket2\}$ with the same frame
+and RWA conventions as above. For the qubit register the engine then applies
+the exact channel
+\[
+K_0=PUP,\qquad L_2=\ket1\bra2UP,
+\]
+where $U$ is the three-level propagator and $P$ projects onto
+$\ket0,\ket1$. $K_0$ carries the coherent errors; $L_2$ carries the leaked
+population, and $K_0^\dagger K_0+L_2^\dagger L_2=I$ because $U$ is unitary.
+The run reports the leaked population per wire.
+
+\emph{Why $\ket1$?} Leaked population is returned to $\ket1$ at the end of the
+operation. In a transmon, $\ket2$ decays to $\ket1$ (about twice as fast as
+$\ket1$ decays to $\ket0$), and dispersive readout usually assigns $\ket2$ the
+outcome 1. This is the model's approximation: population that stays in $\ket2$
+across later gates is not tracked.
+
+\emph{DRAG.} Adding the quadrature $\varepsilon_Q=-\beta\,\dot\varepsilon_I$
+with
+\[
+\beta=\frac1\alpha
+\]
+($\alpha$ in angular units) cancels the $1\leftrightarrow2$ excitation to first
+order. For a 20~ns Gaussian $\pi$-pulse at $\alpha/2\pi=-200$~MHz, leakage
+drops from about $7\times10^{-5}$ to about $2\times10^{-9}$. The wrong sign of
+$\beta$ makes leakage worse.
 
 \subsection{The rotating-wave approximation}
 
@@ -153,8 +198,9 @@ does not affect gate execution, because QPU simulates information-carrying
 states rather than particles moving through space.
 
 \begin{cautionbox}[What is not modelled]
-Qubits here have exactly two levels, so leakage to $\ket2$ and
-anharmonicity are not simulated. Noise is described by channels and
+Leakage is modelled only during drive pulses on an uncoupled wire, and leaked
+population returns to $\ket1$ when the operation ends instead of staying in
+$\ket2$. Noise is described by channels and
 $T_1$/$T_2$, not by a frequency-dependent noise spectrum $S(\omega)$. Spatial
 wave packets are outside the gate-level simulator. With ideal gate matrices
 (the default), a gate acts instantly at the start of its slot and the qubits

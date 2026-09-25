@@ -36,6 +36,7 @@ import { comparePhase, type PhaseComparison, relativePhases, type RelativePhase 
 import { isPure, linearEntropy, normalizedMixedness, PURE_TOLERANCE, purity } from './analysis/Purity';
 import { propagator, timeDependentPropagator, type Hamiltonian, type TimeDependentHamiltonian } from './dynamics/Hamiltonian';
 import { driveDiagnostics } from './frequency/DriveDiagnostics';
+import { leakageDiagnostics } from './frequency/Leakage';
 import {
   segmentPropagators,
   profileFor,
@@ -226,6 +227,8 @@ export class PhysicsEngine {
     envelopeAt,
     envelopeArea,
     driveDiagnostics,
+    /** Leakage to |2⟩ of one pulse on an anharmonic (transmon) wire, and the leakage-cancelling DRAG β. */
+    leakageDiagnostics,
     startClock,
     advanceClock,
     /** Physical duration of an operation under a timing model (default 1 time unit). */
@@ -423,9 +426,38 @@ export class PhysicsEngine {
    * its idle Hamiltonian (so idle qubits precess), plus couplings and any drive
    * pulses, in the system's frame and approximation.
    */
-  evolvePhysical<S extends QuantumState>(state: S, system: PhysicalSystem, segment: PhysicalSegment): S {
-    return this.guard(state, () => segmentPropagators(system, state.qubitCount, segment)
-      .reduce((current, { wires, unitary }) => this.applyUnitary(current, wires, unitary), state));
+  evolvePhysical(state: QuantumState, system: PhysicalSystem, segment: PhysicalSegment): QuantumState {
+    return this.evolvePhysicalWithLeakage(state, system, segment).state;
+  }
+
+  /**
+   * evolvePhysical that also reports, per driven anharmonic wire, the population
+   * this segment moved out of the computational subspace (then returned as |1⟩).
+   * Leakage is non-unitary on the qubit, so it upgrades the register to a density matrix.
+   */
+  evolvePhysicalWithLeakage(
+    state: QuantumState,
+    system: PhysicalSystem,
+    segment: PhysicalSegment,
+  ): { state: QuantumState; leakage: Record<number, number> } {
+    const leakage: Record<number, number> = {};
+    const evolved = this.guard(state, () => segmentPropagators(system, state.qubitCount, segment).reduce((current, evolution) => {
+      if ('unitary' in evolution) return this.applyUnitary(current, evolution.wires, evolution.unitary);
+      const [wire] = evolution.wires;
+      const { kraus, leakageFrom } = evolution.channel;
+      const rho = this.reducedState(current, [wire]);
+      // ⟨w|ρ|w⟩ for each leaked level's row w = (U_n0, U_n1).
+      leakage[wire] = kraus.slice(1).reduce((sum, operator) => {
+        const [w0, w1] = operator[1];
+        // Re(w_j ρ_jk w_k*); the imaginary parts cancel in the sum.
+        const term = (left: Complex, entry: Complex, right: Complex) =>
+          (left.re * entry.re - left.im * entry.im) * right.re + (left.re * entry.im + left.im * entry.re) * right.im;
+        return sum + term(w0, rho[0][0], w0) + term(w0, rho[0][1], w1) + term(w1, rho[1][0], w0) + term(w1, rho[1][1], w1);
+      }, 0);
+      const channel = { name: 'leakage', parameter: (leakageFrom[0] + leakageFrom[1]) / 2, kraus };
+      return this.applyChannel(current, channel, [wire]);
+    }, state));
+    return { state: evolved, leakage };
   }
 
   /**

@@ -94,8 +94,18 @@ helpers (`physics.frequency.*`).
   its slot and the wires then evolve for the rest of it, so dynamics *during*
   a gate are modelled only for the drive-pulse gates.
 
-Not modelled yet: multi-level qubits (leakage, anharmonicity), noise spectral
-densities S(ω), and spatial wave packets (de Broglie is educational only).
+- Leakage (`frequency/Leakage.ts`): a profile `anharmonicity` (α/2π, e.g.
+  −0.2 GHz) makes drive pulses on that wire run on a three-level transmon
+  (levels (n − ½)ω₀₁ + (α/2)n(n − 1), drive matrix elements √n). The qubit gets
+  the exact channel K₀ = PUP, L = |1⟩⟨2|UP; the run reports leaked population
+  per wire. `leakageDiagnostics` gives f₁₂, leakage from |0⟩/|1⟩, and the
+  leakage-cancelling DRAG β = 1/α. Leaked population returns to |1⟩ when the
+  operation ends (|2⟩ decays to |1⟩ and reads out as 1); it is not tracked
+  across later gates, and leaky drives on coupled wires are rejected.
+
+Not modelled yet: population that stays in |2⟩ between operations, noise
+spectral densities S(ω), and spatial wave packets (de Broglie is educational
+only).
 
 ## Exposure
 

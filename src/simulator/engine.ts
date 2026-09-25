@@ -141,6 +141,11 @@ export type QuantumExecutionResult = Omit<ExecutionResult, 'state' | 'checkpoint
   checkpoints: Record<string, QuantumCheckpoint>;
   /** Physical clock after the run or step (physical simulation mode only). */
   physicalTime?: number;
+  /**
+   * Population driven out of the computational subspace (to |2⟩) per wire,
+   * summed over the run; only anharmonic wires driven by pulses leak.
+   */
+  leakage?: Record<number, number>;
 };
 
 /**
@@ -406,13 +411,16 @@ export const applyGateToState = (
   }
 
   let physicalTime: number | undefined;
+  let leakage: Record<number, number> = {};
   if (options.physical) {
     const start = options.physicalTime ?? 0;
     // Markers are logical; a skipped conditional gate still occupies its scheduled slot.
     const duration = marker ? 0 : physics.frequency.operationDuration(options.physical.timing, String(gate.type));
     const executed = !marker && result.conditionOutcomes?.[gate.id] !== false;
     const pulse = executed ? calibratedGatePulse(options.physical, gate, duration) : undefined;
-    let evolved = physics.evolvePhysical(result.state, options.physical.system, { start, duration, ...(pulse ? { pulses: [pulse] } : {}) });
+    const physical = physics.evolvePhysicalWithLeakage(result.state, options.physical.system, { start, duration, ...(pulse ? { pulses: [pulse] } : {}) });
+    let evolved = physical.state;
+    leakage = physical.leakage;
     if (options.noise && executed) {
       evolved = physics.applyNoise(evolved, options.noise, {
         touched: [...new Set([...gate.targets, ...gate.controls])],
@@ -422,10 +430,15 @@ export const applyGateToState = (
     if (options.physical.decoherence !== false && duration > 0) {
       evolved = physics.applyPhysicalDecoherence(evolved, options.physical.system, start, duration);
     }
-    result = { ...result, state: evolved };
+    const leakageLog = Object.entries(leakage).map(([wire, population]) =>
+      `q${wire} leaked ${population.toExponential(2)} of its population to |2⟩ (returned as |1⟩).`);
+    result = { ...result, state: evolved, log: [...result.log, ...leakageLog] };
     physicalTime = start + duration;
   }
-  const timing = physicalTime === undefined ? {} : { physicalTime };
+  const timing = {
+    ...(physicalTime === undefined ? {} : { physicalTime }),
+    ...(Object.keys(leakage).length > 0 ? { leakage } : {}),
+  };
 
   if (!options.trackParticles) return { ...result, checkpoints, ...timing };
   // Particle tracking snapshots before/after one gate so the Bloch view can animate a single transition.
@@ -451,6 +464,12 @@ const initializationSummary = (qubitCount: number, startStates: ParticleStartSta
   (Array.isArray(paramQubitIndices)
     ? paramQubitIndices.map((qubit) => startStates[qubit] ?? '0p').join(' ') || '(no mapped params)'
     : Array.from({ length: qubitCount }, (_, index) => startStates[index] ?? '0p').join(' '));
+
+const sumLeakage = (total: Record<number, number> = {}, step: Record<number, number> = {}) =>
+  Object.entries(step).reduce<Record<number, number>>((sum, [wire, population]) => ({
+    ...sum,
+    [wire]: (sum[Number(wire)] ?? 0) + population,
+  }), { ...total });
 
 /** Engine-native full run: the state stays a QuantumState from preparation to result. */
 export const executeCircuit = (
@@ -480,6 +499,7 @@ export const executeCircuit = (
           measurements: next.measurements,
           measurementBases: next.measurementBases,
           ...(next.physicalTime === undefined ? {} : { physicalTime: next.physicalTime }),
+          ...(next.leakage || result.leakage ? { leakage: sumLeakage(result.leakage, next.leakage) } : {}),
           log: [...result.log, ...next.log],
           particles: next.particles ?? result.particles,
           transitions: [...(result.transitions ?? []), ...(next.transitions ?? [])],

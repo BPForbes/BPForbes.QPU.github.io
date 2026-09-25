@@ -17,6 +17,7 @@ import { complex, type Complex, ZERO } from '../../complex';
 import { MATRIX_X, MATRIX_Y, MATRIX_Z } from '../../gates/matrices';
 import { MAX_PROPAGATOR_STEPS, timeDependentPropagator } from '../dynamics/Hamiltonian';
 import { type ComplexMatrix, qubitUnitary, unitaryFromHermitian } from '../numerics/linearAlgebra';
+import { leakageChannel, type LeakageChannel, transmonPropagator } from './Leakage';
 import { envelopeAt, validatePulse, type ControlPulse } from './Pulses';
 import {
   actualTransitionFrequency,
@@ -62,6 +63,9 @@ export type PhysicalSegment = {
 };
 
 export type WirePropagator = { wires: number[]; unitary: Complex[][] };
+/** A driven anharmonic wire: a qubit channel that includes leakage to |2⟩ (see Leakage.ts). */
+export type WireLeakageChannel = { wires: [number]; channel: LeakageChannel };
+export type WireEvolution = WirePropagator | WireLeakageChannel;
 
 /** Coupled groups are exponentiated as dense 2^k matrices, so keep them small. */
 export const MAX_COUPLED_WIRES = 5;
@@ -197,8 +201,10 @@ const validateSystem = (system: PhysicalSystem, qubitCount: number, segment: Phy
  * Propagators for every wire over one segment. Idle, uncoupled, undriven
  * wires get their exact phase; groups with couplings or drives are integrated
  * (exactly when H is constant, otherwise with piecewise-constant steps).
+ * A driven wire with an anharmonicity is integrated with its |2⟩ level and
+ * returns a leakage channel instead of a unitary.
  */
-export const segmentPropagators = (system: PhysicalSystem, qubitCount: number, segment: PhysicalSegment): WirePropagator[] => {
+export const segmentPropagators = (system: PhysicalSystem, qubitCount: number, segment: PhysicalSegment): WireEvolution[] => {
   validateSystem(system, qubitCount, segment);
   const frame = system.frame ?? 'rotating';
   const approximation = system.approximation ?? 'rwa';
@@ -206,9 +212,21 @@ export const segmentPropagators = (system: PhysicalSystem, qubitCount: number, s
   const pulses = segment.pulses ?? [];
   if (duration === 0) return [];
 
-  return buildBlocks(system, qubitCount, pulses).flatMap<WirePropagator>((block) => {
+  return buildBlocks(system, qubitCount, pulses).flatMap<WireEvolution>((block) => {
     if (block.couplings.length === 0 && block.pulses.length === 0) {
       return block.wires.map((wire) => ({ wires: [wire], unitary: idlePropagator(profileFor(system, wire), frame, start, duration) }));
+    }
+    const leaky = block.pulses.filter((pulse) => profileFor(system, pulse.target).anharmonicity !== undefined);
+    if (leaky.length > 0) {
+      if (block.wires.length > 1 || block.pulses.length > 1) {
+        throw new RangeError(`Leakage is modelled for one drive on an uncoupled wire; q${leaky[0].target} is coupled or driven twice.`);
+      }
+      const unitary = transmonPropagator(profileFor(system, leaky[0].target), leaky[0], start, duration, {
+        frame,
+        approximation,
+        maxStep: system.maxStep,
+      });
+      return [{ wires: [leaky[0].target], channel: leakageChannel(unitary) }];
     }
     if (block.wires.length > MAX_COUPLED_WIRES) {
       throw new RangeError(`A coupled group of ${block.wires.length} qubits exceeds the ${MAX_COUPLED_WIRES}-qubit limit.`);

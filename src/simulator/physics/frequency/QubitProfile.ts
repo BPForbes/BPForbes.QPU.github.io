@@ -25,6 +25,11 @@ export type QubitPhysicsProfile = {
   t2?: number;
   /** Bath temperature in kelvin; adds thermal excitation to T1 relaxation. */
   temperature?: number;
+  /**
+   * Anharmonicity α/2π = f₁₂ − f₀₁ in cycles per time unit (transmons: about −0.2 to −0.35 GHz).
+   * When set, drive pulses on this wire see the |2⟩ level and can leak into it (frequency/Leakage.ts).
+   */
+  anharmonicity?: number;
 };
 
 /** Frame the register is represented in: the lab frame, or one rotating at each qubit's nominal f₀₁. */
@@ -44,6 +49,9 @@ export const validateProfile = (profile: QubitPhysicsProfile) => {
   }
   if (profile.temperature !== undefined && !(profile.temperature >= 0)) {
     throw new RangeError(`Temperature must be non-negative (got ${profile.temperature}).`);
+  }
+  if (profile.anharmonicity !== undefined && (!Number.isFinite(profile.anharmonicity) || profile.anharmonicity === 0)) {
+    throw new RangeError(`Anharmonicity must be finite and non-zero (got ${profile.anharmonicity}); omit it for an ideal two-level qubit.`);
   }
 };
 

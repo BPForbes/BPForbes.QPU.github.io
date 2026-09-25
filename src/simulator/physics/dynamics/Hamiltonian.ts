@@ -36,6 +36,8 @@ export type TimeDependentHamiltonian = {
   targets: number[];
   at: (time: number) => ComplexMatrix;
   maxStep: number;
+  /** Hilbert-space dimension when it is not 2^targets.length (e.g. 3 for a transmon qutrit). */
+  dimension?: number;
 };
 
 /** Refuse step counts that would freeze the tab; lab-frame GHz carriers over long pulses hit this first. */
@@ -75,7 +77,7 @@ export const timeDependentPropagator = (
     throw new RangeError(`H(t) evolution needs ${steps} steps (limit ${MAX_PROPAGATOR_STEPS}); use a rotating frame with the RWA or a larger step.`);
   }
   const dt = duration / steps;
-  const size = 2 ** hamiltonian.targets.length;
+  const size = hamiltonian.dimension ?? 2 ** hamiltonian.targets.length;
   let total: Complex[][] = Array.from({ length: size }, (_, i) => Array.from({ length: size }, (_, j) => (i === j ? complex(1) : ZERO)));
   for (let step = 0; step < steps; step += 1) {
     const midpoint = start + (step + 0.5) * dt;

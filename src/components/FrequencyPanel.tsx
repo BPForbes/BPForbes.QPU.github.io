@@ -25,12 +25,14 @@ export function FrequencyPanel({ profile }: FrequencyPanelProps) {
 
   const readout = useMemo(() => {
     try {
+      // With an anharmonicity, DRAG uses the leakage-cancelling β = 1/α; a two-level qubit has no |2⟩ to cancel.
+      const dragBeta = profile.anharmonicity ? 1 / physics.frequency.angularFrequency(profile.anharmonicity) : 0.1;
       const hertz = physics.frequency.toHertz(profile.transitionFrequency);
       const envelope: PulseEnvelope = envelopeKind === 'square'
         ? { kind: 'square' }
         : envelopeKind === 'gaussian'
           ? { kind: 'gaussian', sigma: pulseNs / 4 }
-          : { kind: 'drag', sigma: pulseNs / 4, beta: 0.1 };
+          : { kind: 'drag', sigma: pulseNs / 4, beta: dragBeta };
       const pulse: ControlPulse = {
         target: 0,
         carrierFrequency: profile.transitionFrequency + detuningMHz / 1000,
@@ -40,6 +42,7 @@ export function FrequencyPanel({ profile }: FrequencyPanelProps) {
         envelope,
       };
       const diagnostics = physics.frequency.driveDiagnostics(profile, pulse);
+      const leakage = profile.anharmonicity === undefined ? undefined : physics.frequency.leakageDiagnostics(profile, pulse);
       // Simulate the pulse on |0⟩ in the rotating frame with the (explicit) rotating-wave approximation.
       const driven = physics.evolvePhysical(
         physics.createState(1),
@@ -53,6 +56,7 @@ export function FrequencyPanel({ profile }: FrequencyPanelProps) {
         wavelength: physics.frequency.photonWavelength(hertz),
         thermal: profile.temperature ? physics.frequency.thermalExcitedPopulation(hertz, profile.temperature) : 0,
         diagnostics,
+        leakage,
         simulatedExcitation: physics.probabilityOfOne(driven, 0),
       };
     } catch (caught) {
@@ -69,7 +73,7 @@ export function FrequencyPanel({ profile }: FrequencyPanelProps) {
   }, [electronSpeed]);
 
   if (!readout.ok) return <p className="physics-error" role="alert">{readout.error}</p>;
-  const { hertz, gap, wavelength, thermal, diagnostics, simulatedExcitation } = readout;
+  const { hertz, gap, wavelength, thermal, diagnostics, leakage, simulatedExcitation } = readout;
 
   return (
     <div className="physics-frequency">
@@ -125,7 +129,17 @@ export function FrequencyPanel({ profile }: FrequencyPanelProps) {
           </>
         )}
         <dt>Simulated P(1) after pulse</dt>
-        <dd>{fixed(simulatedExcitation)} (rotating frame, RWA)</dd>
+        <dd>{fixed(simulatedExcitation)} (rotating frame, RWA{leakage ? '; leaked population counted as 1' : ''})</dd>
+        {leakage && (
+          <>
+            <dt>f₁₂ = f₀₁ + α/2π</dt>
+            <dd>{fixed(leakage.transitionFrequency12, 4)} GHz</dd>
+            <dt>Leakage to |2⟩ from |0⟩ / |1⟩</dt>
+            <dd>{leakage.leakageFrom0.toExponential(2)} / {leakage.leakageFrom1.toExponential(2)}</dd>
+            <dt>Leakage-cancelling DRAG β = 1/α</dt>
+            <dd>{fixed(leakage.leakageDragBeta, 4)} ns</dd>
+          </>
+        )}
       </dl>
 
       <h4>Particle wavelength (educational)</h4>
