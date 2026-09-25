@@ -101,7 +101,7 @@ import {
 import { controlsForGateType, getGateDefinition, paletteGateIds } from './simulator/gates/registry';
 import type { OperationTransition, ParticleSnapshot } from './simulator/physics';
 import { snapshotAllParticles } from './simulator/physics';
-import { CircuitGate, GateType, MeasurementMap, ParticleStartState, StateCheckpoint } from './simulator/types';
+import { CircuitGate, GateType, MeasurementBasisMap, MeasurementMap, ParticleStartState, StateCheckpoint } from './simulator/types';
 import { Complex } from './simulator/complex';
 import './styles.css';
 
@@ -245,6 +245,8 @@ function App() {
   const [docFocus, setDocFocus] = useState<'selection' | 'circuit'>('selection');
   const [preStep, setPreStep] = useState<{ cursor: number; state: Complex[]; qubitCount: number } | null>(null);
   const checkpointsRef = useRef<Record<string, StateCheckpoint>>({});
+  // Observable behind each X/Y measurement so stepped particle cards pin to the right axis.
+  const measurementBasesRef = useRef<MeasurementBasisMap>({});
   const [particleSnapshots, setParticleSnapshots] = useState<ParticleSnapshot[]>([]);
   const [particleTransitions, setParticleTransitions] = useState<OperationTransition[]>([]);
   // Palette refresh bumps when custom gates register so GateBlock picks up new definitions.
@@ -418,6 +420,7 @@ function App() {
       ? activeControllable.map((param) => param.qubitIndex)
       : undefined;
     checkpointsRef.current = {};
+    measurementBasesRef.current = {};
     const initialState = createInitialState(nextSimulationQubitCount, nextStartStates, activeParamIndices);
     setState(initialState);
     setRuntimeQubitCount(nextSimulationQubitCount);
@@ -520,6 +523,7 @@ function App() {
   const run = () => {
     setPlaying(false);
     checkpointsRef.current = {};
+    measurementBasesRef.current = {};
     const result = runCircuit(
       simulationQubitCount,
       orderedGates,
@@ -530,6 +534,7 @@ function App() {
     setState(result.state);
     setRuntimeQubitCount(resolveStateQubitCount(result.state, simulationQubitCount));
     setMeasurements(result.measurements);
+    measurementBasesRef.current = result.measurementBases ?? {};
     setConditionOutcomes(result.conditionOutcomes ?? {});
     setParticleSnapshots(result.particles ?? []);
     setParticleTransitions(result.transitions ?? []);
@@ -548,7 +553,9 @@ function App() {
       librarySources: getCatalogLibrarySources(),
       trackParticles: true,
       checkpoints: checkpointsRef.current,
+      measurementBases: measurementBasesRef.current,
     });
+    measurementBasesRef.current = result.measurementBases ?? {};
     setRuntimeQubitCount(nextQubitCount);
     setState(result.state);
     setMeasurements(result.measurements);

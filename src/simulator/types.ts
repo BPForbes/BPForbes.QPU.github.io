@@ -226,9 +226,13 @@ export type CircuitGate = {
 
 export type MeasurementMap = Record<number, 0 | 1>;
 
+/** Observable behind each recorded bit; wires measured in Z (the default) are omitted. */
+export type MeasurementBasisMap = Record<number, MeasurementBasis>;
+
 export type StateCheckpoint = {
   state: Complex[];
   measurements: MeasurementMap;
+  measurementBases?: MeasurementBasisMap;
 };
 
 export type {
@@ -246,6 +250,8 @@ export type {
 export type ExecutionResult = {
   state: Complex[];
   measurements: MeasurementMap;
+  /** Basis of each non-Z measurement, so displays can place X/Y outcomes on the right axis. */
+  measurementBases?: MeasurementBasisMap;
   log: string[];
   particles?: import('./physics/particleTracking').ParticleSnapshot[];
   transitions?: import('./physics/particleTracking').OperationTransition[];

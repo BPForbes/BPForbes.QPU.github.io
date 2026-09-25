@@ -6,7 +6,7 @@
  * entanglement itself. Those come from `physics.inspectQubit`.
  */
 import type { Complex } from '../complex';
-import type { CircuitGate, MeasurementMap } from '../types';
+import type { CircuitGate, MeasurementBasisMap, MeasurementMap } from '../types';
 import type { BlochVector, MixedStateMetrics, PsiKet, SphericalCoordinates } from './analysis/Bloch';
 import type { EntanglementAssessment } from './analysis/Entanglement';
 import { sphericalFromBlochCartesian } from './analysis/Bloch';
@@ -35,6 +35,8 @@ export type ParticleSnapshot = {
   entanglement?: EntanglementAssessment;
   probOne: number;
   measured?: 0 | 1;
+  /** Observable of a recorded non-Z measurement; the particle is pinned to that axis. */
+  measuredBasis?: 'X' | 'Y';
 };
 
 export type ParticleDelta = {
@@ -56,15 +58,16 @@ export type OperationTransition = {
   deltas: ParticleDelta[];
 };
 
-// A recorded classical outcome pins the displayed particle to its pole, whatever later gates did.
+// A recorded classical outcome pins the displayed particle to the eigenstate it read, whatever later gates did.
 export const blochVectorForQubit = (
   state: Complex[],
   qubitCount: number,
   qubit: number,
   measurements: MeasurementMap = {},
+  bases: MeasurementBasisMap = {},
 ): BlochVector => {
   const measured = measurements[qubit];
-  if (measured !== undefined) return physics.measuredBlochGeometry(measured).bloch;
+  if (measured !== undefined) return physics.measuredBlochGeometry(measured, bases[qubit]).bloch;
   return physics.blochVector(physics.fromAmplitudes(state, qubitCount), qubit);
 };
 
@@ -82,12 +85,14 @@ export const snapshotStateParticle = (
   state: QuantumState,
   qubit: number,
   measurements: MeasurementMap = {},
+  bases: MeasurementBasisMap = {},
 ): ParticleSnapshot => {
   const measured = measurements[qubit];
+  const basis = measured === undefined ? undefined : bases[qubit];
   const inspection = measured === undefined ? physics.inspectQubit(state, qubit) : undefined;
   const { bloch, spherical, ket, mixed } = inspection
     ? physics.describeBlochVector(inspection.bloch)
-    : physics.measuredBlochGeometry(measured!);
+    : physics.measuredBlochGeometry(measured!, basis);
   return {
     qubit,
     bloch,
@@ -98,6 +103,7 @@ export const snapshotStateParticle = (
     entanglement: inspection?.entanglement,
     probOne: (1 - bloch.z) / 2,
     measured,
+    ...(basis === 'X' || basis === 'Y' ? { measuredBasis: basis } : {}),
   };
 };
 
@@ -106,8 +112,9 @@ export const snapshotStateParticles = (
   state: QuantumState,
   measurements: MeasurementMap = {},
   qubitCount = state.qubitCount,
+  bases: MeasurementBasisMap = {},
 ): ParticleSnapshot[] =>
-  Array.from({ length: qubitCount }, (_, qubit) => snapshotStateParticle(state, qubit, measurements));
+  Array.from({ length: qubitCount }, (_, qubit) => snapshotStateParticle(state, qubit, measurements, bases));
 
 /** Compatibility wrapper for raw amplitude arrays. */
 export const snapshotParticle = (
@@ -115,14 +122,16 @@ export const snapshotParticle = (
   qubitCount: number,
   qubit: number,
   measurements: MeasurementMap = {},
-): ParticleSnapshot => snapshotStateParticle(quantumView(state, qubitCount), qubit, measurements);
+  bases: MeasurementBasisMap = {},
+): ParticleSnapshot => snapshotStateParticle(quantumView(state, qubitCount), qubit, measurements, bases);
 
 /** Compatibility wrapper for raw amplitude arrays. */
 export const snapshotAllParticles = (
   state: Complex[],
   qubitCount: number,
   measurements: MeasurementMap = {},
-): ParticleSnapshot[] => snapshotStateParticles(quantumView(state, qubitCount), measurements, qubitCount);
+  bases: MeasurementBasisMap = {},
+): ParticleSnapshot[] => snapshotStateParticles(quantumView(state, qubitCount), measurements, qubitCount, bases);
 
 const normalizeAngleDelta = (delta: number) => {
   let value = delta;
@@ -156,10 +165,12 @@ export const buildStateTransition = (
   measurementsBefore: MeasurementMap,
   measurementsAfter: MeasurementMap,
   qubitCount = stateAfter.qubitCount,
+  basesBefore: MeasurementBasisMap = {},
+  basesAfter: MeasurementBasisMap = basesBefore,
 ): OperationTransition => {
   const width = Math.max(qubitCount, stateBefore.qubitCount, stateAfter.qubitCount);
-  const before = snapshotStateParticles(physics.expandRegister(stateBefore, width), measurementsBefore, qubitCount);
-  const after = snapshotStateParticles(physics.expandRegister(stateAfter, width), measurementsAfter, qubitCount);
+  const before = snapshotStateParticles(physics.expandRegister(stateBefore, width), measurementsBefore, qubitCount, basesBefore);
+  const after = snapshotStateParticles(physics.expandRegister(stateAfter, width), measurementsAfter, qubitCount, basesAfter);
   const inputQubits = gate.type === 'SWAP'
     ? gate.targets
     : gate.controls.length > 0
@@ -185,6 +196,8 @@ export const buildOperationTransition = (
   qubitCount: number,
   measurementsBefore: MeasurementMap,
   measurementsAfter: MeasurementMap,
+  basesBefore: MeasurementBasisMap = {},
+  basesAfter: MeasurementBasisMap = basesBefore,
 ): OperationTransition => buildStateTransition(
   gate,
   quantumView(stateBefore, qubitCount),
@@ -192,4 +205,6 @@ export const buildOperationTransition = (
   measurementsBefore,
   measurementsAfter,
   qubitCount,
+  basesBefore,
+  basesAfter,
 );

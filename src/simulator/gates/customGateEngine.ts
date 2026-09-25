@@ -170,6 +170,24 @@ const remapInnerGate = (gate: CircuitGate, remap: Map<number, number>): CircuitG
     : {}),
 });
 
+/**
+ * True when a custom gate (or any custom gate it uses) contains a gate-expression IF.
+ * Those predicates read amplitudes, so the gate is not one fixed linear map and cannot be
+ * lifted to a density matrix column by column.
+ */
+export const customGateReadsAmplitudes = (
+  id: string,
+  librarySources: Record<string, string> = {},
+  visiting: Set<string> = new Set(),
+): boolean => {
+  const record = getCustomGateRecord(id);
+  if (!record || visiting.has(record.id)) return false;
+  visiting.add(record.id);
+  const compiled = compileQpuProtocol(record.source, { ...record.librarySources, ...librarySources });
+  return compiled.gates.some((inner) => Boolean(inner.condition?.predicate)
+    || customGateReadsAmplitudes(String(inner.type), librarySources, visiting));
+};
+
 // Applying a custom gate expands the saved protocol into ordinary registered gates at runtime.
 /** Custom gates currently expanding, so a gate whose source uses itself fails instead of looping. */
 const expandingCustomGates = new Set<string>();

@@ -424,9 +424,17 @@ export class PhysicsEngine {
     return { bloch, spherical, ket: ketFromSpherical(spherical.theta, spherical.phi), mixed: mixedStateMetrics(spherical) };
   }
 
-  /** Bloch geometry of a wire whose Z outcome has been recorded: the matching pole. */
-  measuredBlochGeometry(outcome: 0 | 1): BlochGeometry {
-    return this.describeBlochVector({ x: 0, y: 0, z: outcome === 1 ? -1 : 1 });
+  /**
+   * Bloch geometry of a wire whose outcome has been recorded: the eigenstate it collapsed to,
+   * on the axis of the measured observable (0 → +axis, 1 → −axis).
+   */
+  measuredBlochGeometry(outcome: 0 | 1, basis: MeasurementBasis = 'Z'): BlochGeometry {
+    const sign = outcome === 1 ? -1 : 1;
+    return this.describeBlochVector({
+      x: basis === 'X' ? sign : 0,
+      y: basis === 'Y' ? sign : 0,
+      z: basis === 'Z' ? sign : 0,
+    });
   }
 
   inspectQubit(state: QuantumState, qubit: number): QubitInspection {

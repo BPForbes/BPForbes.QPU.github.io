@@ -4,11 +4,12 @@ import { Complex, ZERO } from './complex';
 import { applyGate as applyRegisteredGate, getGateDefinition } from './gates/registry';
 import { conditionSatisfied } from './gates/conditions';
 import { applyInverseAwareDefinition } from './gates/inverse';
+import { customGateReadsAmplitudes } from './gates/customGateEngine';
 import { buildStateTransition, snapshotStateParticles } from './physics/particleTracking';
 import { physics } from './physics/PhysicsEngine';
 import type { NoiseModel } from './physics/noise/NoiseModel';
 import type { DensityMatrixState, QuantumState } from './physics/state/QuantumState';
-import { CircuitGate, ExecutionResult, MeasurementMap, ParticleStartState, StateCheckpoint } from './types';
+import { CircuitGate, ExecutionResult, MeasurementBasisMap, MeasurementMap, ParticleStartState, StateCheckpoint } from './types';
 
 export {
   applySingleQubitGate,
@@ -86,6 +87,8 @@ export type ApplyGateOptions = {
   librarySources?: Record<string, string>;
   trackParticles?: boolean;
   checkpoints?: Record<string, StateCheckpoint>;
+  /** Bases of earlier non-Z measurements, from the previous step's `measurementBases`. */
+  measurementBases?: MeasurementBasisMap;
 };
 
 // Legacy call sites pass a plain librarySources map; newer paths pass an options object with trackParticles.
@@ -124,7 +127,7 @@ const normalizeApplyGateOptions = (
 // ── Engine-native execution (QuantumState) ───────────────────────────────
 
 /** A saved register in any representation. */
-export type QuantumCheckpoint = { state: QuantumState; measurements: MeasurementMap };
+export type QuantumCheckpoint = { state: QuantumState; measurements: MeasurementMap; measurementBases?: MeasurementBasisMap };
 
 /**
  * Engine-native result. The state stays a QuantumState, so a density matrix
@@ -147,6 +150,8 @@ export type ExecuteOptions = {
   noise?: NoiseModel;
   /** Start from a density matrix even without noise. */
   representation?: QuantumState['kind'];
+  /** Bases of earlier non-Z measurements (carry `measurementBases` from the previous step's result). */
+  measurementBases?: MeasurementBasisMap;
   /** Sampler for MEASURE and RESET outcomes (defaults to Math.random). */
   random?: () => number;
 };
@@ -185,23 +190,31 @@ const evaluateCondition = (
 };
 
 // CYCLE marks a logical stage (not physical time); SAVE_STATE / LOAD_STATE are simulator checkpoints.
+type StepOutcome = Pick<QuantumExecutionResult, 'state' | 'measurements' | 'log'> & { measurementBases: MeasurementBasisMap };
+
 const applyMarker = (
   state: QuantumState,
   gate: CircuitGate,
   measurements: MeasurementMap,
+  measurementBases: MeasurementBasisMap,
   checkpoints: Record<string, QuantumCheckpoint>,
-): Pick<QuantumExecutionResult, 'state' | 'measurements' | 'log'> | undefined => {
-  if (gate.type === 'CYCLE') return { state, measurements, log: [`Logical cycle ${gate.cycle ?? 0} started.`] };
+): StepOutcome | undefined => {
+  if (gate.type === 'CYCLE') return { state, measurements, measurementBases, log: [`Logical cycle ${gate.cycle ?? 0} started.`] };
   if (gate.type !== 'SAVE_STATE' && gate.type !== 'LOAD_STATE') return undefined;
   const name = gate.checkpoint ?? 'checkpoint';
   if (gate.type === 'SAVE_STATE') {
     // Engine states are never mutated in place, so the checkpoint can share it.
-    checkpoints[name] = { state, measurements: { ...measurements } };
-    return { state, measurements, log: [`Saved checkpoint ${name}.`] };
+    checkpoints[name] = { state, measurements: { ...measurements }, measurementBases: { ...measurementBases } };
+    return { state, measurements, measurementBases, log: [`Saved checkpoint ${name}.`] };
   }
   const saved = checkpoints[name];
   if (!saved) throw new Error(`Unknown checkpoint '${name}'`);
-  return { state: saved.state, measurements: { ...saved.measurements }, log: [`Loaded checkpoint ${name}.`] };
+  return {
+    state: saved.state,
+    measurements: { ...saved.measurements },
+    measurementBases: { ...saved.measurementBases },
+    log: [`Loaded checkpoint ${name}.`],
+  };
 };
 
 const sameMeasurements = (a: MeasurementMap, b: MeasurementMap) => {
@@ -210,19 +223,25 @@ const sameMeasurements = (a: MeasurementMap, b: MeasurementMap) => {
 };
 
 // Registered gate kernels are linear on state vectors, so the physics layer can lift them to ρ → UρU†.
+// A custom gate whose body reads amplitudes (a gate-expression IF) is not one linear map, so it is refused.
 const densityGateKernel = (
   gate: CircuitGate,
   qubitCount: number,
   measurements: MeasurementMap,
   librarySources: Record<string, string>,
   log: string[],
-) => (column: Complex[]): Complex[] => {
-  const result = runRegisteredGate(column, qubitCount, gate, measurements, librarySources);
-  if (result.state.length !== column.length || !sameMeasurements(result.measurements, measurements)) {
-    throw new Error(`${gate.type} adds wires or measures internally, which density-matrix execution does not support.`);
+) => {
+  if (customGateReadsAmplitudes(String(gate.type), librarySources)) {
+    throw new Error(`${gate.type} contains a gate-expression IF, which reads amplitudes and is not supported on a density matrix.`);
   }
-  if (log.length === 0) log.push(...result.log);
-  return result.state;
+  return (column: Complex[]): Complex[] => {
+    const result = runRegisteredGate(column, qubitCount, gate, measurements, librarySources);
+    if (result.state.length !== column.length || !sameMeasurements(result.measurements, measurements)) {
+      throw new Error(`${gate.type} adds wires or measures internally, which density-matrix execution does not support.`);
+    }
+    if (log.length === 0) log.push(...result.log);
+    return result.state;
+  };
 };
 
 // MEASURE and RESET are physics operations in every representation; other gates come from the registry.
@@ -230,16 +249,20 @@ const applyPhysicalOperation = (
   state: QuantumState,
   gate: CircuitGate,
   measurements: MeasurementMap,
+  measurementBases: MeasurementBasisMap,
   librarySources: Record<string, string>,
   random: () => number,
-): Pick<QuantumExecutionResult, 'state' | 'measurements' | 'log'> => {
+): StepOutcome => {
   if (gate.type === 'MEASURE') {
     const target = gate.targets[0];
     const measured = physics.measure(state, target, gate.basis ?? 'Z', random());
     const basisNote = measured.basis === 'Z' ? '' : ` in ${measured.basis} basis`;
+    // The bit alone does not say which axis it lies on; keep the observable for X/Y reads.
+    const { [target]: _previous, ...otherBases } = measurementBases;
     return {
       state: measured.state,
       measurements: { ...measurements, [target]: measured.outcome },
+      measurementBases: measured.basis === 'Z' ? otherBases : { ...otherBases, [target]: measured.basis },
       log: [`Measured q${target}${basisNote} = ${measured.outcome} (P(1)=${measured.probabilityOne.toFixed(3)}).`],
     };
   }
@@ -247,6 +270,7 @@ const applyPhysicalOperation = (
     return {
       state: gate.targets.reduce((current, qubit) => physics.reset(current, qubit, random), state),
       measurements,
+      measurementBases,
       log: [`${WORKSPACE_RESET_LOG_PREFIX}: q${gate.targets.join(', q')} as |0⟩.`],
     };
   }
@@ -256,6 +280,7 @@ const applyPhysicalOperation = (
     return {
       state: physics.fromAmplitudes(result.state, physics.resolveQubitCount(result.state, state.qubitCount)),
       measurements: result.measurements,
+      measurementBases,
       log: result.log,
     };
   }
@@ -263,6 +288,7 @@ const applyPhysicalOperation = (
   return {
     state: physics.applyLinearKernel(state, densityGateKernel(gate, state.qubitCount, measurements, librarySources, log)),
     measurements,
+    measurementBases,
     log,
   };
 };
@@ -280,10 +306,11 @@ export const applyGateToState = (
 ): QuantumExecutionResult => {
   const librarySources = options.librarySources ?? {};
   const checkpoints = options.checkpoints ?? {};
+  const measurementBases = options.measurementBases ?? {};
   const widened = physics.expandRegister(state, requiredWidth(state.qubitCount, gate));
-  let result: Pick<QuantumExecutionResult, 'state' | 'measurements' | 'log' | 'conditionOutcomes'>;
+  let result: StepOutcome & Pick<QuantumExecutionResult, 'conditionOutcomes'>;
 
-  const marker = applyMarker(widened, gate, measurements, checkpoints);
+  const marker = applyMarker(widened, gate, measurements, measurementBases, checkpoints);
   if (marker) {
     result = marker;
   } else {
@@ -291,12 +318,18 @@ export const applyGateToState = (
     // Recorded per gate so the canvas can mark gate-expression branches taken/skipped.
     const conditionOutcomes = gate.condition ? { [gate.id]: satisfied } : undefined;
     if (!satisfied) {
-      result = { state: widened, measurements, log: [`${gate.type} skipped because classical condition was false.`], conditionOutcomes };
+      result = {
+        state: widened,
+        measurements,
+        measurementBases,
+        log: [`${gate.type} skipped because classical condition was false.`],
+        conditionOutcomes,
+      };
     } else {
-      const applied = applyPhysicalOperation(widened, gate, measurements, librarySources, options.random ?? Math.random);
+      const applied = applyPhysicalOperation(widened, gate, measurements, measurementBases, librarySources, options.random ?? Math.random);
       const noisy = options.noise
         ? physics.applyNoise(applied.state, options.noise, {
-          touched: [...gate.targets, ...gate.controls],
+          touched: [...new Set([...gate.targets, ...gate.controls])],
           operation: String(gate.type),
         })
         : applied.state;
@@ -309,8 +342,17 @@ export const applyGateToState = (
   return {
     ...result,
     checkpoints,
-    particles: snapshotStateParticles(result.state, result.measurements),
-    transitions: [buildStateTransition(gate, state, result.state, measurements, result.measurements)],
+    particles: snapshotStateParticles(result.state, result.measurements, result.state.qubitCount, result.measurementBases),
+    transitions: [buildStateTransition(
+      gate,
+      state,
+      result.state,
+      measurements,
+      result.measurements,
+      result.state.qubitCount,
+      measurementBases,
+      result.measurementBases,
+    )],
   };
 };
 
@@ -336,10 +378,15 @@ export const executeCircuit = (
     .sort((a, b) => a.step - b.step)
     .reduce<QuantumExecutionResult>(
       (result, gate) => {
-        const next = applyGateToState(result.state, gate, result.measurements, { ...options, checkpoints });
+        const next = applyGateToState(result.state, gate, result.measurements, {
+          ...options,
+          checkpoints,
+          measurementBases: result.measurementBases,
+        });
         return {
           state: next.state,
           measurements: next.measurements,
+          measurementBases: next.measurementBases,
           log: [...result.log, ...next.log],
           particles: next.particles ?? result.particles,
           transitions: [...(result.transitions ?? []), ...(next.transitions ?? [])],
@@ -352,6 +399,7 @@ export const executeCircuit = (
       {
         state: initial,
         measurements: {},
+        measurementBases: {},
         log: [`Initialized ${initializationSummary(qubitCount, startStates, paramQubitIndices)}.`],
         particles: options.trackParticles ? snapshotStateParticles(initial, {}) : undefined,
         transitions: [],
@@ -371,7 +419,7 @@ const amplitudeView = (state: Complex[], qubitCount: number): QuantumState => {
 const quantumCheckpoints = (legacy: Record<string, StateCheckpoint>): Record<string, QuantumCheckpoint> =>
   Object.fromEntries(Object.entries(legacy).map(([name, saved]) => [
     name,
-    { state: physics.fromAmplitudes(saved.state), measurements: saved.measurements },
+    { state: physics.fromAmplitudes(saved.state), measurements: saved.measurements, measurementBases: saved.measurementBases },
   ]));
 
 // SAVE_STATE writes into the engine store; mirror state-vector entries back into the caller's legacy store.
@@ -380,7 +428,9 @@ const syncLegacyCheckpoints = (
   legacy: Record<string, StateCheckpoint>,
 ) => {
   Object.entries(native).forEach(([name, saved]) => {
-    if (saved.state.kind === 'stateVector') legacy[name] = { state: saved.state.amplitudes, measurements: saved.measurements };
+    if (saved.state.kind === 'stateVector') {
+      legacy[name] = { state: saved.state.amplitudes, measurements: saved.measurements, measurementBases: saved.measurementBases };
+    }
   });
 };
 
@@ -412,6 +462,7 @@ export const applyGate = (
     librarySources: options.librarySources,
     trackParticles: options.trackParticles,
     checkpoints: native,
+    measurementBases: options.measurementBases,
   });
   syncLegacyCheckpoints(native, options.checkpoints);
   return toLegacyResult(result, isMarker(gate) ? options.checkpoints : undefined);
