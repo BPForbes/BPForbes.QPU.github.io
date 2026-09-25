@@ -322,6 +322,7 @@ button { font: inherit; }
 }
 .glyph-meter { width: 1.15rem; height: 1.15rem; }
 .glyph-dagger { font-size: .62rem; font-weight: 800; line-height: 1; }
+.glyph-basis { font-size: .56rem; font-weight: 800; line-height: 1; letter-spacing: .02em; }
 .circuit-glyph.glyph-wide { min-width: 2rem; font-size: .58rem; }
 .circuit-glyph.active {
   outline: 2px solid #dc2626;

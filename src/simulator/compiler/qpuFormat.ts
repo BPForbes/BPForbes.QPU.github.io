@@ -298,7 +298,7 @@ export const serializeCircuitToQpuProtocol = (
       const controls = gate.controls.map((control) => `${canvasParamRef(control)}:${cycle}`);
       const op = serializeGateOpcode(gate);
       if (gate.type === 'MEASURE') {
-        lines.push(`MEASURE -I ${canvasParamRef(gate.targets[0])}`);
+        lines.push(`MEASURE -I ${canvasParamRef(gate.targets[0])}${gate.basis && gate.basis !== 'Z' ? ` -BASIS ${gate.basis}` : ''}`);
         return;
       }
       // A gate-expression condition has no inline -IF form, so it round-trips as its own IF … ENDIF block.

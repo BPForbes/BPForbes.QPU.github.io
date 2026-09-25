@@ -139,10 +139,10 @@ export const gateDocs: Record<string, GateDoc> = {
     table: ketTable(['t', "t'"], [['|0⟩', 'e^{−iθ/2}|0⟩'], ['|1⟩', 'e^{iθ/2}|1⟩']]),
   },
   MEASURE: {
-    how: 'M reads the wire. A definite 0 or 1 is read as itself; a superposition is read as 0 or 1 at random, weighted by its amplitudes, and becomes that bit.',
+    how: 'M reads the wire. A definite 0 or 1 is read as itself; a superposition is read as 0 or 1 at random, weighted by its amplitudes, and becomes that bit. -BASIS X or -BASIS Y reads a different observable instead: 0 means |+⟩ (or |+i⟩) and 1 means |−⟩ (or |−i⟩), and the wire is left in that state.',
     target: 'The measured wire is the target, and the meter stays on that qubit wire. A double stroke, not an arrow, drops to the c lane and numbers the bit read at that time. c is a clock for measurements, the only double line, and it cannot take a gate. Later gates can still run on the qubit. Measuring one half of an entangled pair also fixes the other half.',
-    syntax: ['MEASURE -I Q'],
-    table: ketTable(['t before', 'reading'], [['|0⟩', '0 always'], ['|1⟩', '1 always'], ['|+⟩', '0 or 1 (50% each)']], undefined, ['t', 't']),
+    syntax: ['MEASURE -I Q', 'MEASURE -I Q -BASIS X'],
+    table: ketTable(['t before', 'reading'], [['|0⟩', '0 always'], ['|1⟩', '1 always'], ['|+⟩', '0 or 1 (50% each)'], ['|+⟩, -BASIS X', '0 always']], undefined, ['t', 't']),
   },
   NOT: {
     how: 'NOT is the logic spelling of X: it flips the target.',

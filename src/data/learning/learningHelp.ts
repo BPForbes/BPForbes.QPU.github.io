@@ -60,7 +60,7 @@ export const gateHelp: Record<string, GateHelp> = {
   CY: { name: 'Controlled Y', summary: 'Applies Y to the target when Control A is 1.', rule: 'target → Y·target when A = 1', reversible: true },
   CPHASE: { name: 'Controlled phase', summary: 'Multiplies |11⟩ by e^{iθ}. CZ is the special case θ = π. Set θ with the Phase angle slider.', rule: '|11⟩ → e^{iθ}|11⟩', reversible: true },
   SWAP: { name: 'Swap', summary: 'Exchanges the complete states of the target and Control B. Nothing is copied.', rule: '|a, b⟩ → |b, a⟩', reversible: true },
-  MEASURE: { name: 'Measure', summary: 'Reads the wire as a classical 0 or 1 and collapses any superposition. The meter stays on the qubit; a double stroke marks that time on c. The reading cannot be undone, but later gates can still use the qubit.', rule: 'P(1) = |amplitude of |1⟩|²', reversible: false },
+  MEASURE: { name: 'Measure', summary: 'Reads the wire as a classical 0 or 1 and collapses any superposition. The meter stays on the qubit; a double stroke marks that time on c. The reading cannot be undone, but later gates can still use the qubit. Add -BASIS X or -BASIS Y to measure another observable.', rule: 'P(1) = |amplitude of |1⟩|² (Z basis)', reversible: false },
   NOT: { name: 'Logical NOT', summary: 'Flips the target, exactly like X.', rule: "t' = t ⊕ 1", reversible: true },
   AND: { name: 'Reversible AND', summary: 'Flips the target when both inputs are 1. Inputs are only read. Start the target at 0 and it ends holding A AND B.', rule: "t' = t ⊕ (A ∧ B)", reversible: true },
   NAND: { name: 'Reversible NAND', summary: 'Flips the target unless both inputs are 1. Start the target at 0 and it ends holding NOT (A AND B).', rule: "t' = t ⊕ ¬(A ∧ B)", reversible: true },

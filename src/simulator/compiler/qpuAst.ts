@@ -1,5 +1,6 @@
 // QPU protocol compiler: child processes and cycles expand into flat gates so the simulator and UI share one execution model.
 import { assertGateArity } from '../gates/arity';
+import type { MeasurementBasis } from '../physics/measurement/MeasurementBasis';
 import { astDerivedGateIds, astPrimitiveGateIds } from '../gates/metadata';
 import { buildConditionPredicate, remapConditionWires } from '../gates/conditions';
 import { getCustomGateRecord } from '../gates/customGateStore';
@@ -39,6 +40,8 @@ export type ParsedCommand = {
   depth?: number;
   /** Set when the opcode is a registered custom gate (its exact id). */
   customGateId?: string;
+  /** MEASURE -BASIS X|Y|Z; omitted means the computational (Z) basis. */
+  basis?: MeasurementBasis;
 };
 
 export type ProtocolProcess = {
@@ -290,6 +293,19 @@ const parseConditionFlag = (tokens: string[]): ParsedCommand['condition'] => {
   return { token: match[1], equals: Number(match[2]) as 0 | 1 };
 };
 
+/** Parse `MEASURE … -BASIS X|Y|Z`, the observable to measure. Only MEASURE accepts it. */
+const parseBasisFlag = (tokens: string[], op: string): MeasurementBasis | undefined => {
+  const upper = tokens.map((token) => token.toUpperCase());
+  const start = upper.indexOf('-BASIS');
+  if (start === -1) return undefined;
+  if (op !== 'MEASURE') throw new Error(`-BASIS is only valid on MEASURE, not ${op}`);
+  const value = upper[start + 1];
+  if (value !== 'X' && value !== 'Y' && value !== 'Z') {
+    throw new Error(`-BASIS requires X, Y, or Z${tokens[start + 1] ? ` (got '${tokens[start + 1]}')` : ''}`);
+  }
+  return value;
+};
+
 /** Parse `IF Token=0|1` structured classical branch header. */
 type IfHeader =
   | { kind: 'bit'; token: string; equals: 0 | 1 }
@@ -402,6 +418,7 @@ export const parseCommand = (line: string): ParsedCommand => {
   if (op === 'IF') {
     parseIfHeader(line);
   }
+  const basis = parseBasisFlag(tokens, op);
   if (op === 'ELSE' || op === 'ENDIF') {
     if (tokens.length > 1) {
       throw new Error(`${op} does not take arguments`);
@@ -419,6 +436,7 @@ export const parseCommand = (line: string): ParsedCommand => {
     noParameterSubstitution,
     condition,
     depth,
+    ...(basis ? { basis } : {}),
     ...(customGateId ? { customGateId, reverse: customReverse } : {}),
   };
 };
@@ -1336,11 +1354,14 @@ const executeProcess = (
 
     if (command.op === 'MEASURE') {
       // Protocols omit -I on MEASURE to collapse all wires before RETURNVALS reads classical bits.
-      if (command.inputs.length) {
-        command.inputs.forEach((token) => emitGate(state, 'MEASURE', [resolveInputQubit(state, frame, token, line, parentFrame, skipParams)], [], line));
-      } else {
-        state.tokenToQubit.forEach((qubit) => emitGate(state, 'MEASURE', [qubit], [], line));
-      }
+      const qubits = command.inputs.length
+        ? command.inputs.map((token) => resolveInputQubit(state, frame, token, line, parentFrame, skipParams))
+        : [...state.tokenToQubit.values()];
+      qubits.forEach((qubit) => {
+        emitGate(state, 'MEASURE', [qubit], [], line);
+        // Z is the default observable, so only X/Y are recorded on the gate.
+        if (command.basis && command.basis !== 'Z') state.gates[state.gates.length - 1].basis = command.basis;
+      });
       continue;
     }
 

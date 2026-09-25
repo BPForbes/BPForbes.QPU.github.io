@@ -78,12 +78,15 @@ export function CircuitGlyph({
   const branchNote = gate.branch
     ? ` (${gate.branch.kind.toUpperCase()} ${branchOutcome})`
     : '';
+  // Non-Z MEASURE carries its observable as a small badge so it cannot be mistaken for a Z readout.
+  const basis = kind === 'measure' && gate.basis && gate.basis !== 'Z' ? gate.basis : undefined;
+  const basisNote = basis ? ` in ${basis} basis` : '';
   const recursionNote = gate.recursion
     ? ` · recursive DEPTH ${gate.recursion.depth}/${gate.recursion.rootDepth}`
     : '';
   const title = labelOverride
     ? `${labelOverride} recursive call${conditionNote}${branchNote}`
-    : `${forwardLabelProp ?? gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}${conditionNote}${branchNote}${recursionNote}`;
+    : `${forwardLabelProp ?? gate.type}${gate.inverse ? '†' : ''}${kind === 'control' ? ' control' : ''}${basisNote}${conditionNote}${branchNote}${recursionNote}`;
 
   if (onActivate) {
     return (
@@ -99,6 +102,7 @@ export function CircuitGlyph({
       >
         {glyphContent(kind, label)}
         {gate.inverse && kind !== 'box' ? <span className="glyph-dagger">†</span> : null}
+        {basis ? <span className="glyph-basis">{basis}</span> : null}
       </button>
     );
   }
@@ -107,6 +111,7 @@ export function CircuitGlyph({
     <span className={className} title={title}>
       {glyphContent(kind, label)}
       {gate.inverse && kind !== 'box' ? <span className="glyph-dagger">†</span> : null}
+      {basis ? <span className="glyph-basis">{basis}</span> : null}
     </span>
   );
 }
