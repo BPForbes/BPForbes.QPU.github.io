@@ -1,6 +1,6 @@
 import type { GateDefinition } from '../types';
 import { gateIoArity } from '../types';
-import { measureQubit } from '../operations';
+import { measureStateVector } from '../../physics/measurement/Measurement';
 // MEASURE gate palette entry and apply hook for the shared registry.
 
 export const measureGate: GateDefinition = {
@@ -16,14 +16,16 @@ export const measureGate: GateDefinition = {
   supportsReverse: false,
   supportsPhase: false,
   cssClass: 'gate-measure',
-  // apply hook wires simulator state through the shared operations layer.
+  // Collapse is Physics Engine behavior; the gate only records the classical outcome.
   apply: ({ state, qubitCount, gate, measurements }) => {
     const target = gate.targets[0];
-    const measured = measureQubit(state, qubitCount, target);
+    const basis = gate.basis ?? 'Z';
+    const measured = measureStateVector(state, qubitCount, target, basis);
+    const basisNote = basis === 'Z' ? '' : ` in ${basis} basis`;
     return {
       state: measured.state,
-      measurements: { ...measurements, [target]: measured.value },
-      log: [`Measured q${target} = ${measured.value} (P(1)=${measured.probabilityOne.toFixed(3)}).`],
+      measurements: { ...measurements, [target]: measured.outcome },
+      log: [`Measured q${target}${basisNote} = ${measured.outcome} (P(1)=${measured.probabilityOne.toFixed(3)}).`],
     };
   },
 };

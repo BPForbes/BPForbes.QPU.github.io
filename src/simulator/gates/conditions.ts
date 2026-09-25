@@ -1,7 +1,8 @@
-import { magnitudeSquared, type Complex } from '../complex';
+import type { Complex } from '../complex';
+import { probabilityOfOne } from '../physics/state/StateVector';
 import type { CircuitGate, ConditionPredicate, ConditionValue, ExecutionResult, GateType, MeasurementMap } from '../types';
 import { applyInverseAwareDefinition } from './inverse';
-import { hasBit, padStateVector } from './operations';
+import { padStateVector } from './operations';
 import { preconfiguredGateMap } from './preconfigured';
 
 /** P(1) within this tolerance of 0 or 1 reads as a definite bit; anything else is S. */
@@ -45,10 +46,7 @@ export const buildConditionPredicate = (params: {
 };
 
 export const classifyWire = (state: Complex[], qubitCount: number, qubit: number): ConditionValue => {
-  const probabilityOne = state.reduce(
-    (sum, amplitude, basis) => sum + (hasBit(basis, qubit, qubitCount) ? magnitudeSquared(amplitude) : 0),
-    0,
-  );
+  const probabilityOne = probabilityOfOne(state, qubitCount, qubit);
   if (probabilityOne <= DEFINITE_TOLERANCE) return 0;
   if (probabilityOne >= 1 - DEFINITE_TOLERANCE) return 1;
   return 's';

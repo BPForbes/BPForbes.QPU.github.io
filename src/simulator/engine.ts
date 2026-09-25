@@ -1,11 +1,22 @@
-// Circuit execution orchestration: initial state, per-gate application via the gate registry, and full runs.
-import { Complex, magnitudeSquared, ONE, ZERO } from './complex';
+// Circuit execution orchestration: WHEN operations happen (sequencing, conditions, checkpoints, tracing).
+// HOW the quantum state changes is delegated to the Physics Engine; WHAT each gate does comes from the registry.
+import { Complex, ZERO } from './complex';
 import { applyGate as applyRegisteredGate, getGateDefinition } from './gates/registry';
-import { applySingleQubitGate, applyStartState, hasBit, measureQubit, padStateVector } from './gates/operations';
 import { conditionSatisfied } from './gates/conditions';
 import { applyInverseAwareDefinition } from './gates/inverse';
 import { buildOperationTransition, snapshotAllParticles } from './physics/particleTracking';
-import { CircuitGate, ExecutionResult, MeasurementMap, OperationTransition, ParticleStartState, StateCheckpoint } from './types';
+import { physics } from './physics/PhysicsEngine';
+import { measureStateVector } from './physics/measurement/Measurement';
+import type { NoiseModel } from './physics/noise/NoiseModel';
+import { type DensityMatrixState, type QuantumState, stateVector } from './physics/state/QuantumState';
+import {
+  createRegister,
+  marginalProbabilities,
+  padStateVector,
+  prepareStartState,
+  resolveStateQubitCount,
+} from './physics/state/StateVector';
+import { CircuitGate, ExecutionResult, MeasurementMap, ParticleStartState, StateCheckpoint } from './types';
 
 export {
   applySingleQubitGate,
@@ -23,22 +34,9 @@ export const projectStateOntoQubits = (
   state: Complex[],
   sourceQubitCount: number,
   qubits: number[],
-): Complex[] => {
-  const targetCount = qubits.length;
-  const probabilities = Array.from({ length: 2 ** targetCount }, () => 0);
-
-  state.forEach((amplitude, sourceIndex) => {
-    const probability = magnitudeSquared(amplitude);
-    if (probability < 1e-20) return;
-    let targetIndex = 0;
-    qubits.forEach((sourceQubit) => {
-      targetIndex = (targetIndex << 1) | (hasBit(sourceIndex, sourceQubit, sourceQubitCount) ? 1 : 0);
-    });
-    probabilities[targetIndex] += probability;
-  });
-
-  return probabilities.map((probability) => (probability > 0 ? { re: Math.sqrt(probability), im: 0 } : ZERO));
-};
+): Complex[] =>
+  marginalProbabilities(state, sourceQubitCount, qubits)
+    .map((probability) => (probability > 0 ? { re: Math.sqrt(probability), im: 0 } : ZERO));
 
 export { conditionSatisfied };
 
@@ -58,8 +56,7 @@ export const createInitialState = (
   startStates: ParticleStartState[] = [],
   paramQubitIndices?: number[],
 ): Complex[] => {
-  let state = Array.from({ length: 2 ** qubitCount }, () => ZERO);
-  state[0] = ONE;
+  let state = createRegister(qubitCount);
 
   const indices = resolveParamQubitIndices(qubitCount, startStates, paramQubitIndices);
   const invalid = indices.filter((qubit) => qubit < 0 || qubit >= qubitCount);
@@ -67,30 +64,24 @@ export const createInitialState = (
     throw new RangeError(`Invalid qubit indices: ${invalid.join(', ')} (qubitCount=${qubitCount})`);
   }
   indices.forEach((qubit) => {
-    const startState = startStates[qubit] ?? '0p';
-    if (startState === '1p') state = applyStartState(state, qubitCount, qubit, '1p');
-    if (startState === 'sp') state = applyStartState(state, qubitCount, qubit, 'sp');
+    state = prepareStartState(state, qubitCount, qubit, startStates[qubit] ?? '0p');
   });
 
   return state;
 };
 
-// Custom/child gates may pad the state vector beyond the UI qubit count; trust vector width when it is larger.
-export const resolveStateQubitCount = (state: Complex[], qubitCount: number): number => {
-  const vectorWidth = Math.round(Math.log2(state.length));
-  if (Number.isFinite(vectorWidth) && vectorWidth > 0 && vectorWidth > qubitCount) {
-    return vectorWidth;
-  }
-  return qubitCount;
+export { resolveStateQubitCount };
+
+// The engine decides WHEN a register must grow (a gate names a higher wire); the physics layer pads it.
+const requiredWidth = (qubitCount: number, gate: CircuitGate) => {
+  const touched = [...gate.targets, ...gate.controls];
+  if (touched.length === 0) return qubitCount;
+  return Math.max(qubitCount, Math.max(...touched) + 1);
 };
 
-// Pad the state vector before applying a gate whose controls/targets reference a higher wire index.
 const ensureStateWidth = (state: Complex[], qubitCount: number, gate: CircuitGate) => {
-  const touched = [...gate.targets, ...gate.controls];
-  if (touched.length === 0) return { state, qubitCount };
-  const maxWire = Math.max(...touched);
-  if (maxWire < qubitCount) return { state, qubitCount };
-  const nextCount = maxWire + 1;
+  const nextCount = requiredWidth(qubitCount, gate);
+  if (nextCount === qubitCount) return { state, qubitCount };
   return { state: padStateVector(state, qubitCount, nextCount), qubitCount: nextCount };
 };
 
@@ -340,12 +331,138 @@ export const measureAll = (state: Complex[], qubitCount: number, measurements: M
 
   for (let qubit = 0; qubit < qubitCount; qubit += 1) {
     if (nextMeasurements[qubit] === undefined) {
-      const measured = measureQubit(current, qubitCount, qubit);
+      const measured = measureStateVector(current, qubitCount, qubit);
       current = measured.state;
-      nextMeasurements[qubit] = measured.value;
-      log.push(`Measured q${qubit} = ${measured.value} (P(1)=${measured.probabilityOne.toFixed(3)}).`);
+      nextMeasurements[qubit] = measured.outcome;
+      log.push(`Measured q${qubit} = ${measured.outcome} (P(1)=${measured.probabilityOne.toFixed(3)}).`);
     }
   }
 
   return { state: current, measurements: nextMeasurements, log };
+};
+
+export type NoisyRunOptions = {
+  noise: NoiseModel;
+  librarySources?: Record<string, string>;
+  /** Injectable sampler for MEASURE outcomes (defaults to Math.random). */
+  random?: () => number;
+};
+
+export type NoisyExecutionResult = {
+  state: DensityMatrixState;
+  measurements: MeasurementMap;
+  log: string[];
+  conditionOutcomes?: Record<string, boolean>;
+};
+
+const sameMeasurements = (a: MeasurementMap, b: MeasurementMap) => {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[Number(key)] === b[Number(key)]);
+};
+
+// Registered gate kernels are linear on state vectors, so the physics layer can lift them to ρ → UρU†.
+const densityGateKernel = (
+  gate: CircuitGate,
+  qubitCount: number,
+  measurements: MeasurementMap,
+  librarySources: Record<string, string>,
+  log: string[],
+) => (column: Complex[]): Complex[] => {
+  const definition = getGateDefinition(String(gate.type));
+  const result = definition
+    ? applyInverseAwareDefinition(definition, column, qubitCount, gate, measurements, librarySources)
+    : applyRegisteredGate(column, qubitCount, gate, measurements, librarySources);
+  if (result.state.length !== column.length || !sameMeasurements(result.measurements, measurements)) {
+    throw new Error(`${gate.type} adds wires or measures internally, which density-matrix mode does not support.`);
+  }
+  if (log.length === 0) log.push(...result.log);
+  return result.state;
+};
+
+/**
+ * Open-system run: same sequencing as runCircuit, but the state is a density
+ * matrix and the NoiseModel is applied after every physical operation. Logical
+ * CYCLE markers are not physical time and receive no noise. Ideal runs should
+ * keep using runCircuit, which never allocates a density matrix.
+ */
+export const runNoisyCircuit = (
+  qubitCount: number,
+  gates: CircuitGate[],
+  startStates: ParticleStartState[] = [],
+  paramQubitIndices: number[] | undefined,
+  options: NoisyRunOptions,
+): NoisyExecutionResult => {
+  const librarySources = options.librarySources ?? {};
+  const random = options.random ?? Math.random;
+  const checkpoints: Record<string, { state: QuantumState; measurements: MeasurementMap }> = {};
+  let state: QuantumState = physics.toDensityMatrix(
+    stateVector(createInitialState(qubitCount, startStates, paramQubitIndices), qubitCount),
+  );
+  let measurements: MeasurementMap = {};
+  const log: string[] = [`Initialized ${qubitCount} qubit(s) as a density matrix with noise.`];
+  let conditionOutcomes: Record<string, boolean> | undefined;
+
+  gates
+    .slice()
+    .sort((a, b) => a.step - b.step)
+    .forEach((gate) => {
+      state = physics.expandRegister(state, requiredWidth(state.qubitCount, gate));
+      if (gate.type === 'CYCLE') {
+        log.push(`Cycle ${gate.cycle ?? 0} started.`);
+        return;
+      }
+      if (gate.type === 'SAVE_STATE' || gate.type === 'LOAD_STATE') {
+        const name = gate.checkpoint ?? 'checkpoint';
+        if (gate.type === 'SAVE_STATE') {
+          checkpoints[name] = { state, measurements: { ...measurements } };
+          log.push(`Saved checkpoint ${name}.`);
+          return;
+        }
+        const saved = checkpoints[name];
+        if (!saved) throw new Error(`Unknown checkpoint '${name}'`);
+        state = saved.state;
+        measurements = { ...saved.measurements };
+        log.push(`Loaded checkpoint ${name}.`);
+        return;
+      }
+      if (gate.condition?.predicate) {
+        throw new Error('Gate-expression IF predicates read amplitudes and are not supported in density-matrix mode.');
+      }
+      const satisfied = conditionSatisfied(gate, measurements);
+      if (gate.condition) conditionOutcomes = { ...conditionOutcomes, [gate.id]: satisfied };
+      if (!satisfied) {
+        log.push(`${gate.type} skipped because classical condition was false.`);
+        return;
+      }
+
+      if (gate.type === 'MEASURE') {
+        const target = gate.targets[0];
+        const measured = physics.measure(state, target, gate.basis ?? 'Z', random());
+        state = measured.state;
+        measurements = { ...measurements, [target]: measured.outcome };
+        const basisNote = measured.basis === 'Z' ? '' : ` in ${measured.basis} basis`;
+        log.push(`Measured q${target}${basisNote} = ${measured.outcome} (P(1)=${measured.probabilityOne.toFixed(3)}).`);
+      } else if (gate.type === 'RESET') {
+        state = gate.targets.reduce((current, qubit) => physics.reset(current, qubit), state);
+        log.push(`Reset q${gate.targets.join(', q')} to |0⟩.`);
+      } else {
+        const gateLog: string[] = [];
+        state = physics.applyLinearKernel(
+          state,
+          densityGateKernel(gate, state.qubitCount, measurements, librarySources, gateLog),
+        );
+        log.push(...gateLog);
+      }
+      state = physics.applyNoise(state, options.noise, {
+        touched: [...gate.targets, ...gate.controls],
+        operation: String(gate.type),
+      });
+    });
+
+  return {
+    state: physics.toDensityMatrix(state),
+    measurements,
+    log,
+    ...(conditionOutcomes ? { conditionOutcomes } : {}),
+  };
 };

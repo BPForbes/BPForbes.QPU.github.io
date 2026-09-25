@@ -1,5 +1,6 @@
 import { basisLabel } from '../simulator/engine';
-import { formatComplex, magnitudeSquared } from '../simulator/complex';
+import { formatComplex } from '../simulator/complex';
+import { basisProbabilities } from '../simulator/physics/state/StateVector';
 import { Complex } from '../simulator/complex';
 import { MeasurementMap } from '../simulator/types';
 // Renders measurement readouts mapped from simulation indices.
@@ -12,7 +13,8 @@ type OutputPanelProps = {
 };
 
 export function OutputPanel({ state, qubitCount, measurements, log, qubitLabels = [] }: OutputPanelProps) {
-  const rows = state.map((amplitude, index) => ({ amplitude, index, probability: magnitudeSquared(amplitude) }));
+  const probabilities = basisProbabilities(state);
+  const rows = state.map((amplitude, index) => ({ amplitude, index, probability: probabilities[index] }));
   const nonZero = rows.filter(({ amplitude }) => Math.abs(amplitude.re) > 1e-8 || Math.abs(amplitude.im) > 1e-8);
 
   return (

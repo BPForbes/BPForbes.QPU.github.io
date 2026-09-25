@@ -1,6 +1,6 @@
 import type { GateDefinition } from '../types';
 import { gateIoArity } from '../types';
-import { prepareZeroQubit } from '../operations';
+import { prepareZeroQubit } from '../../physics/state/StateVector';
 
 export const resetGate: GateDefinition = {
   id: 'RESET',
