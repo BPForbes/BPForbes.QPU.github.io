@@ -1,0 +1,160 @@
+\section{Energy, frequency, and control pulses}
+\hypertarget{frequency-and-pulses}{}
+
+Gates in QPU are normally exact matrices. Real qubits are physical two-level
+systems with an energy gap, and gates are made by driving them with
+microwave pulses. The physics engine can model this level of detail. Frequency
+is never a free display value: it is derived from each qubit's energy levels
+and it drives the evolution.
+
+Frequencies below are in GHz and times in ns, so $2\pi f t$ is a plain
+angle. Energies use SI units.
+
+\subsection{Energy levels and the Planck--Einstein relation}
+
+A photon of frequency $f$ carries energy $E=hf=\hbar\omega$ with
+$\omega=2\pi f$. A qubit absorbs or emits such a photon when it moves between
+its levels, so its \emph{transition frequency} is
+\[
+f_{01}=\frac{E_1-E_0}{h}.
+\]
+The engine gives each modelled wire the idle Hamiltonian
+\[
+H_0=-\frac{\hbar\omega_{01}}{2}Z,
+\]
+whose levels are $E_0=-\hbar\omega_{01}/2$ and $E_1=+\hbar\omega_{01}/2$, a gap
+of exactly $\hbar\omega_{01}$. A typical superconducting qubit at
+$f_{01}=5$~GHz has $\Delta E\approx3.3\times10^{-24}$~J (about 21~$\mu$eV), and
+the matching photon has a wavelength of about 6~cm.
+
+\subsection{Free precession and the physical clock}
+
+A qubit left alone still evolves: $e^{-iH_0t/\hbar}$ gives $\ket1$ a phase
+relative to $\ket0$ that changes as
+\[
+\Delta\phi=-\omega_{01}\,\Delta t,
+\]
+so the Bloch vector precesses about the z-axis at $f_{01}$. Populations do not
+change, which is why idle precession is invisible to Z measurements but
+matters for everything that depends on relative phase.
+
+Physical simulation keeps a \emph{physical clock}. Every operation lasts its
+physical duration, and during that time every wire evolves under its own
+Hamiltonian while $T_1$ and $T_2$ act over the same $\Delta t$. Logical cycles
+(\code{INCREASECYCLE}) never advance this clock.
+
+\subsection{Frames}
+
+At several GHz the lab-frame phase turns billions of times a second. Most
+calculations therefore use a \emph{rotating frame} that turns at each qubit's
+nominal $f_{01}$. In that frame a perfectly calibrated idle qubit does
+nothing, and only errors remain. A \code{frequencyOffset} (calibration error)
+or a \code{frequencyDriftRate} (slow drift) leaves a residual precession
+\[
+\Delta\phi=-2\pi\!\int\!\bigl(f_{\mathrm{actual}}(t)-f_{\mathrm{nominal}}\bigr)\,dt,
+\]
+which becomes phase error in the circuit. The lab frame shows the full
+precession.
+
+\subsection{Driving a qubit: resonance, Rabi, and detuning}
+
+A microwave drive of carrier frequency $\omega_d$ adds
+\[
+H_d(t)=\hbar\Omega(t)\cos(\omega_d t-\varphi)\,X,
+\]
+where $\Omega$ is the Rabi frequency, set by the drive amplitude, and $\varphi$
+is the drive phase. In the frame rotating with the drive, the fast terms
+average out and
+\[
+H\approx\frac{\hbar}{2}\bigl(\Delta Z+\Omega(\cos\varphi\,X+\sin\varphi\,Y)\bigr),
+\qquad \Delta=\omega_d-\omega_{01}.
+\]
+\begin{itemize}
+  \item \textbf{Resonance ($\Delta=0$).} The qubit rotates about an axis in
+  the XY plane at the Rabi frequency, and the rotation angle is
+  $\theta=\Omega t$ for a square pulse. A \emph{$\pi$-pulse}
+  ($\Omega t=\pi$, $\varphi=0$) is an X gate up to global phase, and
+  $\varphi=\pi/2$ gives Y. Starting from $\ket0$, $P(1)=\sin^2(\Omega t/2)$:
+  these are \emph{Rabi oscillations}.
+  \item \textbf{Detuning ($\Delta\neq0$).} The axis tilts toward z and the
+  rotation speeds up to the \emph{generalized Rabi frequency}
+  $\Omega'=\sqrt{\Omega^2+\Delta^2}$. Starting from $\ket0$,
+  \[
+  P(1)=\frac{\Omega^2}{\Omega^2+\Delta^2}\sin^2\!\frac{\Omega' t}{2},
+  \]
+  so a detuned drive never completes the flip.
+  \item \textbf{Far off resonance ($|\Delta|\gg\Omega$).} The drive hardly
+  moves population but shifts the qubit frequency by
+  $\delta f\approx-\Omega^2/(2\Delta)$ (in the same frequency units): the
+  \emph{AC Stark shift}.
+\end{itemize}
+A calibrated pulse sets $\Omega$ so its area gives the requested angle
+against the \emph{nominal} $f_{01}$. A qubit whose real frequency has drifted
+is then detuned from it, which is how calibration error becomes gate error.
+
+\subsection{Pulse shapes}
+
+Pulses have an envelope $\varepsilon(t)$ with peak 1. A \emph{square} pulse is
+the simplest. A \emph{Gaussian} pulse has a narrower spectrum, so it disturbs
+neighbouring frequencies less. A \emph{DRAG} pulse adds a derivative
+quadrature component that suppresses leakage into a third level. The engine's
+qubits have only two levels, so DRAG there adds a small error instead of
+removing one. The rotation of a resonant pulse is $\Omega$ times the area
+under $\varepsilon(t)$.
+
+\subsection{The rotating-wave approximation}
+
+Dropping the fast terms above is the \emph{rotating-wave approximation}
+(RWA). It is accurate when $\Omega\ll\omega_{01}$ and it lets the engine take
+steps set by $\Omega$ and $\Delta$ (MHz) instead of by the carrier (GHz).
+The engine applies it only when asked (\code{approximation: 'rwa'}); the
+\code{'exact'} strategy integrates the full time-dependent Hamiltonian with
+small steps and agrees with the RWA to order $\Omega/\omega_{01}$.
+
+\subsection{Coupled qubits}
+
+Entanglement between physical qubits comes from interaction Hamiltonians,
+not from a named gate:
+\begin{center}
+\begin{tabularx}{\textwidth}{l X}
+\toprule
+Coupling & Effect\\
+\midrule
+$ZZ$: $\hbar\,2\pi J\,(Z\otimes Z)/4$ & A conditional phase of $2\pi J$ per
+unit time. Two $\ket+$ qubits become maximally entangled after
+$t=1/(2J)$, which is a CZ gate up to single-qubit phases.\\
+Exchange: $\hbar\,2\pi J\,(X\otimes X+Y\otimes Y)/2$ & Swaps $\ket{01}$ and
+$\ket{10}$. Full exchange takes $t=1/(4J)$, and half of it entangles. Qubits
+whose frequencies differ by much more than $J$ barely exchange.\\
+\bottomrule
+\end{tabularx}
+\end{center}
+An always-on coupling that nobody asked for acts during every idle slot.
+This \emph{crosstalk} can entangle qubits without any two-qubit gate in the
+circuit.
+
+\subsection{Temperature}
+
+A qubit exchanges energy with a bath at temperature $T$. In equilibrium its
+excited population is the Boltzmann value
+\[
+p_1=\frac{1}{1+e^{hf_{01}/k_BT}},
+\]
+tiny at 20~mK and 5~GHz but not zero. With a temperature set, $T_1$
+relaxation pulls the qubit toward $p_1$ instead of toward $\ket0$
+(generalized amplitude damping).
+
+\subsection{Wavelengths}
+
+A drive photon has wavelength $\lambda=c/f$. Massive particles have the de
+Broglie wavelength $\lambda=h/p$; an electron at $10^6$~m/s has
+$\lambda\approx0.73$~nm. The Physics inspector shows it for teaching, but it
+does not affect gate execution, because QPU simulates information-carrying
+states rather than particles moving through space.
+
+\begin{cautionbox}[What is not modelled]
+Qubits here have exactly two levels, so leakage to $\ket2$ and
+anharmonicity are not simulated. Noise is described by channels and
+$T_1$/$T_2$, not by a frequency-dependent noise spectrum $S(\omega)$. Spatial
+wave packets are outside the gate-level simulator.
+\end{cautionbox}

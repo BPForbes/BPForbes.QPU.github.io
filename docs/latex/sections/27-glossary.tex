@@ -24,16 +24,11 @@ Compile-time recursion & Bounded self-expansion of a child process marked REC
 or TREC. RECUR expands another frame with DEPTH$-1$; EXIT WHEN ends a frame.
 Tail-position REC auto-converts to TCO (iterative one-frame expansion, F\#-style);
 TREC requires that form. No runtime loop or recursive QPU execution is created.\\
-IF / ELSE / ENDIF & Structured classical feed-forward sugar. Compiles to flat
-gates carrying $-$IF conditions (ELSE gates get the opposite value) and branch
-metadata for the canvas labels. The header is either a measured bit
-(IF A=1) or a gate expression evaluated on a scratch copy, such as
-IF (AND -I A B -O B) = 1p. Both branches stay in the circuit; the one whose
-test fails is skipped and drawn faded as ``skipped''. Never forks the quantum
-wire.\\
 Control & A wire whose basis condition decides whether a controlled operation
 acts on its target. The control itself is preserved by the standard controlled
 gates.\\
+D$n$ badge & Teal label above a recursive call on the canvas showing the
+current DEPTH; counts down while stepping and hides when the call ends.\\
 Decoherence & Loss of quantum coherence through contact with the environment,
 usually quoted as a relaxation time $T_1$ and a coherence time $T_2$. It turns
 pure states into mixed ones.\\
@@ -41,8 +36,9 @@ Density matrix & The matrix $\rho$ describing a pure or mixed state. For a
 pure state $\rho=\ket\psi\bra\psi$; its diagonal holds basis probabilities.\\
 DEPTH & Read-only remaining recursive expansions for the current child frame.
 Supplied by RUNCHILD -DEPTH and decremented by RECUR.\\
-D$n$ badge & Teal label above a recursive call on the canvas showing the
-current DEPTH; counts down while stepping and hides when the call ends.\\
+Detuning & $\Delta=\omega_d-\omega_{01}$, the difference between a drive
+and the qubit's transition frequency. A detuned drive rotates faster but
+never fully flips the qubit.\\
 Entanglement & A joint multi-qubit state that cannot be written as a tensor
 product of independent qubit states.\\
 Entanglement entropy & The von Neumann entropy of a subsystem of a pure
@@ -52,12 +48,19 @@ states cannot be universally copied; CNOT copies only known basis information
 onto a zero target and otherwise may entangle.\\
 Fidelity & How close two states are, from 0 (perfectly distinguishable) to 1
 (identical up to global phase). For pure states $F=|\langle\psi|\phi\rangle|^2$.\\
-Gate & A state transformation. Closed-system quantum gates are unitary;
-measurement and reset have different semantics.\\
 Garbage & Reversible-workspace information no longer wanted as output but still
 present because it cannot simply be erased.\\
+Gate & A state transformation. Closed-system quantum gates are unitary;
+measurement and reset have different semantics.\\
 Global phase & A unit complex multiplier applied to the whole state. It does
 not change physical measurement predictions.\\
+IF / ELSE / ENDIF & Structured classical feed-forward sugar. Compiles to flat
+gates carrying $-$IF conditions (ELSE gates get the opposite value) and branch
+metadata for the canvas labels. The header is either a measured bit
+(IF A=1) or a gate expression evaluated on a scratch copy, such as
+IF (AND -I A B -O B) = 1p. Both branches stay in the circuit; the one whose
+test fails is skipped and drawn faded as ``skipped''. Never forks the quantum
+wire.\\
 Ket & Dirac notation $\ket{\psi}$ for a state column vector.\\
 Measurement & Conversion of quantum amplitudes into a sampled classical result,
 with state collapse and renormalization.\\
@@ -68,6 +71,8 @@ Noise channel & A non-unitary map $\rho\mapsto\sum_kK_k\rho K_k^\dagger$ modelli
 errors such as bit flips, phase flips, depolarization, or energy loss.\\
 Phase & The angular part of a complex amplitude. Relative phase controls
 interference even when immediate basis probabilities are unchanged.\\
+Physical clock & Elapsed physical time in a physical simulation. Gate
+durations advance it; logical cycles do not.\\
 Process & A named QPU protocol body with ordered PARAMS and RETURNVALS.\\
 Protocol & Plain-text QPU instructions describing preparation, gates,
 composition, measurement, and returned references.\\
@@ -75,12 +80,18 @@ Purity & $\operatorname{Tr}(\rho^2)$: 1 for a pure state, down to
 $\tfrac12$ for a maximally mixed qubit.\\
 Qubit & A normalized two-component complex state
 $\alpha\ket0+\beta\ket1$, not merely an unknown classical bit.\\
-Register & One or more logical wires considered together. Current JOIN/SPLIT
-syntax is accepted but does not yet lower to register operations.\\
+Rabi frequency & $\Omega$, how fast a resonant drive rotates a qubit; a
+$\pi$-pulse lasts $\pi/\Omega$.\\
 Reduced state & The density matrix of part of a register, obtained with
 the partial trace. It predicts every measurement made on that part alone.\\
+Register & One or more logical wires considered together. Current JOIN/SPLIT
+syntax is accepted but does not yet lower to register operations.\\
 Relative phase & The phase difference between amplitudes. Unlike global phase,
 it can change later interference and measurement probabilities.\\
+Rotating frame & A description that turns with each qubit's nominal
+frequency, so a calibrated idle qubit stands still and only errors remain.\\
+Rotating-wave approximation & Dropping the fast counter-rotating terms of a
+drive (RWA); accurate when the Rabi frequency is far below $f_{01}$.\\
 Superposition & A coherent linear combination of basis states. \code{sp}
 prepares the equal plus superposition.\\
 Target & The wire whose amplitudes a gate mutates; normally the first
@@ -89,6 +100,8 @@ Tensor product & The operation $\otimes$ that combines state spaces. Two
 one-qubit vectors produce a four-amplitude two-qubit vector.\\
 Token & A source-level logical name resolved to a qubit wire or alias during
 compilation.\\
+Transition frequency & $f_{01}=(E_1-E_0)/h$, the frequency of the photon a
+qubit absorbs or emits between its two levels.\\
 Truth table & Listed input/output expectations for measured RETURNVALS. It
 describes basis behavior but not arbitrary phase or entanglement.\\
 Uncomputation & Running suitable inverse gates in reverse order to return

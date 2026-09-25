@@ -387,6 +387,18 @@ optionally $T_1$, $T_2$ and a gate duration, then rerun the circuit as an open
 system (up to 10 qubits). Shows register purity, fidelity with the ideal run,
 and the same subsystem report for the noisy state. The ideal and noisy runs
 use the same random draws for MEASURE.\\
+Physics inspector: Physical timing & Runs on a physical clock instead: every
+gate lasts the gate duration (ns) while each qubit precesses at its $f_{01}$
+(GHz) with an optional offset (MHz), and $T_1$/$T_2$ (ns) and temperature (mK)
+act over that time. Choose the rotating or lab frame, and ideal matrices or
+calibrated microwave pulses for X, Y, RX, and RY. Shows the elapsed physical
+time.\\
+Physics inspector: Frequency and resonance & Energy gap, photon wavelength,
+and thermal population for the qubit profile; for a drive (offset from the
+nominal $f_{01}$, Rabi frequency, duration, envelope) the detuning,
+generalized Rabi frequency, rotation angle, maximum transfer, AC Stark shift
+when far off resonance, and the simulated $P(1)$; plus an electron's de Broglie
+wavelength for teaching.\\
 }
 
 \subsection{File upload and download}

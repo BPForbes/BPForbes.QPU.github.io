@@ -995,3 +995,7 @@ html.embed-mode .controls {
 .physics-noise-form input, .physics-noise-form select { min-width: 0; width: 8rem; }
 .physics-error { margin: 0; color: #fda4af; font-size: .85rem; }
 .physics-noisy-result { display: grid; gap: .5rem; }
+.physics-toggle { display: inline-flex !important; grid-auto-flow: column; align-items: center; gap: .35rem !important; }
+.physics-toggle input { width: auto !important; }
+.physics-frequency { display: grid; gap: .5rem; }
+.physics-frequency h4 { margin: .25rem 0 0; font-size: .85rem; }

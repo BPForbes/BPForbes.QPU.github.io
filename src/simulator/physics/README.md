@@ -34,7 +34,9 @@ physics/
 ├── measurement/            X/Y/Z projective measurement and diagnostics
 ├── analysis/               Bloch, Purity, Entropy, Entanglement, Fidelity, Interference, Phase
 ├── noise/                  Kraus channels, NoiseModel, T1/T2 decoherence
-├── dynamics/Hamiltonian.ts optional e^{−iHt/ħ} evolution
+├── dynamics/Hamiltonian.ts static and time-dependent H (4th-order Magnus)
+├── frequency/              energy levels, clock, pulses, drives, couplings, frames
+├── validation/             state/operator/channel/qubit checks
 ├── numerics/               dense linear algebra, Bloch-ball quadrature
 └── particleTracking.ts     visualization tracker (observes physics)
 ```
@@ -67,6 +69,30 @@ input state once, so gate kernels running on unnormalized density-matrix
 columns inside the engine are not rejected. `physics.setValidation()` toggles
 the automatic checks; `physics.validateState/validateUnitary/validateChannel`
 always run.
+
+## Frequency and physical simulation
+
+`frequency/` makes frequency a derived physical quantity. Units: frequencies
+are cycles per time unit (GHz for ns), ħ = 1; SI only in the Planck/Boltzmann
+helpers (`physics.frequency.*`).
+
+- `QubitPhysicsProfile` { nominal f₀₁, offset, drift, T1, T2, temperature } →
+  idle Hamiltonian H₀ = −(ω₀₁/2)Z; free precession Δφ = −∫ω dt.
+- `ControlPulse` (carrier, peak Rabi frequency, phase, duration, square /
+  Gaussian / DRAG envelope); `calibratedPulse` sets the area for an angle.
+- `driveDiagnostics`: detuning, generalized Rabi frequency, axis, rotation,
+  max transfer, regime, dispersive AC Stark shift.
+- `physics.evolvePhysical(state, system, segment)`: H(t) = idle + ZZ/exchange
+  couplings + drives, in the lab or rotating frame, drives `'exact'` or in an
+  explicit `'rwa'`. `physics.applyPhysicalDecoherence` applies profile T1/T2
+  (thermal via generalized amplitude damping) over the same Δt.
+- `executeCircuit(..., { physical })` runs a circuit on the physical clock:
+  operations last their durations (logical cycles take none), idle wires
+  precess, couplings cause crosstalk, and `gates: 'drive'` turns X/Y/RX/RY
+  into calibrated pulses. Off by default; the ideal path is unchanged.
+
+Not modelled yet: multi-level qubits (leakage, anharmonicity), noise spectral
+densities S(ω), and spatial wave packets (de Broglie is educational only).
 
 ## Exposure
 

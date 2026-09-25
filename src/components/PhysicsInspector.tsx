@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import type { Complex } from '../simulator/complex';
-import { executeCircuit } from '../simulator/engine';
+import { executeCircuit, type PhysicalRunOptions } from '../simulator/engine';
+import { FrequencyPanel } from './FrequencyPanel';
 import { physics } from '../simulator/physics/PhysicsEngine';
 import type {
   EntanglementAssessment,
   NoiseChannel,
   NoiseModel,
+  PhysicalFrame,
   QuantumState,
+  QubitPhysicsProfile,
 } from '../simulator/physics';
 import type { CircuitGate, MeasurementMap, ParticleStartState } from '../simulator/types';
 
@@ -45,6 +48,7 @@ type NoisyRun = {
   ideal: QuantumState;
   measurements: MeasurementMap;
   idealMeasurements: MeasurementMap;
+  physicalTime?: number;
 };
 
 // Deterministic draws so the ideal and noisy runs sample MEASURE with the same random numbers.
@@ -133,6 +137,13 @@ export function PhysicsInspector({
   const [t1, setT1] = useState('');
   const [t2, setT2] = useState('');
   const [duration, setDuration] = useState('1');
+  // Qubit profile shared by the physical run and the frequency panel (GHz / MHz / mK in the form, GHz / K internally).
+  const [f01, setF01] = useState(5);
+  const [offsetMHz, setOffsetMHz] = useState(0);
+  const [temperatureMK, setTemperatureMK] = useState('');
+  const [physicalMode, setPhysicalMode] = useState(false);
+  const [frame, setFrame] = useState<PhysicalFrame>('rotating');
+  const [gateMode, setGateMode] = useState<'matrix' | 'drive'>('matrix');
   const [noisyRun, setNoisyRun] = useState<NoisyRun | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,6 +156,14 @@ export function PhysicsInspector({
     [selected, qubitCount, physicalQubitIndices, current.qubitCount],
   );
 
+  const profile = useMemo<QubitPhysicsProfile>(() => ({
+    transitionFrequency: f01,
+    ...(offsetMHz ? { frequencyOffset: offsetMHz / 1000 } : {}),
+    ...(t1.trim() && physicalMode ? { t1: Number(t1) } : {}),
+    ...(t2.trim() && physicalMode ? { t2: Number(t2) } : {}),
+    ...(temperatureMK.trim() ? { temperature: Number(temperatureMK) / 1000 } : {}),
+  }), [f01, offsetMHz, t1, t2, temperatureMK, physicalMode]);
+
   const toggle = (display: number) => setSelected((wires) => (
     wires.includes(display) ? wires.filter((wire) => wire !== display) : [...wires, display].sort((a, b) => a - b)
   ));
@@ -152,11 +171,24 @@ export function PhysicsInspector({
   const runWithNoise = () => {
     setError(null);
     try {
-      const noise = buildNoiseModel(channel, strength, t1, t2, duration);
+      // Physical mode takes T1/T2 from the qubit profile on the physical clock instead of the noise model.
+      const noise = buildNoiseModel(channel, strength, physicalMode ? '' : t1, physicalMode ? '' : t2, duration);
+      const physical: PhysicalRunOptions | undefined = physicalMode
+        ? {
+          system: { defaultProfile: profile, frame, approximation: 'rwa' },
+          timing: { defaultGateDuration: Number(duration) || 1 },
+          gates: gateMode,
+        }
+        : undefined;
       const seed = Date.now();
       const common = { librarySources: librarySources() };
       const params = paramQubitIndices?.length ? paramQubitIndices : undefined;
-      const noisy = executeCircuit(simulationQubitCount, gates, startStates, params, { ...common, noise, random: seededRandom(seed) });
+      const noisy = executeCircuit(simulationQubitCount, gates, startStates, params, {
+        ...common,
+        noise,
+        random: seededRandom(seed),
+        ...(physical ? { physical } : {}),
+      });
       const ideal = executeCircuit(simulationQubitCount, gates, startStates, params, { ...common, random: seededRandom(seed) });
       const width = Math.max(noisy.state.qubitCount, ideal.state.qubitCount);
       setNoisyRun({
@@ -164,6 +196,7 @@ export function PhysicsInspector({
         ideal: physics.expandRegister(ideal.state, width),
         measurements: noisy.measurements,
         idealMeasurements: ideal.measurements,
+        physicalTime: noisy.physicalTime,
       });
     } catch (caught) {
       setNoisyRun(null);
@@ -201,8 +234,9 @@ export function PhysicsInspector({
       <h3>Run with noise</h3>
       <p className="physics-note">
         Runs the circuit again as an open system and compares it with the ideal run. Noise acts after each gate;
-        logical cycles are not physical time. Density matrices need 4<sup>n</sup> entries, so noisy runs are
-        limited to 10 qubits.
+        logical cycles are not physical time. With physical timing, every gate lasts its duration on a physical
+        clock while each qubit precesses at its own frequency, and T1/T2 act over that time. Density matrices need
+        4<sup>n</sup> entries, so noisy runs are limited to 10 qubits.
       </p>
       <div className="physics-noise-form">
         <label>
@@ -226,16 +260,48 @@ export function PhysicsInspector({
           />
         </label>
         <label>
-          T1
+          T1{physicalMode ? ' (ns)' : ''}
           <input onChange={(event) => setT1(event.target.value)} placeholder="off" type="number" min={0} value={t1} />
         </label>
         <label>
-          T2
+          T2{physicalMode ? ' (ns)' : ''}
           <input onChange={(event) => setT2(event.target.value)} placeholder="off" type="number" min={0} value={t2} />
         </label>
         <label>
-          Gate duration
+          Gate duration{physicalMode ? ' (ns)' : ''}
           <input onChange={(event) => setDuration(event.target.value)} type="number" min={0} value={duration} />
+        </label>
+      </div>
+      <div className="physics-noise-form">
+        <label className="physics-toggle">
+          <input checked={physicalMode} onChange={(event) => setPhysicalMode(event.target.checked)} type="checkbox" />
+          Physical timing (qubit frequency model)
+        </label>
+        <label>
+          f₀₁ (GHz)
+          <input min={0.001} onChange={(event) => setF01(Number(event.target.value))} step={0.1} type="number" value={f01} />
+        </label>
+        <label>
+          Offset (MHz)
+          <input onChange={(event) => setOffsetMHz(Number(event.target.value))} step={0.1} type="number" value={offsetMHz} />
+        </label>
+        <label>
+          Temperature (mK)
+          <input min={0} onChange={(event) => setTemperatureMK(event.target.value)} placeholder="0" type="number" value={temperatureMK} />
+        </label>
+        <label>
+          Frame
+          <select disabled={!physicalMode} onChange={(event) => setFrame(event.target.value as PhysicalFrame)} value={frame}>
+            <option value="rotating">Rotating at f₀₁</option>
+            <option value="lab">Lab</option>
+          </select>
+        </label>
+        <label>
+          Single-qubit gates
+          <select disabled={!physicalMode} onChange={(event) => setGateMode(event.target.value as 'matrix' | 'drive')} value={gateMode}>
+            <option value="matrix">Ideal matrices</option>
+            <option value="drive">Microwave pulses</option>
+          </select>
         </label>
         <button disabled={gates.length === 0} onClick={runWithNoise} type="button">Run with noise</button>
       </div>
@@ -251,11 +317,24 @@ export function PhysicsInspector({
             <dd>{format(noisyGlobal.purity)}</dd>
             <dt>Fidelity with ideal run</dt>
             <dd>{format(fidelity, 4)}{sameOutcomes ? '' : ' (measurement outcomes differ between the runs)'}</dd>
+            {noisyRun.physicalTime !== undefined && (
+              <>
+                <dt>Elapsed physical time</dt>
+                <dd>{format(noisyRun.physicalTime, 1)} ns</dd>
+              </>
+            )}
           </dl>
           <h3>Noisy subsystem</h3>
           <SubsystemReport state={noisyRun.noisy} subsystem={noisySubsystem} />
         </div>
       )}
+
+      <h3>Frequency and resonance</h3>
+      <p className="physics-note">
+        The qubit above as a physical two-level system: its transition frequency fixes the energy gap (E = hf), and a
+        microwave drive rotates it fastest on resonance. Frequencies are in GHz and times in ns.
+      </p>
+      <FrequencyPanel profile={profile} />
     </section>
   );
 }

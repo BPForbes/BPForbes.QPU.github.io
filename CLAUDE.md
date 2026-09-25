@@ -22,7 +22,7 @@ React + TypeScript + Vite app for editing, simulating, and correcting QPU circui
 | --- | --- | --- |
 | App shell | `src/App.tsx` | UI orchestration, uploads, catalog wiring, correction lab |
 | Simulator engine | `src/simulator/engine.ts` | Sequencing, conditions, checkpoints, tracing; delegates state changes to physics |
-| Physics engine | `src/simulator/physics/` | `PhysicsEngine`: state evolution, measurement, reduced states, entanglement, noise, fidelity |
+| Physics engine | `src/simulator/physics/` | `PhysicsEngine`: state evolution, measurement, reduced states, entanglement, noise, fidelity, frequency/pulses |
 | QPU compiler | `src/simulator/compiler/` | AST parsing (`qpuAst.ts`), serialization (`qpuFormat.ts`), truth tables |
 | Gate registry | `src/simulator/gates/` | Built-in and custom gate definitions |
 | Correction flows | `src/simulator/correction/` | Intent parsing, child-process fixes, circuit corrector |
