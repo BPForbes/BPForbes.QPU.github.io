@@ -1,8 +1,9 @@
 import type { Complex } from '../complex';
-import { probabilityOfOne } from '../physics/state/StateVector';
+import { physics } from '../physics/PhysicsEngine';
+import { stateVector } from '../physics/state/QuantumState';
+import { resolveStateQubitCount } from '../physics/state/StateVector';
 import type { CircuitGate, ConditionPredicate, ConditionValue, ExecutionResult, GateType, MeasurementMap } from '../types';
 import { applyInverseAwareDefinition } from './inverse';
-import { padStateVector } from './operations';
 import { preconfiguredGateMap } from './preconfigured';
 
 /** P(1) within this tolerance of 0 or 1 reads as a definite bit; anything else is S. */
@@ -46,7 +47,7 @@ export const buildConditionPredicate = (params: {
 };
 
 export const classifyWire = (state: Complex[], qubitCount: number, qubit: number): ConditionValue => {
-  const probabilityOne = probabilityOfOne(state, qubitCount, qubit);
+  const probabilityOne = physics.measurementDiagnostics(stateVector(state, qubitCount), qubit, 'Z').probabilities[1];
   if (probabilityOne <= DEFINITE_TOLERANCE) return 0;
   if (probabilityOne >= 1 - DEFINITE_TOLERANCE) return 1;
   return 's';
@@ -89,7 +90,7 @@ export const evaluatePredicate = (
   let target = predicate.output;
   let controls = isCustom ? predicate.inputs : predicate.inputs.filter((qubit) => qubit !== predicate.output);
   if (predicate.scratch) {
-    scratchState = padStateVector(state, qubitCount, qubitCount + 1);
+    scratchState = physics.expandRegister(stateVector(state, qubitCount), qubitCount + 1).amplitudes;
     scratchCount = qubitCount + 1;
     target = qubitCount;
     controls = predicate.inputs;
@@ -105,7 +106,7 @@ export const evaluatePredicate = (
   };
   const result = runGate(probe, scratchState, scratchCount, measurements);
   // Custom gates may add workspace wires, so read the width from the result.
-  const resultCount = Math.max(scratchCount, Math.round(Math.log2(result.state.length)));
+  const resultCount = resolveStateQubitCount(result.state, scratchCount);
   return classifyWire(result.state, resultCount, target);
 };
 

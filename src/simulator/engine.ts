@@ -6,16 +6,9 @@ import { conditionSatisfied } from './gates/conditions';
 import { applyInverseAwareDefinition } from './gates/inverse';
 import { buildOperationTransition, snapshotAllParticles } from './physics/particleTracking';
 import { physics } from './physics/PhysicsEngine';
-import { measureStateVector } from './physics/measurement/Measurement';
 import type { NoiseModel } from './physics/noise/NoiseModel';
 import { type DensityMatrixState, type QuantumState, stateVector } from './physics/state/QuantumState';
-import {
-  createRegister,
-  marginalProbabilities,
-  padStateVector,
-  prepareStartState,
-  resolveStateQubitCount,
-} from './physics/state/StateVector';
+import { createRegister, resolveStateQubitCount } from './physics/state/StateVector';
 import { CircuitGate, ExecutionResult, MeasurementMap, ParticleStartState, StateCheckpoint } from './types';
 
 export {
@@ -35,7 +28,7 @@ export const projectStateOntoQubits = (
   sourceQubitCount: number,
   qubits: number[],
 ): Complex[] =>
-  marginalProbabilities(state, sourceQubitCount, qubits)
+  physics.marginalProbabilities(stateVector(state, sourceQubitCount), qubits)
     .map((probability) => (probability > 0 ? { re: Math.sqrt(probability), im: 0 } : ZERO));
 
 export { conditionSatisfied };
@@ -56,7 +49,7 @@ export const createInitialState = (
   startStates: ParticleStartState[] = [],
   paramQubitIndices?: number[],
 ): Complex[] => {
-  let state = createRegister(qubitCount);
+  let state = stateVector(createRegister(qubitCount), qubitCount);
 
   const indices = resolveParamQubitIndices(qubitCount, startStates, paramQubitIndices);
   const invalid = indices.filter((qubit) => qubit < 0 || qubit >= qubitCount);
@@ -64,10 +57,10 @@ export const createInitialState = (
     throw new RangeError(`Invalid qubit indices: ${invalid.join(', ')} (qubitCount=${qubitCount})`);
   }
   indices.forEach((qubit) => {
-    state = prepareStartState(state, qubitCount, qubit, startStates[qubit] ?? '0p');
+    state = physics.prepare(state, qubit, startStates[qubit] ?? '0p');
   });
 
-  return state;
+  return state.amplitudes;
 };
 
 export { resolveStateQubitCount };
@@ -82,7 +75,7 @@ const requiredWidth = (qubitCount: number, gate: CircuitGate) => {
 const ensureStateWidth = (state: Complex[], qubitCount: number, gate: CircuitGate) => {
   const nextCount = requiredWidth(qubitCount, gate);
   if (nextCount === qubitCount) return { state, qubitCount };
-  return { state: padStateVector(state, qubitCount, nextCount), qubitCount: nextCount };
+  return { state: physics.expandRegister(stateVector(state, qubitCount), nextCount).amplitudes, qubitCount: nextCount };
 };
 
 export type ApplyGateOptions = {
@@ -295,10 +288,7 @@ export const runCircuit = (
           checkpoints,
         });
         workingState = next.state;
-        const vectorWidth = Math.round(Math.log2(workingState.length));
-        if (Number.isFinite(vectorWidth) && vectorWidth > workingQubitCount) {
-          workingQubitCount = vectorWidth;
-        }
+        workingQubitCount = resolveStateQubitCount(workingState, workingQubitCount);
         return {
           state: workingState,
           measurements: next.measurements,
@@ -331,8 +321,8 @@ export const measureAll = (state: Complex[], qubitCount: number, measurements: M
 
   for (let qubit = 0; qubit < qubitCount; qubit += 1) {
     if (nextMeasurements[qubit] === undefined) {
-      const measured = measureStateVector(current, qubitCount, qubit);
-      current = measured.state;
+      const measured = physics.measure(stateVector(current, qubitCount), qubit);
+      current = measured.state.amplitudes;
       nextMeasurements[qubit] = measured.outcome;
       log.push(`Measured q${qubit} = ${measured.outcome} (P(1)=${measured.probabilityOne.toFixed(3)}).`);
     }
@@ -443,7 +433,7 @@ export const runNoisyCircuit = (
         const basisNote = measured.basis === 'Z' ? '' : ` in ${measured.basis} basis`;
         log.push(`Measured q${target}${basisNote} = ${measured.outcome} (P(1)=${measured.probabilityOne.toFixed(3)}).`);
       } else if (gate.type === 'RESET') {
-        state = gate.targets.reduce((current, qubit) => physics.reset(current, qubit), state);
+        state = gate.targets.reduce((current, qubit) => physics.reset(current, qubit, random), state);
         log.push(`Reset q${gate.targets.join(', q')} to |0⟩.`);
       } else {
         const gateLog: string[] = [];

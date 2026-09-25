@@ -6,7 +6,7 @@
  * never renormalize, so they also act correctly on unnormalized columns (the
  * density-matrix backend relies on that).
  */
-import { add, type Complex, magnitudeSquared, mul, ONE, scale, ZERO } from '../../complex';
+import { add, type Complex, magnitudeSquared, mul, ONE, ZERO } from '../../complex';
 import { MATRIX_H, MATRIX_X } from '../../gates/matrices';
 import type { ParticleStartState } from '../../types';
 import type { ComplexMatrix } from '../numerics/linearAlgebra';
@@ -111,18 +111,34 @@ export const applyMultiQubitUnitary = (
   const targetMask = masks.reduce((all, mask) => all | mask, 0);
   const offsets = Array.from({ length: dimension }, (_, local) =>
     masks.reduce((offset, mask, bit) => ((local >> (targets.length - bit - 1)) & 1 ? offset | mask : offset), 0));
+  // Gate operators are mostly permutations or diagonal: identity rows are skipped, single-1 rows move an
+  // amplitude by reference, and only genuinely mixing rows pay for complex multiply-adds.
+  type RowPlan = { kind: 'keep' } | { kind: 'move'; column: number } | { kind: 'sum'; entries: Array<{ column: number; value: Complex }> };
+  const plans: RowPlan[] = matrix.map((row, rowIndex) => {
+    const entries = row.flatMap((value, column) => (value.re !== 0 || value.im !== 0 ? [{ column, value }] : []));
+    if (entries.length === 1 && entries[0].value.re === 1 && entries[0].value.im === 0) {
+      return entries[0].column === rowIndex ? { kind: 'keep' } : { kind: 'move', column: entries[0].column };
+    }
+    return { kind: 'sum', entries };
+  });
+  const active = plans.flatMap((plan, row) => (plan.kind === 'keep' ? [] : [{ row, plan }]));
   const next = [...state];
-  const local = new Array<Complex>(dimension);
 
   for (let base = 0; base < state.length; base += 1) {
-    if ((base & targetMask) !== 0 || !controlsAreActive(base, qubitCount, controls)) continue;
-    for (let column = 0; column < dimension; column += 1) local[column] = state[base | offsets[column]];
-    for (let row = 0; row < dimension; row += 1) {
-      let sum = ZERO;
-      for (let column = 0; column < dimension; column += 1) {
-        sum = add(sum, mul(matrix[row][column], local[column]));
+    if ((base & targetMask) !== 0) continue;
+    if (controls.length > 0 && !controlsAreActive(base, qubitCount, controls)) continue;
+    for (let k = 0; k < active.length; k += 1) {
+      const { row, plan } = active[k];
+      if (plan.kind === 'move') {
+        next[base | offsets[row]] = state[base | offsets[plan.column]];
+      } else if (plan.kind === 'sum') {
+        let sum = ZERO;
+        for (let e = 0; e < plan.entries.length; e += 1) {
+          const { column, value } = plan.entries[e];
+          sum = add(sum, mul(value, state[base | offsets[column]]));
+        }
+        next[base | offsets[row]] = sum;
       }
-      next[base | offsets[row]] = sum;
     }
   }
 
@@ -152,36 +168,15 @@ export const prepareStartState = (
   preparation: ParticleStartState,
 ): Complex[] => (preparation === '0p' ? state : applyStartState(state, qubitCount, qubit, preparation));
 
-// RESET projects onto |0⟩ when possible, but recovers a valid zero state if the branch had no amplitude.
-export const prepareZeroQubit = (state: Complex[], qubitCount: number, qubit: number): Complex[] => {
-  const mask = bitMask(qubit, qubitCount);
-  const next = [...state];
-
-  for (let index = 0; index < state.length; index += 1) {
-    if ((index & mask) !== 0) {
-      next[index] = ZERO;
-    }
-  }
-
-  let keptProbability = next.reduce((sum, amplitude) => sum + magnitudeSquared(amplitude), 0);
-  if (keptProbability < 1e-12) {
-    const recovered = Array.from({ length: state.length }, () => ZERO);
-    for (let index = 0; index < state.length; index += 1) {
-      if ((index & mask) !== 0) {
-        recovered[index & ~mask] = state[index];
-      }
-    }
-    next.splice(0, next.length, ...recovered);
-    keptProbability = next.reduce((sum, amplitude) => sum + magnitudeSquared(amplitude), 0);
-    if (keptProbability < 1e-12) {
-      const zeroState = Array.from({ length: state.length }, () => ZERO);
-      zeroState[0] = ONE;
-      return zeroState;
-    }
-  }
-
-  const normalizer = 1 / Math.sqrt(keptProbability);
-  return next.map((amplitude) => scale(amplitude, normalizer));
+/**
+ * Inverse of padStateVector: drop the lowest `fromCount − toCount` wires.
+ * Only valid when those wires are |0⟩ (e.g. a nested gate's cleaned workspace);
+ * any amplitude elsewhere is discarded, so callers must verify with norm().
+ */
+export const truncateStateVector = (state: Complex[], fromCount: number, toCount: number): Complex[] => {
+  if (toCount >= fromCount) return state;
+  const shift = fromCount - toCount;
+  return Array.from({ length: 2 ** toCount }, (_, index) => state[index << shift]);
 };
 
 export const basisProbabilities = (state: Complex[]): number[] => state.map(magnitudeSquared);

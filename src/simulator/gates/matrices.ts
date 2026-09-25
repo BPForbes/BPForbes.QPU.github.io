@@ -41,3 +41,14 @@ export const rotationZMatrix = (theta: number) => [
 export const PHASE_PI = Math.PI;
 export const PHASE_PI_2 = Math.PI / 2;
 export const PHASE_PI_4 = Math.PI / 4;
+
+export const MATRIX_SWAP = [
+  [ONE, ZERO, ZERO, ZERO],
+  [ZERO, ZERO, ONE, ZERO],
+  [ZERO, ONE, ZERO, ZERO],
+  [ZERO, ZERO, ZERO, ONE],
+] as const;
+
+/** Unitary sending basis column c to row permutation[c]. */
+export const permutationMatrix = (permutation: readonly number[]) =>
+  permutation.map((_, row) => permutation.map((image) => (image === row ? ONE : ZERO)));

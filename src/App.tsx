@@ -73,7 +73,9 @@ import {
   QPU_FILE_UPLOAD_ACCEPT,
   validateUploadFileName,
 } from './data/formats';
-import { createInitialState, measureAll, measureQubit, projectStateOntoQubits, resolveStateQubitCount, runCircuit, stepCircuitGate } from './simulator/engine';
+import { createInitialState, measureAll, projectStateOntoQubits, resolveStateQubitCount, runCircuit, stepCircuitGate } from './simulator/engine';
+import { physics } from './simulator/physics/PhysicsEngine';
+import { stateVector } from './simulator/physics/state/QuantumState';
 import {
   analyzeQpuProtocol,
   compileQpuProtocol,
@@ -658,10 +660,13 @@ function App() {
       return;
     }
 
-    const result = measureQubit(state, simulationQubitCount, controllableParams[selectedTarget]?.qubitIndex ?? selectedTarget);
-    setState(result.state);
-    setMeasurements((current) => ({ ...current, [selectedTarget]: result.value }));
-    setLog((current) => [...current, `Measured q${selectedTarget} = ${result.value} (P(1)=${result.probabilityOne.toFixed(3)}).`]);
+    const result = physics.measure(
+      stateVector(state, simulationQubitCount),
+      controllableParams[selectedTarget]?.qubitIndex ?? selectedTarget,
+    );
+    setState(result.state.amplitudes);
+    setMeasurements((current) => ({ ...current, [selectedTarget]: result.outcome }));
+    setLog((current) => [...current, `Measured q${selectedTarget} = ${result.outcome} (P(1)=${result.probabilityOne.toFixed(3)}).`]);
   };
 
   // Workbench adds override controls computed from the selected target and control dropdowns.

@@ -63,8 +63,8 @@ import {
   createRegister,
   marginalProbabilities,
   padStateVector,
-  prepareZeroQubit,
 } from './state/StateVector';
+import { resetStateVector } from './measurement/Reset';
 import { MATRIX_H, MATRIX_X } from '../gates/matrices';
 
 export type QubitInspection = {
@@ -134,20 +134,20 @@ export class PhysicsEngine {
   }
 
   /** Prepare a fresh |0⟩ wire as 0p, 1p (|1⟩), or sp (|+⟩). */
-  prepare(state: QuantumState, qubit: number, preparation: ParticleStartState): QuantumState {
+  prepare<S extends QuantumState>(state: S, qubit: number, preparation: ParticleStartState): S {
     if (preparation === '0p') return state;
     if (state.kind === 'stateVector') {
-      return stateVector(applyStartState(state.amplitudes, state.qubitCount, qubit, preparation), state.qubitCount);
+      return stateVector(applyStartState(state.amplitudes, state.qubitCount, qubit, preparation), state.qubitCount) as S;
     }
     return this.applyUnitary(state, [qubit], preparation === '1p' ? MATRIX_X : MATRIX_H);
   }
 
   /** Append |0⟩ wires so the register holds `qubitCount` qubits. */
-  expandRegister(state: QuantumState, qubitCount: number): QuantumState {
+  expandRegister<S extends QuantumState>(state: S, qubitCount: number): S {
     if (qubitCount <= state.qubitCount) return state;
-    return state.kind === 'stateVector'
+    return (state.kind === 'stateVector'
       ? stateVector(padStateVector(state.amplitudes, state.qubitCount, qubitCount), qubitCount)
-      : densityState(padDensityMatrix(state.rho, state.qubitCount, qubitCount), qubitCount);
+      : densityState(padDensityMatrix(state.rho, state.qubitCount, qubitCount), qubitCount)) as S;
   }
 
   toDensityMatrix(state: QuantumState): DensityMatrixState {
@@ -159,40 +159,40 @@ export class PhysicsEngine {
   // ── Evolution ──────────────────────────────────────────────────────────
 
   /** |ψ'⟩ = U|ψ⟩ or ρ' = UρU†. The engine does not care which gate supplied U. */
-  applyUnitary(state: QuantumState, targets: number[], matrix: ComplexMatrix): QuantumState {
+  applyUnitary<S extends QuantumState>(state: S, targets: number[], matrix: ComplexMatrix): S {
     return this.applyControlledUnitary(state, [], targets, matrix);
   }
 
-  applyControlledUnitary(state: QuantumState, controls: number[], targets: number[], matrix: ComplexMatrix): QuantumState {
+  applyControlledUnitary<S extends QuantumState>(state: S, controls: number[], targets: number[], matrix: ComplexMatrix): S {
     if (state.kind === 'stateVector') {
-      return stateVector(applyMultiQubitUnitary(state.amplitudes, state.qubitCount, targets, matrix, controls), state.qubitCount);
+      return stateVector(applyMultiQubitUnitary(state.amplitudes, state.qubitCount, targets, matrix, controls), state.qubitCount) as S;
     }
-    return densityState(applyUnitaryToDensity(state.rho, state.qubitCount, targets, matrix, controls), state.qubitCount);
+    return densityState(applyUnitaryToDensity(state.rho, state.qubitCount, targets, matrix, controls), state.qubitCount) as S;
   }
 
   /**
    * Apply any linear state-vector kernel A (e.g. a registered gate's fast
    * path). On a density matrix this is ρ → AρA†.
    */
-  applyLinearKernel(state: QuantumState, kernel: (amplitudes: Complex[]) => Complex[]): QuantumState {
-    if (state.kind === 'stateVector') return stateVector(kernel(state.amplitudes), state.qubitCount);
-    return densityState(conjugateByLinearMap(state.rho, kernel), state.qubitCount);
+  applyLinearKernel<S extends QuantumState>(state: S, kernel: (amplitudes: Complex[]) => Complex[]): S {
+    if (state.kind === 'stateVector') return stateVector(kernel(state.amplitudes), state.qubitCount) as S;
+    return densityState(conjugateByLinearMap(state.rho, kernel), state.qubitCount) as S;
   }
 
   /** Continuous evolution under a time-independent Hamiltonian: U = e^{−iHt/ħ}. */
-  evolve(state: QuantumState, hamiltonian: Hamiltonian, duration: number, hbar = 1): QuantumState {
+  evolve<S extends QuantumState>(state: S, hamiltonian: Hamiltonian, duration: number, hbar = 1): S {
     return this.applyUnitary(state, hamiltonian.targets, propagator(hamiltonian.matrix, duration, hbar));
   }
 
   // ── Measurement ────────────────────────────────────────────────────────
 
-  measure(state: QuantumState, qubit: number, basis: MeasurementBasis = 'Z', random = Math.random()): MeasurementResult<QuantumState> {
+  measure<S extends QuantumState>(state: S, qubit: number, basis: MeasurementBasis = 'Z', random = Math.random()): MeasurementResult<S> {
     if (state.kind === 'stateVector') {
       const result = measureStateVector(state.amplitudes, state.qubitCount, qubit, basis, random);
-      return { ...result, state: stateVector(result.state, state.qubitCount) };
+      return { ...result, state: stateVector(result.state, state.qubitCount) as S };
     }
     const result = measureDensityMatrix(state.rho, state.qubitCount, qubit, basis, random);
-    return { ...result, state: densityState(result.state, state.qubitCount) };
+    return { ...result, state: densityState(result.state, state.qubitCount) as S };
   }
 
   /** Outcome probabilities for a basis without collapsing the state. */
@@ -202,10 +202,14 @@ export class PhysicsEngine {
       : densityMeasurementDiagnostics(state.rho, state.qubitCount, qubit, basis);
   }
 
-  reset(state: QuantumState, qubit: number): QuantumState {
-    return state.kind === 'stateVector'
-      ? stateVector(prepareZeroQubit(state.amplitudes, state.qubitCount, qubit), state.qubitCount)
-      : densityState(resetQubitDensity(state.rho, state.qubitCount, qubit), state.qubitCount);
+  /**
+   * Force `qubit` to |0⟩. Density matrices get the exact reset channel; state
+   * vectors follow one measure-and-flip trajectory of it (see measurement/Reset.ts).
+   */
+  reset<S extends QuantumState>(state: S, qubit: number, random: () => number = Math.random): S {
+    return (state.kind === 'stateVector'
+      ? stateVector(resetStateVector(state.amplitudes, state.qubitCount, qubit, random), state.qubitCount)
+      : densityState(resetQubitDensity(state.rho, state.qubitCount, qubit), state.qubitCount)) as S;
   }
 
   probabilities(state: QuantumState): number[] {

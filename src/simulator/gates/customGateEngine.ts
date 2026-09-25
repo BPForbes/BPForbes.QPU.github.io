@@ -2,7 +2,9 @@ import { compileQpuProtocol } from '../compiler/qpuAst';
 import type { CircuitGate, ExecutionResult, MeasurementMap } from '../types';
 import type { GateDefinition } from './types';
 import { gateIoArity } from './types';
-import { padStateVector } from './operations';
+import { physics } from '../physics/PhysicsEngine';
+import { stateVector } from '../physics/state/QuantumState';
+import { resolveStateQubitCount } from '../physics/state/StateVector';
 import { checkCustomGateReversibility, REVERSIBILITY_CHECK_VERSION, type NestedCustomGateRunner } from './customGateReversibility';
 import { preconfiguredGateMap } from './preconfigured';
 import { conditionSatisfied, remapConditionWires } from './conditions';
@@ -206,7 +208,7 @@ const expandCustomGate = (
   const { remap, expandedQubitCount: baseQubitCount } = buildQubitRemap(compiled, gate, qubitCount);
   let expandedQubitCount = baseQubitCount;
 
-  let nextState = padStateVector(state, qubitCount, expandedQubitCount);
+  let nextState = physics.expandRegister(stateVector(state, qubitCount), expandedQubitCount).amplitudes;
   let nextMeasurements = { ...measurements };
   const forwardSteps = compiled.gates;
   if (gate.inverse && !record.reversible) {
@@ -247,7 +249,7 @@ const expandCustomGate = (
     const result = runInnerGate(remapped, nextState, expandedQubitCount, nextMeasurements);
     nextState = result.state;
     // A nested custom gate may add its own workspace wires.
-    expandedQubitCount = Math.max(expandedQubitCount, Math.round(Math.log2(nextState.length)));
+    expandedQubitCount = resolveStateQubitCount(nextState, expandedQubitCount);
     nextMeasurements = result.measurements;
     log.push(...result.log);
   }

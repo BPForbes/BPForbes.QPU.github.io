@@ -280,3 +280,56 @@ describe('Hamiltonian evolution', () => {
       .toThrow(RangeError);
   });
 });
+
+describe('RESET through the Physics Engine', () => {
+  it('matches the density-matrix reset channel on average', () => {
+    const bellVector = bell();
+    const branches = [0.2, 0.8].map((draw) => physics.reset(bellVector, 0, () => draw));
+    const averaged = densityState(
+      physics.toDensityMatrix(branches[0]).rho.map((row, i) => row.map((value, j) => {
+        const other = physics.toDensityMatrix(branches[1]).rho[i][j];
+        return complex((value.re + other.re) / 2, (value.im + other.im) / 2);
+      })),
+    );
+    const channel = physics.reset(physics.toDensityMatrix(bellVector), 0);
+    expect(physics.fidelity(averaged, channel)).toBeCloseTo(1, 9);
+    expect(physics.inspectQubit(channel, 0).probabilities.zero).toBeCloseTo(1, 12);
+    expect(physics.isEntangled(channel, [0])).toBe(false);
+  });
+
+  it('consumes no randomness when the wire is already definite', () => {
+    let draws = 0;
+    const random = () => {
+      draws += 1;
+      return 0.5;
+    };
+    physics.reset(physics.prepare(physics.createState(2), 0, '1p'), 0, random);
+    physics.reset(physics.createState(2), 1, random);
+    expect(draws).toBe(0);
+  });
+
+  it('runs compiled RESET gates through physics.reset', () => {
+    const result = runCircuit(2, [
+      { id: 'x', type: 'X', step: 0, targets: [0], controls: [] },
+      { id: 'r', type: 'RESET', step: 1, targets: [0], controls: [] },
+    ]);
+    expect(physics.probabilities(stateVector(result.state, 2))[0]).toBeCloseTo(1, 12);
+  });
+});
+
+describe('gate operators go through the Physics Engine', () => {
+  it('builds classical logic as permutation operators', async () => {
+    const { predicateXOperator, anyControlIsActive } = await import('../../gates/operations');
+    const or = predicateXOperator(3, [0, 1], 2, anyControlIsActive);
+    expect(or.targets).toEqual([0, 1, 2]);
+    expect(isUnitary(or.matrix)).toBe(true);
+    // |000⟩ stays, |010⟩ → |011⟩.
+    expect(or.matrix[0][0].re).toBe(1);
+    expect(or.matrix[3][2].re).toBe(1);
+  });
+
+  it('keeps legacy semantics when a target is also listed as a control', () => {
+    const state = [complex(), complex(1), complex(), complex()];
+    expect(applyControlledX(state, 2, [1], 1)).toEqual(state);
+  });
+});

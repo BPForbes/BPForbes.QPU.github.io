@@ -15,6 +15,13 @@ quantum mechanics in QPU.
 Entanglement, cloning, and teleportation are never special instructions: they
 emerge from ordinary gates and are *detected* here.
 
+Every state change goes through this engine by default. Gate definitions build
+operators (`gates/operations.ts` turns CNOT/CCNOT/AND/OR/XOR into permutation
+operators) and hand them to `physics.applyControlledUnitary`; MEASURE, RESET,
+start-state preparation, register growth, IF-predicate classification, and the
+UI's single-wire measure all call the engine. Code outside `physics/` should
+not compute amplitudes, probabilities, or reduced states itself.
+
 ## Layout
 
 ```
@@ -56,9 +63,9 @@ physics/
 - Fidelity uses the squared convention F = (Tr √(√ρ σ √ρ))².
 - Logical `CYCLE`/`INCREASECYCLE` stages are not physical time; decoherence
   uses `PhysicalTimingModel` gate durations.
-- State-vector `RESET` post-selects and renormalizes (legacy behavior); the
-  density-matrix reset is the physical reset channel. They agree on product
-  states.
+- `RESET` is physical. Density matrices get the reset channel
+  ρ → |0⟩⟨0| ⊗ Tr_q ρ; state vectors follow one measure-and-flip trajectory
+  of it (random only when the wire is uncertain), which averages to the channel.
 
 ## Not yet done
 
