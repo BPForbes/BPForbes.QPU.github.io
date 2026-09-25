@@ -72,21 +72,23 @@ export function FrequencyPanel({ profile }: FrequencyPanelProps) {
     }
   }, [electronSpeed]);
 
-  if (!readout.ok) return <p className="physics-error" role="alert">{readout.error}</p>;
-  const { hertz, gap, wavelength, thermal, diagnostics, leakage, simulatedExcitation } = readout;
+  // The drive inputs stay mounted on an error so the value that caused it can be corrected.
+  const result = readout.ok ? readout : undefined;
 
   return (
     <div className="physics-frequency">
-      <dl className="physics-metrics">
-        <dt>Transition frequency f₀₁</dt>
-        <dd>{fixed(profile.transitionFrequency, 4)} GHz ({scientific(hertz)} Hz)</dd>
-        <dt>Energy gap ΔE = hf₀₁</dt>
-        <dd>{scientific(gap)} J = {fixed(physics.frequency.joulesToElectronVolts(gap) * 1e6, 3)} µeV</dd>
-        <dt>Photon wavelength c/f</dt>
-        <dd>{fixed(wavelength * 100, 3)} cm</dd>
-        <dt>Thermal |1⟩ population</dt>
-        <dd>{profile.temperature ? `${scientific(thermal)} at ${fixed(profile.temperature * 1000, 1)} mK` : '0 (no temperature set)'}</dd>
-      </dl>
+      {result && (
+        <dl className="physics-metrics">
+          <dt>Transition frequency f₀₁</dt>
+          <dd>{fixed(profile.transitionFrequency, 4)} GHz ({scientific(result.hertz)} Hz)</dd>
+          <dt>Energy gap ΔE = hf₀₁</dt>
+          <dd>{scientific(result.gap)} J = {fixed(physics.frequency.joulesToElectronVolts(result.gap) * 1e6, 3)} µeV</dd>
+          <dt>Photon wavelength c/f</dt>
+          <dd>{fixed(result.wavelength * 100, 3)} cm</dd>
+          <dt>Thermal |1⟩ population</dt>
+          <dd>{profile.temperature ? `${scientific(result.thermal)} at ${fixed(profile.temperature * 1000, 1)} mK` : '0 (no temperature set)'}</dd>
+        </dl>
+      )}
 
       <div className="physics-noise-form">
         <label>
@@ -111,36 +113,39 @@ export function FrequencyPanel({ profile }: FrequencyPanelProps) {
         </label>
       </div>
 
-      <dl className="physics-metrics">
-        <dt>Drive frequency</dt>
-        <dd>{fixed(diagnostics.driveFrequency, 4)} GHz</dd>
-        <dt>Detuning Δ/2π</dt>
-        <dd>{fixed(diagnostics.detuning * 1000, 2)} MHz ({diagnostics.regime})</dd>
-        <dt>Generalized Rabi √(Ω²+Δ²)/2π</dt>
-        <dd>{fixed(diagnostics.effectiveRabiFrequency * 1000, 2)} MHz</dd>
-        <dt>Resonant rotation angle</dt>
-        <dd>{fixed((diagnostics.resonantRotationAngle * 180) / Math.PI, 1)}°</dd>
-        <dt>Max transfer Ω²/(Ω²+Δ²)</dt>
-        <dd>{fixed(diagnostics.maxExcitationProbability)}</dd>
-        {diagnostics.acStarkShift !== undefined && (
-          <>
-            <dt>AC Stark shift</dt>
-            <dd>{fixed(diagnostics.acStarkShift * 1000, 3)} MHz</dd>
-          </>
-        )}
-        <dt>Simulated P(1) after pulse</dt>
-        <dd>{fixed(simulatedExcitation)} (rotating frame, RWA{leakage ? '; leaked population counted as 1' : ''})</dd>
-        {leakage && (
-          <>
-            <dt>f₁₂ = f₀₁ + α/2π</dt>
-            <dd>{fixed(leakage.transitionFrequency12, 4)} GHz</dd>
-            <dt>Leakage to |2⟩ from |0⟩ / |1⟩</dt>
-            <dd>{leakage.leakageFrom0.toExponential(2)} / {leakage.leakageFrom1.toExponential(2)}</dd>
-            <dt>Leakage-cancelling DRAG β = 1/α</dt>
-            <dd>{fixed(leakage.leakageDragBeta, 4)} ns</dd>
-          </>
-        )}
-      </dl>
+      {!readout.ok && <p className="physics-error" role="alert">{readout.error}</p>}
+      {result && (
+        <dl className="physics-metrics">
+          <dt>Drive frequency</dt>
+          <dd>{fixed(result.diagnostics.driveFrequency, 4)} GHz</dd>
+          <dt>Detuning Δ/2π</dt>
+          <dd>{fixed(result.diagnostics.detuning * 1000, 2)} MHz ({result.diagnostics.regime})</dd>
+          <dt>Generalized Rabi √(Ω²+Δ²)/2π</dt>
+          <dd>{fixed(result.diagnostics.effectiveRabiFrequency * 1000, 2)} MHz</dd>
+          <dt>Resonant rotation angle</dt>
+          <dd>{fixed((result.diagnostics.resonantRotationAngle * 180) / Math.PI, 1)}°</dd>
+          <dt>Max transfer Ω²/(Ω²+Δ²)</dt>
+          <dd>{fixed(result.diagnostics.maxExcitationProbability)}</dd>
+          {result.diagnostics.acStarkShift !== undefined && (
+            <>
+              <dt>AC Stark shift</dt>
+              <dd>{fixed(result.diagnostics.acStarkShift * 1000, 3)} MHz</dd>
+            </>
+          )}
+          <dt>Simulated P(1) after pulse</dt>
+          <dd>{fixed(result.simulatedExcitation)} (rotating frame, RWA{result.leakage ? '; leaked population counted as 1' : ''})</dd>
+          {result.leakage && (
+            <>
+              <dt>f₁₂ = f₀₁ + α/2π</dt>
+              <dd>{fixed(result.leakage.transitionFrequency12, 4)} GHz</dd>
+              <dt>Leakage to |2⟩ from |0⟩ / |1⟩</dt>
+              <dd>{result.leakage.leakageFrom0.toExponential(2)} / {result.leakage.leakageFrom1.toExponential(2)}</dd>
+              <dt>Leakage-cancelling DRAG β = 1/α</dt>
+              <dd>{fixed(result.leakage.leakageDragBeta, 4)} ns</dd>
+            </>
+          )}
+        </dl>
+      )}
 
       <h4>Particle wavelength (educational)</h4>
       <div className="physics-noise-form">
