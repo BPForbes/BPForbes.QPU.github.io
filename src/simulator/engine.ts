@@ -19,6 +19,9 @@ export {
   prepareZeroQubit,
 } from './gates/operations';
 
+/** Prefix of the log line for compiler-inserted RESETs, which the UI hides like the gates themselves. */
+export const WORKSPACE_RESET_LOG_PREFIX = 'Logical-cycle workspace prepared';
+
 export const basisLabel = (index: number, qubitCount: number): string => index.toString(2).padStart(qubitCount, '0');
 
 /** Marginalize a state vector onto the selected qubit indices for logical-param display. */
@@ -188,7 +191,7 @@ const applyMarker = (
   measurements: MeasurementMap,
   checkpoints: Record<string, QuantumCheckpoint>,
 ): Pick<QuantumExecutionResult, 'state' | 'measurements' | 'log'> | undefined => {
-  if (gate.type === 'CYCLE') return { state, measurements, log: [`Cycle ${gate.cycle ?? 0} started.`] };
+  if (gate.type === 'CYCLE') return { state, measurements, log: [`Logical cycle ${gate.cycle ?? 0} started.`] };
   if (gate.type !== 'SAVE_STATE' && gate.type !== 'LOAD_STATE') return undefined;
   const name = gate.checkpoint ?? 'checkpoint';
   if (gate.type === 'SAVE_STATE') {
@@ -244,7 +247,7 @@ const applyPhysicalOperation = (
     return {
       state: gate.targets.reduce((current, qubit) => physics.reset(current, qubit, random), state),
       measurements,
-      log: [`Cycle workspace prepared: q${gate.targets.join(', q')} as |0⟩.`],
+      log: [`${WORKSPACE_RESET_LOG_PREFIX}: q${gate.targets.join(', q')} as |0⟩.`],
     };
   }
   if (state.kind === 'stateVector') {

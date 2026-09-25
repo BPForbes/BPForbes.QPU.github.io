@@ -1,4 +1,4 @@
-// QPU protocol compiler: child processes and cycles expand into flat gates so the simulator and UI share one execution model.
+// QPU protocol compiler: child processes and logical cycles expand into flat gates so the simulator and UI share one execution model.
 import { assertGateArity } from '../gates/arity';
 import type { MeasurementBasis } from '../physics/measurement/MeasurementBasis';
 import { astDerivedGateIds, astPrimitiveGateIds } from '../gates/metadata';
@@ -516,7 +516,7 @@ const createCompilerState = (): CompilerState => ({
   nextRecursionInvocation: 0,
 });
 
-// Gates shown in the circuit UI; cycle workspace prep is compiler-internal and never rendered.
+// Gates shown in the circuit UI; logical-cycle workspace prep is compiler-internal and never rendered.
 export const visibleCircuitGates = (gates: CircuitGate[]) => gates.filter((gate) => gate.type !== 'RESET');
 
 const processLibraryFromSources = (sources: Record<string, string>) => {
@@ -538,9 +538,9 @@ const noteCycleSuffix = (state: CompilerState, token: string, line: string) => {
   state.warningKeys.add(key);
   state.warnings.push({
     code: 'CYCLE_SUFFIX_MISMATCH',
-    message: `Token ${token} is marked as cycle ${suffix}, but this process is on cycle ${state.frameCycle}.`,
+    message: `Token ${token} is marked as logical cycle ${suffix}, but this process is on logical cycle ${state.frameCycle}.`,
     source: line,
-    suggestion: 'Use a suffix that matches the cycle, or move the reference next to the matching INCREASECYCLE.',
+    suggestion: 'Use a suffix that matches the logical cycle, or move the reference next to the matching INCREASECYCLE.',
   });
 };
 
@@ -1009,11 +1009,11 @@ const executeProcess = (
     }
 
     if (command.op === 'INCREASECYCLE') {
-      flushCycleZeros(state, `INCREASECYCLE end of cycle ${state.frameCycle}`);
+      flushCycleZeros(state, `INCREASECYCLE end of logical cycle ${state.frameCycle}`);
       state.frameCycle += 1;
       state.timelineCycle += 1;
       emitGate(state, 'CYCLE', [], [], line);
-      state.log.push(`Cycle increased to ${state.frameCycle}; workspace registers prepared for the new cycle.`);
+      state.log.push(`Logical cycle increased to ${state.frameCycle}; workspace registers prepared for the new stage.`);
       continue;
     }
 
@@ -1038,7 +1038,7 @@ const executeProcess = (
             throw new Error(`SET cannot widen state parameter '${targetBase}' to dimension ${prepared.dimension} in '${line}'`);
           }
           ensureQubit(state, targetName, false);
-          state.log.push(`SET ${targetBase} default ${value} at cycle ${state.frameCycle} (parametric default; runtime start state).`);
+          state.log.push(`SET ${targetBase} default ${value} at logical cycle ${state.frameCycle} (parametric default; runtime start state).`);
           continue;
         }
         if (width === 1) {
@@ -1060,7 +1060,7 @@ const executeProcess = (
           }
           if (prepared.kind === 'sp') qubits.forEach((qubit) => emitGate(state, 'H', [qubit], [], line));
         }
-        state.log.push(`SET ${targetBase} to ${value} at cycle ${state.frameCycle}.`);
+        state.log.push(`SET ${targetBase} to ${value} at logical cycle ${state.frameCycle}.`);
       } else {
         const valueName = scopedName(state, frame, value, line, parentFrame, skipParams);
         frame.aliases.set(targetBase, valueName);
@@ -1203,7 +1203,7 @@ const executeProcess = (
           childOutputBindings.set(childRegister, parentToken);
         });
       }
-      flushCycleZeros(state, `prepare outputs before ${command.op} ${childName} at cycle ${state.frameCycle}`);
+      flushCycleZeros(state, `prepare outputs before ${command.op} ${childName} at logical cycle ${state.frameCycle}`);
 
       const nextContext: ProcessExecutionContext = plan.kind === 'expand'
         ? {
@@ -1303,7 +1303,7 @@ const executeProcess = (
     if (command.op === 'SAVE_STATE' || command.op === 'LOAD_STATE') {
       const checkpoint = command.args[0];
       if (!checkpoint) throw new Error(`${command.op} requires a checkpoint name in '${line}'`);
-      flushCycleZeros(state, `prepare workspace before ${command.op} at cycle ${state.frameCycle}`);
+      flushCycleZeros(state, `prepare workspace before ${command.op} at logical cycle ${state.frameCycle}`);
       emitGate(state, command.op, [], [], line, undefined, checkpoint);
       state.log.push(`${command.op} ${checkpoint}.`);
       continue;
@@ -1367,7 +1367,7 @@ const executeProcess = (
 
     // Custom gates keep their own wiring: -I wires bind the process PARAMS in order, -O wires its RETURNVALS.
     if (command.customGateId) {
-      flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      flushCycleZeros(state, `prepare workspace before gate at logical cycle ${state.frameCycle}`);
       const { condition, branch } = resolveClassicalControl(command.condition, line, skipParams);
       const controls = command.inputs.map((input) => resolveInputQubit(state, frame, input, line, parentFrame, skipParams));
       const targets = command.outputs.map((output) => resolveInputQubit(state, frame, output, line, parentFrame, skipParams));
@@ -1377,7 +1377,7 @@ const executeProcess = (
     }
 
     if (primitiveGates.has(command.op)) {
-      flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      flushCycleZeros(state, `prepare workspace before gate at logical cycle ${state.frameCycle}`);
       const { condition, branch } = resolveClassicalControl(command.condition, line, skipParams);
       const loweredPhase = command.reverse && command.op === 'S'
         ? -Math.PI / 2
@@ -1421,7 +1421,7 @@ const executeProcess = (
 
     // Derived gates share the same -I/-O lowering as primitives; self-inverse ops keep reverse for dagger display.
     if (derivedGates.has(command.op)) {
-      flushCycleZeros(state, `prepare workspace before gate at cycle ${state.frameCycle}`);
+      flushCycleZeros(state, `prepare workspace before gate at logical cycle ${state.frameCycle}`);
       const { condition, branch } = resolveClassicalControl(command.condition, line, skipParams);
       const target = resolveInputQubit(state, frame, command.outputs[0], line, parentFrame, skipParams);
       const controls = command.inputs

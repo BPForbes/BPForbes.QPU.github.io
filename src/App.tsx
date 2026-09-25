@@ -74,7 +74,15 @@ import {
   QPU_FILE_UPLOAD_ACCEPT,
   validateUploadFileName,
 } from './data/formats';
-import { createInitialState, measureAll, projectStateOntoQubits, resolveStateQubitCount, runCircuit, stepCircuitGate } from './simulator/engine';
+import {
+  createInitialState,
+  measureAll,
+  projectStateOntoQubits,
+  resolveStateQubitCount,
+  runCircuit,
+  stepCircuitGate,
+  WORKSPACE_RESET_LOG_PREFIX,
+} from './simulator/engine';
 import { physics } from './simulator/physics/PhysicsEngine';
 import {
   analyzeQpuProtocol,
@@ -525,7 +533,7 @@ function App() {
     setConditionOutcomes(result.conditionOutcomes ?? {});
     setParticleSnapshots(result.particles ?? []);
     setParticleTransitions(result.transitions ?? []);
-    setLog(result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared')));
+    setLog(result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith(WORKSPACE_RESET_LOG_PREFIX)));
     setPreStep(null);
     setDocFocus('circuit');
     setCursor(orderedGates.length);
@@ -547,7 +555,7 @@ function App() {
     if (result.conditionOutcomes) setConditionOutcomes((current) => ({ ...current, ...result.conditionOutcomes }));
     setParticleSnapshots(result.particles ?? []);
     setParticleTransitions((current) => [...current, ...(result.transitions ?? [])]);
-    setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'))]);
+    setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith(WORKSPACE_RESET_LOG_PREFIX))]);
     setPreStep({ cursor: cursor + 1, state, qubitCount: workingQubitCount });
     setDocFocus('circuit');
     setCursor((current) => current + 1);
@@ -650,7 +658,7 @@ function App() {
     const result = measureAll(state, simulationQubitCount, measurements);
     setState(result.state);
     setMeasurements(result.measurements);
-    setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'))]);
+    setLog((current) => [...current, ...result.log.filter((entry) => !entry.startsWith('RESET') && !entry.startsWith(WORKSPACE_RESET_LOG_PREFIX))]);
   };
 
   // The UI measures display qubits, then maps that choice back onto compiled PARAM qubits when needed.
@@ -702,7 +710,7 @@ function App() {
     resetRuntime();
     setLog((current) => [
       ...current,
-      `Added INCREASECYCLE boundary (cycle ${previousCycle + 1}). This advances the logical stage; it does not loop.`,
+      `Added INCREASECYCLE boundary (logical cycle ${previousCycle + 1}). This advances the logical stage; it does not loop.`,
     ]);
   };
 
@@ -853,7 +861,7 @@ function App() {
       setCompileSummary(`Compiled ${result.parsed.length} QPU instruction(s) into ${result.gates.length} runnable gate(s) over ${registerSummary} with ${paramSummary}.`);
       resetRuntime(result.qubitCount, `Compiled ${label}. ${result.log[0] ?? ''}`, nextStartStates, result.processParams);
       const compileLog = result.log.filter(
-        (entry) => !entry.startsWith('RESET') && !entry.startsWith('Cycle workspace prepared'),
+        (entry) => !entry.startsWith('RESET') && !entry.startsWith(WORKSPACE_RESET_LOG_PREFIX),
       );
       const recursionLog = compileLog.filter((entry) => /TCO|DEPTH=|RECUR|REC |TREC /i.test(entry));
       const otherLog = compileLog.filter((entry) => !/TCO|DEPTH=|RECUR|REC |TREC /i.test(entry));
@@ -1313,7 +1321,7 @@ function App() {
             ) : null}
             <div className="workbench-actions">
               <button onClick={addGateFromWorkbench} title={uiTips.addGate} type="button">Add gate to target</button>
-              <button onClick={addCycleBoundary} title={uiTips.increaseCycle} type="button">Add cycle boundary</button>
+              <button onClick={addCycleBoundary} title={uiTips.increaseCycle} type="button">Add logical cycle boundary</button>
               <button onClick={addParticle} title={uiTips.addParticle} type="button">Add particle</button>
               <button onClick={removeParticle} title={uiTips.removeParticle} type="button">Remove particle</button>
               <button onClick={measureSelectedQubit} title={uiTips.measureTarget} type="button">Measure target</button>

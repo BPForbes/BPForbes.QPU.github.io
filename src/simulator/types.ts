@@ -210,7 +210,7 @@ export type CircuitGate = {
   inverse?: boolean;
   source?: string;
   customGateId?: string;
-  /** Timeline cycle that produced this gate. INCREASECYCLE advances it. */
+  /** Logical cycle (program stage) that produced this gate; INCREASECYCLE advances it. Not physical time. */
   cycle?: number;
   /** Named simulator checkpoint for SAVE_STATE and LOAD_STATE. */
   checkpoint?: string;

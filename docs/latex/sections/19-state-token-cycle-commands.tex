@@ -1,4 +1,4 @@
-\section{State, token, and cycle commands}
+\section{State, token, and logical-cycle commands}
 
 \subsection{\code{SET} --- initialize or alias (\implemented)}
 
@@ -56,17 +56,22 @@ FREE uses the same rule as DELETETOKEN. Use \code{SET wire 0p} when the
 intended behavior is zero preparation. A wire that is not known $\ket0$ keeps
 its qubit index, and only the name dies.
 
-\subsection{\code{INCREASECYCLE} --- cycle boundary (\implemented)}
+\subsection{\code{INCREASECYCLE} --- logical cycle boundary (\implemented)}
 
 \begin{lstlisting}
 INCREASECYCLE
 \end{lstlisting}
 The compiler flushes pending zero-initializations into an internal batched
-\code{RESET}, increments the cycle counter, and prepares workspace for following
-operations. Cycle suffixes on tokens do not create separate visual wires.
+\code{RESET}, increments the logical cycle counter, and prepares workspace for
+following operations. Cycle suffixes on tokens do not create separate visual
+wires.
 
-Cycles organize protocol stages. They are not wall-clock timing guarantees and
-do not cause gates to execute concurrently. The final circuit is still an
+Throughout QPU, ``cycle'' always means a \emph{logical cycle}: a stage of the
+program. Logical cycles organize protocol stages. They are not wall-clock
+timing guarantees, not physical elapsed time, and do not cause gates to
+execute concurrently. Noise and decoherence never advance with logical cycles;
+they use a separate per-gate physical duration (Theory Guide: \emph{Mixed
+states, entanglement measures, and noise}). The final circuit is still an
 ordered gate sequence. Each emitted gate records the timeline cycle, and the
 canvas draws a dashed vertical line across every wire at
 \code{INCREASECYCLE}, labelled \textbf{IC} with the new cycle number
@@ -77,7 +82,7 @@ teal depth badge replaces them. An integer suffix such as
 cycle 0, so its own \code{:0} labels stay valid after the parent advances.
 Non-numeric suffixes stay labels. The suffix does not allocate another wire.
 
-\subsection{Cycle-based state evolution}
+\subsection{Logical-cycle state evolution}
 \hypertarget{cycle-based-state-evolution}{}
 
 Cycle does \emph{not} mean loop. Cycle does not mean parallel execution. Cycle
@@ -101,7 +106,7 @@ INCREASECYCLE
 CNOT -I T -O Q
 \end{lstlisting}
 Conceptually $Q_0\to Q_1\to Q_2\to Q_3$. There is no backward execution edge.
-The Interactive Workbench button \textbf{Add cycle boundary} inserts the same
+The Interactive Workbench button \textbf{Add logical cycle boundary} inserts the same
 marker visually. The starter circuit \emph{T state transition across cycles}
 demonstrates this pattern.
 

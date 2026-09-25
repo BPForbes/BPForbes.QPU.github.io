@@ -21,7 +21,7 @@ export const resetGate: GateDefinition = {
     return {
       state: reset.amplitudes,
       measurements,
-      log: [`Cycle workspace prepared: q${gate.targets.join(', q')} as |0⟩.`],
+      log: [`Logical-cycle workspace prepared: q${gate.targets.join(', q')} as |0⟩.`],
     };
   },
 };

@@ -15,7 +15,7 @@ type CircuitMarkerProps = {
 
 /**
  * Whole-register timeline marker: a dashed vertical line across every wire
- * with a short tag above it. Used for checkpoints and cycle boundaries, which
+ * with a short tag above it. Used for checkpoints and logical-cycle boundaries, which
  * are simulator markers rather than gates (and never loops).
  */
 export function CircuitMarker({ label, detail, caption, description, active = false, style }: CircuitMarkerProps) {
