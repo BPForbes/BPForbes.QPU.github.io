@@ -3,10 +3,11 @@ import { magnitudeSquared, ONE, scale, ZERO } from '../../complex';
 import { measureQubit, padStateVector, prepareZeroQubit } from '../operations';
 describe('operations', () => {
   it('pads state vectors by shifting indices for appended |0⟩ wires', () => {
-    const twoQubit = [ONE, ZERO, ZERO, ONE];
+    const bellAmplitude = scale(ONE, 1 / Math.sqrt(2));
+    const twoQubit = [bellAmplitude, ZERO, ZERO, bellAmplitude];
     const padded = padStateVector(twoQubit, 2, 3);
-    expect(padded[0]).toEqual(ONE);
-    expect(padded[6]).toEqual(ONE);
+    expect(padded[0]).toEqual(bellAmplitude);
+    expect(padded[6]).toEqual(bellAmplitude);
     expect(padded[1]).toEqual(ZERO);
   });
 

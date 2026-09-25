@@ -86,6 +86,16 @@ import {
   truncateStateVector,
 } from './state/StateVector';
 import { resetStateVector } from './measurement/Reset';
+import {
+  defaultValidationEnabled,
+  type StateValidationOptions,
+  validateChannel,
+  validateDensityMatrix,
+  validateOperatorShape,
+  validateQubits,
+  validateState,
+  validateUnitary,
+} from './validation/Validation';
 import { MATRIX_H, MATRIX_X } from '../gates/matrices';
 
 export type QubitInspection = {
@@ -160,6 +170,65 @@ export class PhysicsEngine {
     decoherence: decoherenceChannels,
   } as const;
 
+  // ── Validation ─────────────────────────────────────────────────────────
+
+  private validationEnabled = defaultValidationEnabled();
+
+  // Only the outermost public call validates its input state; nested engine calls (and gate kernels run on
+  // unnormalized density-matrix columns) skip the repeat. Qubit, operator, and channel checks always run.
+  private depth = 0;
+
+  /** Automatic boundary checks default to on in development/tests and off in production. */
+  setValidation(enabled: boolean): void {
+    this.validationEnabled = enabled;
+  }
+
+  get validating(): boolean {
+    return this.validationEnabled;
+  }
+
+  /** Explicit checks; these always run and throw PhysicsValidationError on failure. */
+  validateState(state: QuantumState, options?: StateValidationOptions): void {
+    validateState(state, options);
+  }
+
+  validateUnitary(matrix: ComplexMatrix, targets?: number[]): void {
+    if (targets) validateOperatorShape(matrix, targets);
+    validateUnitary(matrix);
+  }
+
+  validateChannel(channel: NoiseChannel): void {
+    validateChannel(channel);
+  }
+
+  private guard<T>(state: QuantumState, run: () => T, ...extra: QuantumState[]): T {
+    if (this.validationEnabled && this.depth === 0) {
+      validateState(state);
+      extra.forEach((other) => validateState(other));
+    }
+    this.depth += 1;
+    try {
+      return run();
+    } finally {
+      this.depth -= 1;
+    }
+  }
+
+  private checkQubits(state: QuantumState, qubits: readonly number[], label: string): void {
+    if (this.validationEnabled) validateQubits(state.qubitCount, qubits, label);
+  }
+
+  private checkOperator(state: QuantumState, controls: number[], targets: number[], matrix: ComplexMatrix): void {
+    if (!this.validationEnabled) return;
+    validateQubits(state.qubitCount, [...targets, ...controls], 'targets/controls');
+    validateOperatorShape(matrix, targets);
+    validateUnitary(matrix);
+  }
+
+  private checkDensityInput(rho: DensityMatrix): void {
+    if (this.validationEnabled && this.depth === 0) validateDensityMatrix(rho);
+  }
+
   // ── State creation and preparation ─────────────────────────────────────
 
   createState(qubitCount: number): StateVectorState;
@@ -198,6 +267,9 @@ export class PhysicsEngine {
    * Amplitude elsewhere is discarded, so callers must check the result's norm.
    */
   truncateRegister(state: StateVectorState, qubitCount: number): StateVectorState {
+    if (this.validationEnabled && (!Number.isInteger(qubitCount) || qubitCount < 0)) {
+      throw new RangeError(`Invalid register width ${qubitCount}.`);
+    }
     if (qubitCount >= state.qubitCount) return state;
     return stateVector(truncateStateVector(state.amplitudes, state.qubitCount, qubitCount), qubitCount);
   }
@@ -218,25 +290,30 @@ export class PhysicsEngine {
 
   /** Prepare a fresh |0⟩ wire as 0p, 1p (|1⟩), or sp (|+⟩). */
   prepare<S extends QuantumState>(state: S, qubit: number, preparation: ParticleStartState): S {
+    this.checkQubits(state, [qubit], 'qubit');
     if (preparation === '0p') return state;
-    if (state.kind === 'stateVector') {
-      return stateVector(applyStartState(state.amplitudes, state.qubitCount, qubit, preparation), state.qubitCount) as S;
-    }
-    return this.applyUnitary(state, [qubit], preparation === '1p' ? MATRIX_X : MATRIX_H);
+    return this.guard(state, () => {
+      if (state.kind === 'stateVector') {
+        return stateVector(applyStartState(state.amplitudes, state.qubitCount, qubit, preparation), state.qubitCount) as S;
+      }
+      return this.applyUnitary(state, [qubit], preparation === '1p' ? MATRIX_X : MATRIX_H);
+    });
   }
 
   /** Append |0⟩ wires so the register holds `qubitCount` qubits. */
   expandRegister<S extends QuantumState>(state: S, qubitCount: number): S {
     if (qubitCount <= state.qubitCount) return state;
-    return (state.kind === 'stateVector'
+    return this.guard(state, () => (state.kind === 'stateVector'
       ? stateVector(padStateVector(state.amplitudes, state.qubitCount, qubitCount), qubitCount)
-      : densityState(padDensityMatrix(state.rho, state.qubitCount, qubitCount), qubitCount)) as S;
+      : densityState(padDensityMatrix(state.rho, state.qubitCount, qubitCount), qubitCount)) as S);
   }
 
   toDensityMatrix(state: QuantumState): DensityMatrixState {
-    if (state.kind === 'densityMatrix') return state;
-    assertDensityWidth(state.qubitCount);
-    return densityState(densityFromStateVector(state.amplitudes), state.qubitCount);
+    return this.guard(state, () => {
+      if (state.kind === 'densityMatrix') return state;
+      assertDensityWidth(state.qubitCount);
+      return densityState(densityFromStateVector(state.amplitudes), state.qubitCount);
+    });
   }
 
   // ── Evolution ──────────────────────────────────────────────────────────
@@ -247,10 +324,13 @@ export class PhysicsEngine {
   }
 
   applyControlledUnitary<S extends QuantumState>(state: S, controls: number[], targets: number[], matrix: ComplexMatrix): S {
-    if (state.kind === 'stateVector') {
-      return stateVector(applyMultiQubitUnitary(state.amplitudes, state.qubitCount, targets, matrix, controls), state.qubitCount) as S;
-    }
-    return densityState(applyUnitaryToDensity(state.rho, state.qubitCount, targets, matrix, controls), state.qubitCount) as S;
+    this.checkOperator(state, controls, targets, matrix);
+    return this.guard(state, () => {
+      if (state.kind === 'stateVector') {
+        return stateVector(applyMultiQubitUnitary(state.amplitudes, state.qubitCount, targets, matrix, controls), state.qubitCount) as S;
+      }
+      return densityState(applyUnitaryToDensity(state.rho, state.qubitCount, targets, matrix, controls), state.qubitCount) as S;
+    });
   }
 
   /**
@@ -258,8 +338,10 @@ export class PhysicsEngine {
    * path). On a density matrix this is ρ → AρA†.
    */
   applyLinearKernel<S extends QuantumState>(state: S, kernel: (amplitudes: Complex[]) => Complex[]): S {
-    if (state.kind === 'stateVector') return stateVector(kernel(state.amplitudes), state.qubitCount) as S;
-    return densityState(conjugateByLinearMap(state.rho, kernel), state.qubitCount) as S;
+    return this.guard(state, () => {
+      if (state.kind === 'stateVector') return stateVector(kernel(state.amplitudes), state.qubitCount) as S;
+      return densityState(conjugateByLinearMap(state.rho, kernel), state.qubitCount) as S;
+    });
   }
 
   /** Continuous evolution under a time-independent Hamiltonian: U = e^{−iHt/ħ}. */
@@ -270,19 +352,23 @@ export class PhysicsEngine {
   // ── Measurement ────────────────────────────────────────────────────────
 
   measure<S extends QuantumState>(state: S, qubit: number, basis: MeasurementBasis = 'Z', random = Math.random()): MeasurementResult<S> {
-    if (state.kind === 'stateVector') {
-      const result = measureStateVector(state.amplitudes, state.qubitCount, qubit, basis, random);
-      return { ...result, state: stateVector(result.state, state.qubitCount) as S };
-    }
-    const result = measureDensityMatrix(state.rho, state.qubitCount, qubit, basis, random);
-    return { ...result, state: densityState(result.state, state.qubitCount) as S };
+    this.checkQubits(state, [qubit], 'qubit');
+    return this.guard(state, () => {
+      if (state.kind === 'stateVector') {
+        const result = measureStateVector(state.amplitudes, state.qubitCount, qubit, basis, random);
+        return { ...result, state: stateVector(result.state, state.qubitCount) as S };
+      }
+      const result = measureDensityMatrix(state.rho, state.qubitCount, qubit, basis, random);
+      return { ...result, state: densityState(result.state, state.qubitCount) as S };
+    });
   }
 
   /** Outcome probabilities for a basis without collapsing the state. */
   measurementDiagnostics(state: QuantumState, qubit: number, basis: MeasurementBasis = 'Z'): MeasurementDiagnostics {
-    return state.kind === 'stateVector'
+    this.checkQubits(state, [qubit], 'qubit');
+    return this.guard(state, () => (state.kind === 'stateVector'
       ? stateVectorMeasurementDiagnostics(state.amplitudes, state.qubitCount, qubit, basis)
-      : densityMeasurementDiagnostics(state.rho, state.qubitCount, qubit, basis);
+      : densityMeasurementDiagnostics(state.rho, state.qubitCount, qubit, basis)));
   }
 
   /**
@@ -290,9 +376,10 @@ export class PhysicsEngine {
    * vectors follow one measure-and-flip trajectory of it (see measurement/Reset.ts).
    */
   reset<S extends QuantumState>(state: S, qubit: number, random: () => number = Math.random): S {
-    return (state.kind === 'stateVector'
+    this.checkQubits(state, [qubit], 'qubit');
+    return this.guard(state, () => (state.kind === 'stateVector'
       ? stateVector(resetStateVector(state.amplitudes, state.qubitCount, qubit, random), state.qubitCount)
-      : densityState(resetQubitDensity(state.rho, state.qubitCount, qubit), state.qubitCount)) as S;
+      : densityState(resetQubitDensity(state.rho, state.qubitCount, qubit), state.qubitCount)) as S);
   }
 
   /** P(qubit = 1) in the computational basis. */
@@ -301,21 +388,26 @@ export class PhysicsEngine {
   }
 
   probabilities(state: QuantumState): number[] {
-    return state.kind === 'stateVector' ? basisProbabilities(state.amplitudes) : densityProbabilities(state.rho);
+    return this.guard(state, () => (state.kind === 'stateVector'
+      ? basisProbabilities(state.amplitudes)
+      : densityProbabilities(state.rho)));
   }
 
   marginalProbabilities(state: QuantumState, qubits: number[]): number[] {
-    if (state.kind === 'stateVector') return marginalProbabilities(state.amplitudes, state.qubitCount, qubits);
-    return densityProbabilities(partialTrace(state.rho, state.qubitCount, qubits));
+    this.checkQubits(state, qubits, 'qubits');
+    return this.guard(state, () => (state.kind === 'stateVector'
+      ? marginalProbabilities(state.amplitudes, state.qubitCount, qubits)
+      : densityProbabilities(partialTrace(state.rho, state.qubitCount, qubits))));
   }
 
   // ── Reduced states and inspection ──────────────────────────────────────
 
   /** ρ_S = Tr_{rest}(ρ); subsystem[0] is the most significant bit. */
   reducedState(state: QuantumState, subsystem: number[]): DensityMatrix {
-    return state.kind === 'stateVector'
+    this.checkQubits(state, subsystem, 'subsystem');
+    return this.guard(state, () => (state.kind === 'stateVector'
       ? reducedStateFromVector(state.amplitudes, state.qubitCount, subsystem)
-      : partialTrace(state.rho, state.qubitCount, subsystem);
+      : partialTrace(state.rho, state.qubitCount, subsystem)));
   }
 
   reducedDensityMatrix(state: QuantumState, subsystem: number[]): DensityMatrix {
@@ -338,6 +430,10 @@ export class PhysicsEngine {
   }
 
   inspectQubit(state: QuantumState, qubit: number): QubitInspection {
+    return this.guard(state, () => this.inspectQubitUnchecked(state, qubit));
+  }
+
+  private inspectQubitUnchecked(state: QuantumState, qubit: number): QubitInspection {
     const densityMatrix = this.reducedState(state, [qubit]);
     const bloch = blochVectorFromDensity(densityMatrix);
     const spherical = sphericalFromBlochCartesian(bloch);
@@ -357,6 +453,10 @@ export class PhysicsEngine {
   }
 
   inspectSubsystem(state: QuantumState, subsystem: number[]): SubsystemInspection {
+    return this.guard(state, () => this.inspectSubsystemUnchecked(state, subsystem));
+  }
+
+  private inspectSubsystemUnchecked(state: QuantumState, subsystem: number[]): SubsystemInspection {
     const densityMatrix = this.reducedState(state, subsystem);
     const subsystemPurity = purity(densityMatrix);
     return {
@@ -372,6 +472,7 @@ export class PhysicsEngine {
   }
 
   inspectGlobal(state: QuantumState): GlobalInspection {
+    // Diagnoses the state as given, so it deliberately skips input validation.
     const probabilities = this.probabilities(state);
     const globalPurity = this.globalPurity(state);
     return {
@@ -386,14 +487,17 @@ export class PhysicsEngine {
   // ── Diagnostics on density matrices ────────────────────────────────────
 
   purity(rho: DensityMatrix): number {
+    this.checkDensityInput(rho);
     return purity(rho);
   }
 
   linearEntropy(rho: DensityMatrix): number {
+    this.checkDensityInput(rho);
     return linearEntropy(rho);
   }
 
   vonNeumannEntropy(rho: DensityMatrix): number {
+    this.checkDensityInput(rho);
     return vonNeumannEntropy(rho);
   }
 
@@ -417,25 +521,29 @@ export class PhysicsEngine {
    *   'inconclusive' rather than silently treated as separable.
    */
   assessEntanglement(state: QuantumState, subsystem: number[]): EntanglementAssessment {
-    return this.assessWithReduced(state, subsystem);
+    this.checkQubits(state, subsystem, 'subsystem');
+    return this.guard(state, () => this.assessWithReduced(state, subsystem));
   }
 
   /** S(ρ_A) in bits; an entanglement measure only for a pure global state. */
   entanglementEntropy(state: QuantumState, subsystem: number[]): number {
-    if (!this.isGloballyPure(state)) {
-      throw new RangeError('Entanglement entropy is only defined for a pure global state; use negativity for mixed states.');
-    }
-    if (complement(state.qubitCount, subsystem).length === 0) return 0;
-    return vonNeumannEntropy(this.reducedState(state, subsystem));
+    this.checkQubits(state, subsystem, 'subsystem');
+    return this.guard(state, () => {
+      if (!this.isGloballyPure(state)) {
+        throw new RangeError('Entanglement entropy is only defined for a pure global state; use negativity for mixed states.');
+      }
+      if (complement(state.qubitCount, subsystem).length === 0) return 0;
+      return vonNeumannEntropy(this.reducedState(state, subsystem));
+    });
   }
 
   /** Negativity of the bipartition subsystem | rest (0.5 for a Bell pair). */
   negativity(state: QuantumState, subsystem: number[]): number {
+    this.checkQubits(state, subsystem, 'subsystem');
     if (state.qubitCount > MAX_PPT_QUBITS) {
       throw new RangeError(`Negativity is limited to ${MAX_PPT_QUBITS} qubits (got ${state.qubitCount}).`);
     }
-    const { rho } = this.toDensityMatrix(state);
-    return negativity(rho, state.qubitCount, subsystem);
+    return this.guard(state, () => negativity(this.toDensityMatrix(state).rho, state.qubitCount, subsystem));
   }
 
   // ── Fidelity, interference, phase ──────────────────────────────────────
@@ -445,46 +553,54 @@ export class PhysicsEngine {
     if (actual.qubitCount !== expected.qubitCount) {
       throw new RangeError(`Fidelity needs equal register sizes (${actual.qubitCount} vs ${expected.qubitCount}).`);
     }
-    if (actual.kind === 'stateVector') {
+    return this.guard(actual, () => {
+      if (actual.kind === 'stateVector') {
+        return expected.kind === 'stateVector'
+          ? pureStateFidelity(actual.amplitudes, expected.amplitudes)
+          : pureMixedFidelity(actual.amplitudes, expected.rho);
+      }
       return expected.kind === 'stateVector'
-        ? pureStateFidelity(actual.amplitudes, expected.amplitudes)
-        : pureMixedFidelity(actual.amplitudes, expected.rho);
-    }
-    return expected.kind === 'stateVector'
-      ? pureMixedFidelity(expected.amplitudes, actual.rho)
-      : densityFidelity(actual.rho, expected.rho);
+        ? pureMixedFidelity(expected.amplitudes, actual.rho)
+        : densityFidelity(actual.rho, expected.rho);
+    }, expected);
   }
 
   analyzeInterference(state: QuantumState, operation: InterferenceOperation): InterferenceAnalysis {
     if (state.kind !== 'stateVector') throw new RangeError('Amplitude interference analysis needs a pure state vector.');
-    return analyzeInterference(state.amplitudes, state.qubitCount, operation);
+    this.checkOperator(state, operation.controls ?? [], operation.targets, operation.matrix);
+    return this.guard(state, () => analyzeInterference(state.amplitudes, state.qubitCount, operation));
   }
 
   /** ⟨a|b⟩ for pure states. */
   overlap(a: StateVectorState, b: StateVectorState): Complex {
-    return innerProduct(a.amplitudes, b.amplitudes);
+    if (a.amplitudes.length !== b.amplitudes.length) throw new RangeError('Overlap needs states of the same dimension.');
+    return this.guard(a, () => innerProduct(a.amplitudes, b.amplitudes), b);
   }
 
   comparePhase(a: QuantumState, b: QuantumState): PhaseComparison {
     if (a.kind !== 'stateVector' || b.kind !== 'stateVector') {
       throw new RangeError('Phase comparison needs pure state vectors; density matrices carry no global phase.');
     }
-    return comparePhase(a.amplitudes, b.amplitudes);
+    return this.guard(a, () => comparePhase(a.amplitudes, b.amplitudes), b);
   }
 
   relativePhases(state: QuantumState): RelativePhase[] {
     if (state.kind !== 'stateVector') throw new RangeError('Relative phases need a pure state vector.');
-    return relativePhases(state.amplitudes);
+    return this.guard(state, () => relativePhases(state.amplitudes));
   }
 
   // ── Open-system physics ────────────────────────────────────────────────
 
   /** Apply one single-qubit channel to each listed qubit. Upgrades to a density matrix. */
   applyChannel(state: QuantumState, channel: NoiseChannel, qubits: number[]): QuantumState {
+    if (this.validationEnabled) validateChannel(channel);
+    this.checkQubits(state, qubits, 'qubits');
     if (isIdentityChannel(channel) || qubits.length === 0) return state;
-    const { rho } = this.toDensityMatrix(state);
-    const next = qubits.reduce((current, qubit) => applySingleQubitKraus(current, state.qubitCount, qubit, channel.kraus), rho);
-    return densityState(next, state.qubitCount);
+    return this.guard(state, () => {
+      const { rho } = this.toDensityMatrix(state);
+      const next = qubits.reduce((current, qubit) => applySingleQubitKraus(current, state.qubitCount, qubit, channel.kraus), rho);
+      return densityState(next, state.qubitCount);
+    });
   }
 
   /**
@@ -493,6 +609,7 @@ export class PhysicsEngine {
    * on every wire. A model that cannot change the state leaves it untouched.
    */
   applyNoise(state: QuantumState, model: NoiseModel, context: NoiseContext = {}): QuantumState {
+    if (context.touched) this.checkQubits(state, context.touched, 'touched qubits');
     const everyQubit = allQubits(state.qubitCount);
     const touched = (context.touched ?? everyQubit).filter((qubit) => qubit >= 0 && qubit < state.qubitCount);
     const steps: Array<{ channel: NoiseChannel; qubits: number[] }> = [
@@ -503,7 +620,7 @@ export class PhysicsEngine {
           .map((channel) => ({ channel, qubits: everyQubit }))
         : []),
     ];
-    return steps.reduce((current, step) => this.applyChannel(current, step.channel, step.qubits), state);
+    return this.guard(state, () => steps.reduce((current, step) => this.applyChannel(current, step.channel, step.qubits), state));
   }
 
   // ── Internals ──────────────────────────────────────────────────────────

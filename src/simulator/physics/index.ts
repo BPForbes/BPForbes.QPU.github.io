@@ -15,6 +15,8 @@ export type { PhaseComparison, PhaseRelation, RelativePhase } from './analysis/P
 export type { DecoherenceModel, NoiseChannel, NoiseModel, PhysicalTimingModel } from './noise/NoiseModel';
 export type { Hamiltonian } from './dynamics/Hamiltonian';
 export type { ComplexMatrix } from './numerics/linearAlgebra';
+export { PhysicsValidationError } from './validation/Validation';
+export type { StateValidationOptions, ValidationTolerances } from './validation/Validation';
 
 // Visualization tracker: observes the engine for the Bloch view.
 export {
