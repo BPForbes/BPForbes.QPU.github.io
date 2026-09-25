@@ -144,9 +144,9 @@ Y & $\ket{+i}$ & $\ket{-i}$ & $HS^\dagger$\\
 \end{tabular}
 \end{center}
 The state $\ket+$ gives a random result in the Z basis but always gives 0 in
-the X basis: what a measurement reveals depends on the observable. QPU source
-does not yet have syntax for choosing a basis, so written \code{MEASURE}
-commands are always Z measurements.
+the X basis: what a measurement reveals depends on the observable. In QPU
+source, \code{MEASURE -I Q -BASIS X} (or \code{Y}) chooses the observable; a
+\code{MEASURE} without \code{-BASIS} is a Z measurement.
 
 \subsection{Fidelity}
 
@@ -209,8 +209,10 @@ QPU cycles (\code{INCREASECYCLE}) are logical program stages, not elapsed
 physical time. Decoherence uses a separate timing model that assigns a
 duration to each gate. Noise is always optional: ordinary runs are ideal and
 use the cheaper state vector ($2^n$ amplitudes) rather than a density matrix
-($4^n$ entries). Noisy simulation is available in the physics engine but is
-not yet exposed in the Circuit builder.
+($4^n$ entries). Choose \textbf{Run with noise} in the \textbf{Physics
+inspector} on the Particle visualization page to rerun a circuit with a noise
+channel and optional $T_1$/$T_2$; the inspector reports the fidelity with the
+ideal run. Noise settings are not part of QPU source.
 \end{cautionbox}
 
 \subsection{No cloning and teleportation}

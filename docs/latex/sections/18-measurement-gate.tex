@@ -4,12 +4,20 @@
 \GateHeading{Measurement}{MEASURE}{\MeasureSegment}
 
 \begin{lstlisting}
-MEASURE -I Q     # exactly one named wire
-MEASURE          # every wire known at this point
+MEASURE -I Q            # exactly one named wire
+MEASURE                 # every wire known at this point
+MEASURE -I Q -BASIS X   # measure the X observable instead of Z
 \end{lstlisting}
 \code{MEASURE} takes no \code{-O}. Repeated one-wire commands are useful when
 only declared returns should become classical. A bare command emits one
-measurement operation per currently allocated wire.
+measurement operation per currently allocated wire, and a bare
+\code{MEASURE -BASIS Y} measures every one of them in the Y basis.
+
+Without \code{-BASIS} the wire is read in the computational (Z) basis, as
+below. \code{-BASIS X} and \code{-BASIS Y} read another observable: the
+recorded bit 0 means $\ket+$ (or $\ket{+i}$), 1 means $\ket-$ (or
+$\ket{-i}$), and the wire is left in that state. \code{-BASIS Z} is the
+default written out. The canvas marks an X or Y meter with a small X or Y.
 
 \begin{center}
 \begin{tabular}{c|c|c}\toprule State & Outcome probabilities & Collapsed state\\\midrule

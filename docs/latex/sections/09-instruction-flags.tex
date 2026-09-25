@@ -44,6 +44,16 @@ use the structured \code{IF} / \code{ELSE} / \code{ENDIF} block described in
 same \code{-IF} conditions. Either way there is no backward edge---the circuit
 remains a finite ordered list.
 
+\subsection{\code{-BASIS}: measurement observable (optional)}
+
+Only \code{MEASURE} accepts \code{-BASIS}, followed by \code{X}, \code{Y}, or
+\code{Z} in either case:
+\begin{lstlisting}
+MEASURE -I Q -BASIS X
+\end{lstlisting}
+Z is the default. A missing or unknown basis, or \code{-BASIS} on any other
+instruction, is a compile error.
+
 \subsection{Where a flag list ends}
 
 An \code{-I} or \code{-O} list continues until the next token beginning with a

@@ -369,13 +369,24 @@ and Bloch $x,y,z$. $\Delta$ values show the change caused by the last step.
 $\langle\rho\rangle$, a display-only Bloch-ball estimate. \textbf{Entangled
 with register} appears when the wire is mixed only because it is entangled
 with other wires (Theory Guide: \emph{Mixed states, entanglement measures,
-and noise}).\\
+and noise}); \textbf{Entanglement undetermined} appears when the test could
+not decide.\\
 Circuit execution timeline & One tile per gate, with its \code{-I} and
 \code{-O} wires.\\
 Final state vector & Every nonzero amplitude with its basis label.\\
 Outcome truth table / probabilities & Expands to list every basis outcome
 with its amplitude and probability.\\
 Execution log & A sentence for every step, compile, and measurement.\\
+Physics inspector: Subsystem & Tick one or more wires to inspect them
+together: purity, linear and von Neumann entropy, negativity (up to 6 qubits),
+and whether they are entangled with the rest. The answer is
+\emph{entangled}, \emph{not entangled}, or \emph{undetermined}, each with the
+test used; undetermined is never shown as ``not entangled''.\\
+Physics inspector: Run with noise & Pick a gate-noise channel and strength,
+optionally $T_1$, $T_2$ and a gate duration, then rerun the circuit as an open
+system (up to 10 qubits). Shows register purity, fidelity with the ideal run,
+and the same subsystem report for the noisy state. The ideal and noisy runs
+use the same random draws for MEASURE.\\
 }
 
 \subsection{File upload and download}
